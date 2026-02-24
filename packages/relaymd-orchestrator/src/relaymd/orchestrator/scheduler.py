@@ -3,19 +3,15 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from relaymd.models import Job, JobStatus, Platform, Worker
+from relaymd.models import Job, JobStatus, Worker
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
+from relaymd.orchestrator.scheduling import score_worker
 from sqlalchemy import Select
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 HEARTBEAT_INTERVAL_SECONDS = 30
-
-
-def score_worker(worker: Worker) -> int:
-    platform_bonus = 10 if worker.platform == Platform.hpc else 0
-    return worker.gpu_count * 1000 + platform_bonus * 100 + worker.vram_gb
 
 
 async def assign_job(session: AsyncSession) -> tuple[Job, Worker] | None:

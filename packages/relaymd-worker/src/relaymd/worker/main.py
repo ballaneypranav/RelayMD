@@ -249,7 +249,7 @@ def run_worker(config: WorkerConfig) -> None:
         worker_id = UUID(register_response.json()["worker_id"])
 
         while True:
-            request_response = client.post("/jobs/request")
+            request_response = client.post("/jobs/request", params={"worker_id": str(worker_id)})
             request_response.raise_for_status()
             request_payload = request_response.json()
 
