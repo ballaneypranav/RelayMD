@@ -309,5 +309,11 @@ def run_worker(config: WorkerConfig) -> None:
 
                         time.sleep(checkpoint_poll_interval)
                 finally:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
                     heartbeat.stop()
                     heartbeat.join(timeout=5)
