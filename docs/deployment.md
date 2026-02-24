@@ -9,21 +9,26 @@ Use a persistent process manager for the orchestrator. A shell-owned process is 
 - Choose **tmux fallback** on environments (for example some HPC login nodes) where user lingering is not available.
   - Why: easy manual recovery and keeps the process detached from your SSH session.
 
-## Environment File Template
+## YAML Config Template
 
-Create `~/.config/relaymd/.env`:
+Create `~/.config/relaymd/config.yaml` from the canonical template:
 
-```env
-DATABASE_URL=sqlite+aiosqlite:////srv/relaymd/orchestrator/relaymd.db
-RELAYMD_API_TOKEN=change-me
-B2_ENDPOINT_URL=https://s3.us-west-000.backblazeb2.com
-B2_BUCKET_NAME=relaymd-bucket
-B2_ACCESS_KEY_ID=your-key-id
-B2_SECRET_ACCESS_KEY=your-secret-access-key
-SLURM_CLUSTER_CONFIGS=[]
+```bash
+mkdir -p ~/.config/relaymd
+cp deploy/config.example.yaml ~/.config/relaymd/config.yaml
 ```
 
 SQLite recommendation: keep the database in a stable persistent directory (for example `/srv/relaymd/orchestrator/relaymd.db`), not `/tmp`.
+
+By default the orchestrator reads `~/.config/relaymd/config.yaml`. To use a different path, set:
+
+```bash
+export RELAYMD_CONFIG=/absolute/path/to/config.yaml
+```
+
+Secrets can stay out of the YAML file by overriding them via environment variables:
+- `RELAYMD_API_TOKEN`
+- `INFISICAL_TOKEN`
 
 ## systemd User Service (Preferred)
 
