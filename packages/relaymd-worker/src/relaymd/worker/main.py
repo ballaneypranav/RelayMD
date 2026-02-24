@@ -268,35 +268,37 @@ def run_worker(config: WorkerConfig) -> None:
                         latest_checkpoint = _find_latest_checkpoint(
                             bundle_root, execution_config.checkpoint_glob_pattern
                         )
-                        if latest_checkpoint is not None and (
-                            last_uploaded_mtime is None
-                            or latest_checkpoint.stat().st_mtime
-                            > last_uploaded_mtime
-                        ):
-                            storage.upload_file(latest_checkpoint, checkpoint_b2_key)
-                            checkpoint_response = client.post(
-                                f"/jobs/{assignment.job_id}/checkpoint",
-                                json={"checkpoint_path": checkpoint_b2_key},
-                            )
-                            checkpoint_response.raise_for_status()
-                            last_uploaded_mtime = latest_checkpoint.stat().st_mtime
+                        if latest_checkpoint is not None:
+                            current_mtime = latest_checkpoint.stat().st_mtime
+                            if (
+                                last_uploaded_mtime is None
+                                or current_mtime > last_uploaded_mtime
+                            ):
+                                storage.upload_file(latest_checkpoint, checkpoint_b2_key)
+                                checkpoint_response = client.post(
+                                    f"/jobs/{assignment.job_id}/checkpoint",
+                                    json={"checkpoint_path": checkpoint_b2_key},
+                                )
+                                checkpoint_response.raise_for_status()
+                                last_uploaded_mtime = current_mtime
 
                         if process_exit is not None:
                             if process_exit == 0:
                                 final_checkpoint = _find_latest_checkpoint(
                                     bundle_root, execution_config.checkpoint_glob_pattern
                                 )
-                                if final_checkpoint is not None and (
-                                    last_uploaded_mtime is None
-                                    or final_checkpoint.stat().st_mtime
-                                    > last_uploaded_mtime
-                                ):
-                                    storage.upload_file(final_checkpoint, checkpoint_b2_key)
-                                    final_checkpoint_response = client.post(
-                                        f"/jobs/{assignment.job_id}/checkpoint",
-                                        json={"checkpoint_path": checkpoint_b2_key},
-                                    )
-                                    final_checkpoint_response.raise_for_status()
+                                if final_checkpoint is not None:
+                                    final_mtime = final_checkpoint.stat().st_mtime
+                                    if (
+                                        last_uploaded_mtime is None
+                                        or final_mtime > last_uploaded_mtime
+                                    ):
+                                        storage.upload_file(final_checkpoint, checkpoint_b2_key)
+                                        final_checkpoint_response = client.post(
+                                            f"/jobs/{assignment.job_id}/checkpoint",
+                                            json={"checkpoint_path": checkpoint_b2_key},
+                                        )
+                                        final_checkpoint_response.raise_for_status()
 
                                 complete_response = client.post(
                                     f"/jobs/{assignment.job_id}/complete"
