@@ -4,6 +4,7 @@ members = [
     "packages/relaymd-storage",
     "packages/relaymd-worker",
     "packages/relaymd-orchestrator",
+    "packages/relaymd-cli",
 ]
 
 [dependency-groups]
@@ -16,6 +17,7 @@ dev = [
     "freezegun",
     "ruff",
     "pyright",
+    "pyinstaller",
 ]
 
 [tool.ruff]
@@ -31,6 +33,7 @@ pythonpath = [
     "packages/relaymd-storage/src",
     "packages/relaymd-worker/src",
     "packages/relaymd-orchestrator/src",
+    "packages/relaymd-cli/src",
 ]
 
 [tool.pyright]
@@ -41,4 +44,5 @@ extraPaths = [
     "packages/relaymd-storage/src",
     "packages/relaymd-orchestrator/src",
     "packages/relaymd-worker/src",
+    "packages/relaymd-cli/src",
 ]
