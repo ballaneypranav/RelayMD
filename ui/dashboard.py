@@ -56,12 +56,8 @@ def _truncate_uuid(value: Any) -> str:
 
 
 def _fetch_json(orchestrator_url: str, token: str, path: str) -> list[dict[str, Any]]:
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-API-Token": token,
-    }
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        response = client.get(path, headers=headers)
+        response = client.get(path, headers=_api_headers(token))
         response.raise_for_status()
         payload = response.json()
 
