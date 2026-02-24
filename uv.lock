@@ -1135,22 +1135,20 @@ name = "relaymd-cli"
 version = "0.1.0"
 source = { editable = "packages/relaymd-cli" }
 dependencies = [
+    { name = "boto3" },
     { name = "httpx" },
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "pyyaml" },
-    { name = "relaymd-models" },
-    { name = "relaymd-storage" },
     { name = "rich" },
     { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3" },
     { name = "httpx" },
     { name = "pydantic-settings", extras = ["yaml"] },
     { name = "pyyaml" },
-    { name = "relaymd-models", editable = "packages/relaymd-models" },
-    { name = "relaymd-storage", editable = "packages/relaymd-storage" },
     { name = "rich" },
     { name = "typer" },
 ]

@@ -7,10 +7,10 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
+import boto3
 import httpx
 import typer
 from relaymd.cli.config import load_settings
-from relaymd.storage.client import StorageClient
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
@@ -49,13 +49,11 @@ def create_bundle_archive(input_dir: Path, archive_path: Path) -> None:
 
 def upload_bundle(local_archive: Path, b2_key: str) -> None:
     settings = load_settings()
-    storage = StorageClient(
-        b2_endpoint_url=settings.b2_endpoint_url,
-        b2_bucket_name=settings.b2_bucket_name,
-        b2_access_key_id=settings.b2_access_key_id,
-        b2_secret_access_key=settings.b2_secret_access_key,
-        cf_worker_url="",
-        cf_bearer_token="",
+    s3_client = boto3.client(
+        "s3",
+        endpoint_url=settings.b2_endpoint_url,
+        aws_access_key_id=settings.b2_access_key_id,
+        aws_secret_access_key=settings.b2_secret_access_key,
     )
     with Progress(
         SpinnerColumn(),
@@ -65,7 +63,11 @@ def upload_bundle(local_archive: Path, b2_key: str) -> None:
         transient=True,
     ) as progress:
         task_id = progress.add_task("Uploading bundle to B2...", total=None)
-        storage.upload_file(local_archive, b2_key)
+        s3_client.upload_file(
+            str(local_archive),
+            settings.b2_bucket_name,
+            b2_key,
+        )
         progress.update(task_id, description="Upload complete")
 
 

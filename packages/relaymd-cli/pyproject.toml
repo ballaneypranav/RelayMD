@@ -7,8 +7,7 @@ name = "relaymd-cli"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "relaymd-models",
-    "relaymd-storage",
+    "boto3",
     "httpx",
     "typer",
     "rich",
@@ -18,10 +17,6 @@ dependencies = [
 
 [project.scripts]
 relaymd = "relaymd.cli.__main__:app"
-
-[tool.uv.sources]
-relaymd-models = { workspace = true }
-relaymd-storage = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

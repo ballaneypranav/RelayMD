@@ -48,12 +48,10 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
 
     uploaded = {}
 
-    class FakeStorageClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def upload_file(self, local_path: Path, b2_key: str) -> None:
+    class FakeBoto3Client:
+        def upload_file(self, local_path: str, bucket_name: str, b2_key: str) -> None:
             uploaded["path"] = Path(local_path)
+            uploaded["bucket"] = bucket_name
             uploaded["key"] = b2_key
             with tarfile.open(local_path, "r:gz") as tar:
                 uploaded["tar_names"] = tar.getnames()
@@ -70,7 +68,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     fake_http_cm.__enter__ = Mock(return_value=fake_http_client)
     fake_http_cm.__exit__ = Mock(return_value=False)
 
-    monkeypatch.setattr(submit_cmd, "StorageClient", FakeStorageClient)
+    monkeypatch.setattr(submit_cmd.boto3, "client", Mock(return_value=FakeBoto3Client()))
     monkeypatch.setattr(submit_cmd.httpx, "Client", Mock(return_value=fake_http_cm))
     monkeypatch.setattr(submit_cmd, "load_settings", lambda: _FakeSettings())
 
@@ -90,6 +88,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     }
     assert "relaymd-worker.json" in uploaded["tar_names"]
     assert uploaded["worker_config"] == worker_payload
+    assert uploaded["bucket"] == "bucket"
     assert uploaded["key"].startswith("jobs/")
     assert uploaded["key"].endswith("/input/bundle.tar.gz")
 
