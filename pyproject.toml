@@ -28,3 +28,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+extraPaths = [
+    "packages/relaymd-models/src",
+    "packages/relaymd-storage/src",
+    "packages/relaymd-orchestrator/src",
+    "packages/relaymd-worker/src",
+]
