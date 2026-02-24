@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
-from relaymd.models import Job, JobStatus, Worker
-from relaymd.orchestrator.config import OrchestratorSettings
+from relaymd.models import Job, JobStatus, Platform, Worker
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.scheduling import score_worker
+from relaymd.orchestrator.slurm import submit_slurm_job
 from sqlalchemy import Select
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 HEARTBEAT_INTERVAL_SECONDS = 30
+SBATCH_INTERVAL_SECONDS = 60
 
 
 async def assign_job(session: AsyncSession) -> tuple[Job, Worker] | None:
@@ -139,6 +142,106 @@ async def orphaned_job_requeue_loop(
             else:
                 await session.rollback()
 
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            continue
+
+
+def _pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
+    return f"{cluster_name}:{slurm_job_id}"
+
+
+async def _submit_cluster_if_needed(
+    session: AsyncSession,
+    *,
+    settings: OrchestratorSettings,
+    cluster: ClusterConfig,
+    stale_cutoff: datetime,
+) -> bool:
+    queued_job = (
+        await session.exec(select(Job).where(Job.status == JobStatus.queued).limit(1))
+    ).first()
+    if queued_job is None:
+        return False
+
+    active_hpc_workers = (
+        await session.exec(
+            select(Worker).where(
+                Worker.platform == Platform.hpc,
+                col(Worker.slurm_job_id).is_(None),
+                col(Worker.last_heartbeat) >= stale_cutoff,
+            )
+        )
+    ).all()
+    if active_hpc_workers:
+        return False
+
+    pending_prefix = f"{cluster.name}:"
+    pending_workers = (
+        await session.exec(
+            select(Worker).where(
+                Worker.platform == Platform.hpc,
+                col(Worker.slurm_job_id).is_not(None),
+                col(Worker.slurm_job_id).startswith(pending_prefix),
+            )
+        )
+    ).all()
+    if len(pending_workers) >= cluster.max_pending_jobs:
+        return False
+
+    if not settings.infisical_token:
+        return False
+
+    slurm_job_id = await submit_slurm_job(
+        cluster=cluster,
+        gpu_count=cluster.gpu_count,
+        infisical_token=settings.infisical_token,
+    )
+    placeholder_worker = Worker(
+        id=uuid4(),
+        platform=Platform.hpc,
+        gpu_model=cluster.gpu_type,
+        gpu_count=cluster.gpu_count,
+        vram_gb=0,
+        slurm_job_id=_pending_slurm_job_marker(cluster.name, slurm_job_id),
+        last_heartbeat=datetime(1970, 1, 1),
+        registered_at=datetime(1970, 1, 1),
+    )
+    session.add(placeholder_worker)
+    await session.commit()
+    return True
+
+
+async def submit_pending_slurm_jobs(settings: OrchestratorSettings) -> int:
+    if not settings.slurm_cluster_configs:
+        return 0
+
+    stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        seconds=settings.heartbeat_timeout_multiplier * HEARTBEAT_INTERVAL_SECONDS
+    )
+    sessionmaker = get_sessionmaker()
+    submissions = 0
+    async with sessionmaker() as session:
+        for cluster in settings.slurm_cluster_configs:
+            submitted = await _submit_cluster_if_needed(
+                session,
+                settings=settings,
+                cluster=cluster,
+                stale_cutoff=stale_cutoff,
+            )
+            if submitted:
+                submissions += 1
+    return submissions
+
+
+async def sbatch_submission_loop(
+    settings: OrchestratorSettings,
+    stop_event: asyncio.Event,
+    interval_seconds: float = SBATCH_INTERVAL_SECONDS,
+) -> None:
+    while not stop_event.is_set():
+        await submit_pending_slurm_jobs(settings)
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
         except TimeoutError:
