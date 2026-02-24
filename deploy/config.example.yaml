@@ -44,6 +44,23 @@ salad_container_group: null
 # Can be set via SALAD_MAX_REPLICAS env var.
 salad_max_replicas: 4
 
+# CLI settings
+
+# Orchestrator base URL for relaymd CLI commands.
+orchestrator_url: http://localhost:8000
+
+# B2 S3-compatible endpoint used by relaymd submit for direct bundle uploads.
+b2_endpoint_url: https://s3.us-west-000.backblazeb2.com
+
+# B2 bucket name for job bundles.
+b2_bucket_name: relaymd-bucket
+
+# B2 application key ID for uploads.
+b2_access_key_id: your-key-id
+
+# B2 application key secret for uploads.
+b2_secret_access_key: your-secret
+
 # Logging
 relaymd_env: production        # development enables console renderer
 relaymd_log_level: INFO

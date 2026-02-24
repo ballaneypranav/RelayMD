@@ -1,0 +1,19 @@
+name: Release CLI binary
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - run: uv run pyinstaller packages/relaymd-cli/relaymd-cli.spec
+      - name: Rename binary
+        run: mv dist/relaymd dist/relaymd-linux-x86_64
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/relaymd-linux-x86_64
