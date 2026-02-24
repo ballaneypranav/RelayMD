@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-import pandas as pd
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
+import pandas as pd  # type: ignore[reportMissingImports]
+import streamlit as st  # type: ignore[reportMissingImports]
+from streamlit_autorefresh import st_autorefresh  # type: ignore[reportMissingImports]
 
 DEFAULT_ORCHESTRATOR_URL = "http://localhost:8000"
 DEFAULT_REFRESH_INTERVAL_SECONDS = 30
@@ -174,6 +174,8 @@ def main() -> None:
     jobs_placeholder = st.empty()
     workers_placeholder = st.empty()
 
+    raw_jobs: list[dict[str, Any]] = []
+    raw_workers: list[dict[str, Any]] = []
     try:
         raw_jobs = _fetch_json(orchestrator_url, api_token, "/jobs")
         raw_workers = _fetch_json(orchestrator_url, api_token, "/workers")
