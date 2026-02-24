@@ -25,7 +25,7 @@ async def app_client(settings: OrchestratorSettings):
 
 def make_settings() -> OrchestratorSettings:
     return OrchestratorSettings(
-        database_url=f"sqlite+aiosqlite:///file:memdb-{uuid4()}?mode=memory&cache=shared",
+        database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
     )
 

@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 
 from relaymd.models import Job, Worker
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -20,11 +21,14 @@ def _connect_args_for_url(database_url: str) -> dict[str, bool]:
 def init_engine(database_url: str) -> None:
     global _engine, _sessionmaker
 
-    _engine = create_async_engine(
-        database_url,
-        connect_args=_connect_args_for_url(database_url),
-        echo=False,
-    )
+    engine_kwargs: dict[str, object] = {
+        "connect_args": _connect_args_for_url(database_url),
+        "echo": False,
+    }
+    if ":memory:" in database_url:
+        engine_kwargs["poolclass"] = StaticPool
+
+    _engine = create_async_engine(database_url, **engine_kwargs)
     _sessionmaker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Ensure SQLModel metadata includes all mapped tables used by the orchestrator.
