@@ -44,11 +44,32 @@ Run from a test node joined with the ephemeral key:
 
 ```bash
 sudo tailscale up --auth-key "$TAILSCALE_AUTH_KEY"
+tailscale ping <orchestrator-magicdns-hostname>
 curl -i http://<orchestrator-magicdns-hostname>:8000/healthz
 ```
 
 Expected result:
 - HTTP status `200 OK` from `/healthz`.
+
+### Userspace Daemon Note
+
+If Tailscale is running in userspace mode, use the explicit socket flag:
+
+```bash
+tailscale --socket=$HOME/.tailscale/tailscaled.sock status
+tailscale --socket=$HOME/.tailscale/tailscaled.sock ping <orchestrator-magicdns-hostname>
+```
+
+Health check warnings like the following can appear in userspace mode and are usually non-blocking:
+- `getting OS base config is not supported`
+- `Tailscale failed to fetch the DNS configuration of your device`
+
+If MagicDNS lookup fails in this environment, force resolution with the orchestrator's tailnet IP:
+
+```bash
+curl -i --resolve <orchestrator-magicdns-hostname>:8000:<orchestrator-tailnet-ip> \
+  http://<orchestrator-magicdns-hostname>:8000/healthz
+```
 
 ### ACL Guidance (Optional)
 
