@@ -1,9 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
 from .enums import Platform
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Worker(SQLModel, table=True):
@@ -13,8 +17,8 @@ class Worker(SQLModel, table=True):
     gpu_count: int
     vram_gb: int
     slurm_job_id: str | None = None
-    last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
-    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    last_heartbeat: datetime = Field(default_factory=utcnow_naive)
+    registered_at: datetime = Field(default_factory=utcnow_naive)
 
 
 class WorkerRegister(SQLModel):
