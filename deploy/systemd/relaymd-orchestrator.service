@@ -1,0 +1,13 @@
+[Unit]
+Description=RelayMD Orchestrator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=uvicorn relaymd.orchestrator.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+EnvironmentFile=%h/.config/relaymd/.env
+
+[Install]
+WantedBy=default.target
