@@ -54,6 +54,7 @@ async def assign_job_for_requesting_worker(
             .where(Job.status == JobStatus.queued)
             .order_by(col(Job.created_at).asc())
             .limit(1)
+            .with_for_update()
         )
     ).first()
     if queued_job is None:
