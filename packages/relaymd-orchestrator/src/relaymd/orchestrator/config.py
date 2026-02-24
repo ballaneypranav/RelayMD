@@ -19,5 +19,10 @@ class OrchestratorSettings(BaseSettings):
     heartbeat_timeout_multiplier: float = 2.0
     infisical_token: str = ""
     slurm_cluster_configs: list[ClusterConfig] = []
+    salad_api_key: str | None = None
+    salad_org: str | None = None
+    salad_project: str | None = None
+    salad_container_group: str | None = None
+    salad_max_replicas: int = 4
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
