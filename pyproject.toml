@@ -11,6 +11,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio",
     "httpx",
+    "respx",
     "moto[s3]",
     "freezegun",
     "ruff",
