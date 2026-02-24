@@ -1,1 +1,3 @@
-__version__ = "0.1.0"
+from relaymd.worker.bootstrap import WorkerConfig, join_tailnet, run_bootstrap
+
+__all__ = ["WorkerConfig", "join_tailnet", "run_bootstrap"]

@@ -1022,6 +1022,7 @@ name = "relaymd-worker"
 version = "0.1.0"
 source = { virtual = "packages/relaymd-worker" }
 dependencies = [
+    { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "pynvml" },
     { name = "relaymd-models" },
@@ -1031,6 +1032,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pynvml" },
     { name = "relaymd-models", editable = "packages/relaymd-models" },

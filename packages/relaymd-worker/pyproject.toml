@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "relaymd-models",
     "relaymd-storage",
+    "httpx",
     "pydantic-settings>=2.0",
     "pynvml",
     "structlog",
@@ -16,3 +17,6 @@ relaymd-worker = "relaymd.worker.__main__:main"
 [tool.uv.sources]
 relaymd-models = { workspace = true }
 relaymd-storage = { workspace = true }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
