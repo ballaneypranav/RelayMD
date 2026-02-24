@@ -100,7 +100,7 @@ def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tupl
 
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.post("/jobs", headers=_api_headers(token), json=payload)
-    if response.status_code < 400:
+    if response.is_success:
         try:
             created_job = response.json()
             return True, f"Created job {created_job.get('id', '<unknown id>')}"
