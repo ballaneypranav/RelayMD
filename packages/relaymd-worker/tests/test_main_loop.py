@@ -3,7 +3,9 @@ from __future__ import annotations
 import io
 import signal
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 from unittest.mock import ANY, Mock
 
 import pytest
@@ -184,7 +186,7 @@ def test_sigterm_before_subprocess_start_still_deregisters_worker(monkeypatch) -
 
     def popen_side_effect(*args, **kwargs):
         _ = (args, kwargs)
-        handler = captured_handler["handler"]
+        handler = cast(Callable[[int, object | None], None], captured_handler["handler"])
         handler(signal.SIGTERM, None)
         raise AssertionError("SIGTERM handler should have exited before subprocess launch")
 
