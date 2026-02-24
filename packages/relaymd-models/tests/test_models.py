@@ -1,8 +1,8 @@
 import uuid
 
 from relaymd.models import Job, JobAssigned, NoJobAvailable, Worker
-from sqlmodel import SQLModel, create_engine
 from sqlalchemy import inspect
+from sqlmodel import SQLModel, create_engine
 
 
 def test_sqlmodel_tables_create_without_error() -> None:
