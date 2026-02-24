@@ -24,10 +24,13 @@ Set these in the Salad dashboard:
 
 Current worker runtime compatibility notes:
 
-- The worker bootstrap currently reads `INFISICAL_TOKEN`, so set:
-  - `INFISICAL_TOKEN=${INFISICAL_BOOTSTRAP_TOKEN}`
-- The worker platform override currently reads `WORKER_PLATFORM`, so set:
-  - `WORKER_PLATFORM=${RELAYMD_PLATFORM}`
+- Salad does not expand `${...}` references in env-var values.
+- Enter the same literal secret value for both:
+  - `INFISICAL_BOOTSTRAP_TOKEN=<client_id>:<client_secret>`
+  - `INFISICAL_TOKEN=<client_id>:<client_secret>`
+- Enter the same literal platform value for both:
+  - `RELAYMD_PLATFORM=salad`
+  - `WORKER_PLATFORM=salad`
 
 ## Bring-Up and Validation Steps
 
