@@ -6,7 +6,6 @@ dependencies = [
     "relaymd-models",
     "relaymd-storage",
     "pydantic-settings>=2.0",
-    "infisical-python",
     "pynvml",
     "structlog",
 ]
