@@ -12,6 +12,7 @@ class Worker(SQLModel, table=True):
     gpu_model: str
     gpu_count: int
     vram_gb: int
+    slurm_job_id: str | None = None
     last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
     registered_at: datetime = Field(default_factory=datetime.utcnow)
 
