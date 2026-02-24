@@ -8,6 +8,7 @@ dependencies = [
     "httpx",
     "pydantic-settings>=2.0",
     "pynvml",
+    "orjson",
     "structlog",
 ]
 
