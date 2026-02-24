@@ -19,3 +19,9 @@ The `{job_id}` parameter represents the true UUID matching the `jobs` table prim
 
 - **Read vs Write Endpoints**: The Cloudflare Worker URL (established in W-136) must be treated as the absolute canonical read endpoint for all object downloads. Direct B2 S3 API URLs are exclusively reserved for writes.
 - **Checkpoint Detection**: The glob pattern used for actual checkpoint file detection (e.g., `*.chk`) within the `/checkpoints` directory will be finalized during end-to-end testing (ticket W-167).
+
+## Read Endpoint
+
+- **Base URL**: `https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev`
+- **Route**: `/files/<object-key>`
+- **Auth**: `Authorization: Bearer <DOWNLOAD_BEARER_TOKEN>` (value sourced from Infisical in the RelayMD secrets path)
