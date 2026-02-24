@@ -70,9 +70,9 @@ def _fetch_json(orchestrator_url: str, token: str, path: str) -> list[dict[str, 
     return payload
 
 
-def _job_row_style(status: str) -> list[str]:
+def _job_row_style(status: str, row_length: int) -> list[str]:
     color = JOB_STATUS_COLORS.get(status, "#ffffff")
-    return [f"background-color: {color}"] * 5
+    return [f"background-color: {color}"] * row_length
 
 
 def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.DataFrame:
@@ -108,10 +108,10 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
     )
 
 
-def _worker_row_style(status: str) -> list[str]:
+def _worker_row_style(status: str, row_length: int) -> list[str]:
     if status == "stale":
-        return ["background-color: #f8d7da"] * 6
-    return [""] * 6
+        return ["background-color: #f8d7da"] * row_length
+    return [""] * row_length
 
 
 def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -> pd.DataFrame:
@@ -189,7 +189,7 @@ def main() -> None:
     with jobs_placeholder.container():
         st.subheader("Jobs")
         styled_jobs = jobs_df.style.apply(
-            lambda row: _job_row_style(str(row["status"])),
+            lambda row: _job_row_style(str(row["status"]), len(row)),
             axis=1,
         )
         st.dataframe(styled_jobs, use_container_width=True, hide_index=True)
@@ -197,7 +197,7 @@ def main() -> None:
     with workers_placeholder.container():
         st.subheader("Workers")
         styled_workers = workers_df.style.apply(
-            lambda row: _worker_row_style(str(row["status"])),
+            lambda row: _worker_row_style(str(row["status"]), len(row)),
             axis=1,
         )
         st.dataframe(styled_workers, use_container_width=True, hide_index=True)
