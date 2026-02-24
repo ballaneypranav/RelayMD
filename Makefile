@@ -1,4 +1,4 @@
-.PHONY: ui docker-build docker-push deploy-orchestrator
+.PHONY: ui docker-build docker-push deploy-orchestrator release-cli
 
 ORG ?= your-org
 IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest
@@ -18,3 +18,11 @@ deploy-orchestrator:
 	systemctl --user daemon-reload
 	systemctl --user enable relaymd-orchestrator
 	systemctl --user start relaymd-orchestrator
+
+release-cli:
+	@test -n "$(VERSION)" || (echo "Usage: make release-cli VERSION=X.Y.Z [PUSH=1]"; exit 1)
+	@if [ "$(PUSH)" = "1" ]; then \
+		./scripts/release_cli.sh "$(VERSION)" --push; \
+	else \
+		./scripts/release_cli.sh "$(VERSION)"; \
+	fi

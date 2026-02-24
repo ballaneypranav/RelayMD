@@ -62,3 +62,17 @@ Example JSON:
   "checkpoint_glob_pattern": "*.cpt"
 }
 ```
+
+## Release Versioning
+
+Use the helper script to bump version, update lockfile, commit, and tag in one step:
+
+```bash
+make release-cli VERSION=0.1.1
+```
+
+Push immediately after tagging:
+
+```bash
+make release-cli VERSION=0.1.1 PUSH=1
+```
