@@ -1,0 +1,7 @@
+[tool.uv.workspace]
+members = [
+    "packages/relaymd-models",
+    "packages/relaymd-storage",
+    "packages/relaymd-worker",
+    "packages/relaymd-orchestrator",
+]
