@@ -1,51 +1,41 @@
 from __future__ import annotations
 
-import importlib
 import json
 import logging
 import os
 import shlex
+import signal
 import subprocess
+import sys
 import tarfile
 import tempfile
+import threading
 import time
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
-from typing import Any, Protocol
+from types import FrameType, ModuleType
+from typing import Any
 from uuid import UUID
 
 import httpx
 from relaymd.models import JobAssigned, Platform, WorkerRegister
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
+from relaymd.worker.heartbeat import HeartbeatThread
 
 LOGGER = logging.getLogger(__name__)
 ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
 DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS = 300
 DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
-
-
-class HeartbeatController(Protocol):
-    def stop(self) -> None: ...
-
-    def join(self, timeout: float | None = None) -> None: ...
+SIGTERM_CHECKPOINT_WAIT_SECONDS = 60
+SIGTERM_CHECKPOINT_POLL_SECONDS = 2
 
 
 @dataclass
 class BundleExecutionConfig:
     command: list[str]
     checkpoint_glob_pattern: str
-
-
-class _NoopHeartbeatController:
-    def stop(self) -> None:
-        return None
-
-    def join(self, timeout: float | None = None) -> None:
-        _ = timeout
-        return None
 
 
 def _get_pynvml_module() -> ModuleType:
@@ -74,24 +64,6 @@ def detect_gpu_info() -> tuple[str, int, int]:
     except Exception:
         LOGGER.exception("GPU detection failed; falling back to defaults")
         return "unknown", 0, 0
-
-
-def _start_heartbeat_controller(
-    orchestrator_url: str,
-    api_token: str,
-    worker_id: UUID,
-) -> HeartbeatController:
-    try:
-        heartbeat_module = importlib.import_module("relaymd.worker.heartbeat")
-        start_heartbeat_thread = heartbeat_module.start_heartbeat_thread
-    except (ImportError, AttributeError):
-        return _NoopHeartbeatController()
-
-    return start_heartbeat_thread(
-        orchestrator_url=orchestrator_url,
-        api_token=api_token,
-        worker_id=worker_id,
-    )
 
 
 def _find_latest_checkpoint(workdir: Path, pattern: str) -> Path | None:
@@ -187,6 +159,63 @@ def _build_storage_client(config: WorkerConfig) -> StorageClient:
     )
 
 
+def _wait_for_final_checkpoint(
+    workdir: Path,
+    checkpoint_glob_pattern: str,
+    timeout_seconds: int = SIGTERM_CHECKPOINT_WAIT_SECONDS,
+    poll_interval_seconds: int = SIGTERM_CHECKPOINT_POLL_SECONDS,
+) -> Path | None:
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        checkpoint = _find_latest_checkpoint(workdir, checkpoint_glob_pattern)
+        if checkpoint is not None:
+            return checkpoint
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(poll_interval_seconds)
+
+
+def _handle_sigterm(
+    *,
+    process: subprocess.Popen[Any],
+    workdir: Path,
+    checkpoint_glob_pattern: str,
+    checkpoint_b2_key: str,
+    storage: StorageClient,
+    client: httpx.Client,
+    job_id: UUID,
+    worker_id: UUID,
+    stop_event: threading.Event,
+    heartbeat_thread: HeartbeatThread,
+) -> None:
+    LOGGER.info("Received SIGTERM; shutting down worker gracefully")
+    process.terminate()
+
+    final_checkpoint = _wait_for_final_checkpoint(workdir, checkpoint_glob_pattern)
+    if final_checkpoint is None:
+        LOGGER.warning("No final checkpoint found during SIGTERM shutdown for job %s", job_id)
+    else:
+        try:
+            storage.upload_file(final_checkpoint, checkpoint_b2_key)
+            checkpoint_response = client.post(
+                f"/jobs/{job_id}/checkpoint",
+                json={"checkpoint_path": checkpoint_b2_key},
+            )
+            checkpoint_response.raise_for_status()
+        except Exception:
+            LOGGER.exception("Failed to upload final checkpoint during SIGTERM")
+
+    try:
+        deregister_response = client.post(f"/workers/{worker_id}/deregister")
+        deregister_response.raise_for_status()
+    except Exception:
+        LOGGER.exception("Failed to deregister worker during SIGTERM")
+
+    stop_event.set()
+    heartbeat_thread.join(timeout=5)
+    sys.exit(0)
+
+
 def run_worker(config: WorkerConfig) -> None:
     storage = _build_storage_client(config)
     checkpoint_poll_interval = int(
@@ -249,12 +278,37 @@ def run_worker(config: WorkerConfig) -> None:
                     )
 
                 execution_config = _load_bundle_execution_config(bundle_root)
-
-                heartbeat = _start_heartbeat_controller(
-                    config.relaymd_orchestrator_url,
-                    config.relaymd_api_token,
-                    worker_id,
+                heartbeat_stop_event = threading.Event()
+                heartbeat_thread = HeartbeatThread(
+                    orchestrator_url=config.relaymd_orchestrator_url,
+                    worker_id=worker_id,
+                    api_token=config.relaymd_api_token,
+                    stop_event=heartbeat_stop_event,
                 )
+                heartbeat_thread.start()
+                process: subprocess.Popen[Any] | None = None
+
+                def _sigterm_handler(signum: int, frame: FrameType | None) -> None:
+                    _ = (signum, frame)
+                    if process is None:
+                        heartbeat_stop_event.set()
+                        heartbeat_thread.join(timeout=5)
+                        sys.exit(0)
+                    _handle_sigterm(
+                        process=process,
+                        workdir=bundle_root,
+                        checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
+                        checkpoint_b2_key=checkpoint_b2_key,
+                        storage=storage,
+                        client=client,
+                        job_id=assignment.job_id,
+                        worker_id=worker_id,
+                        stop_event=heartbeat_stop_event,
+                        heartbeat_thread=heartbeat_thread,
+                    )
+
+                previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+                signal.signal(signal.SIGTERM, _sigterm_handler)
 
                 process = subprocess.Popen(  # noqa: S603
                     execution_config.command,
@@ -311,11 +365,13 @@ def run_worker(config: WorkerConfig) -> None:
 
                         time.sleep(checkpoint_poll_interval)
                 finally:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=10)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        process.wait()
-                    heartbeat.stop()
-                    heartbeat.join(timeout=5)
+                    signal.signal(signal.SIGTERM, previous_sigterm_handler)
+                    if process is not None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                    heartbeat_stop_event.set()
+                    heartbeat_thread.join(timeout=5)

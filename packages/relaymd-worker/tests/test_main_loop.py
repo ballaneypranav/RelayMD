@@ -60,11 +60,15 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     storage.download_file.side_effect = download_side_effect
     monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: storage)
 
-    heartbeat = Mock()
+    heartbeat_thread = Mock()
     monkeypatch.setattr(
-        "relaymd.worker.main._start_heartbeat_controller",
-        lambda *args, **kwargs: heartbeat,
+        "relaymd.worker.main.HeartbeatThread",
+        lambda *args, **kwargs: heartbeat_thread,
     )
+    heartbeat_stop_event = Mock()
+    monkeypatch.setattr("relaymd.worker.main.threading.Event", lambda: heartbeat_stop_event)
+    monkeypatch.setattr("relaymd.worker.main.signal.getsignal", lambda *_: Mock())
+    monkeypatch.setattr("relaymd.worker.main.signal.signal", lambda *_: None)
 
     monkeypatch.setattr(
         "relaymd.worker.main.detect_gpu_info",
@@ -119,8 +123,9 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
         "/jobs/request",
     ]
 
-    heartbeat.stop.assert_called_once_with()
-    heartbeat.join.assert_called_once_with(timeout=5)
+    heartbeat_thread.start.assert_called_once_with()
+    heartbeat_stop_event.set.assert_called_once_with()
+    heartbeat_thread.join.assert_called_once_with(timeout=5)
 
 
 def test_detect_gpu_fallback_when_pynvml_fails(monkeypatch) -> None:
