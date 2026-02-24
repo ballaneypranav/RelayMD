@@ -1133,7 +1133,7 @@ wheels = [
 [[package]]
 name = "relaymd-cli"
 version = "0.1.0"
-source = { virtual = "packages/relaymd-cli" }
+source = { editable = "packages/relaymd-cli" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic-settings", extra = ["yaml"] },
