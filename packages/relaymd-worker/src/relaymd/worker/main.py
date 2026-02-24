@@ -304,6 +304,15 @@ def run_worker(config: WorkerConfig) -> None:
                     _ = (signum, frame)
                     process = process_ref["process"]
                     if process is None:
+                        try:
+                            deregister_response = client.post(
+                                f"/workers/{worker_id_local}/deregister"
+                            )
+                            deregister_response.raise_for_status()
+                        except Exception:
+                            LOGGER.exception(
+                                "Failed to deregister worker during pre-launch SIGTERM"
+                            )
                         stop_event.set()
                         heartbeat.join(timeout=5)
                         sys.exit(0)

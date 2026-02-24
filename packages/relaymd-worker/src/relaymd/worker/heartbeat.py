@@ -33,7 +33,7 @@ class HeartbeatThread(threading.Thread):
             headers=headers,
             timeout=ORCHESTRATOR_TIMEOUT_SECONDS,
         ) as client:
-            while not self._stop_event.wait(self._interval_seconds):
+            while not self._stop_event.is_set():
                 try:
                     response = client.post(f"/workers/{self._worker_id}/heartbeat")
                     response.raise_for_status()
@@ -43,3 +43,5 @@ class HeartbeatThread(threading.Thread):
                         self._worker_id,
                         exc_info=True,
                     )
+                if self._stop_event.wait(self._interval_seconds):
+                    break

@@ -19,6 +19,7 @@ def _client_cm(client: Mock) -> Mock:
 
 def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
     stop_event = Mock()
+    stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
 
     response = Mock()
@@ -40,11 +41,12 @@ def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
     thread.run()
 
     assert stop_event.wait.call_args_list == [call(7), call(7)]
-    client.post.assert_called_once()
+    assert client.post.call_count == 2
 
 
 def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
     stop_event = Mock()
+    stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
 
     client = Mock()
@@ -64,12 +66,12 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
     )
     thread.run()
 
-    warning.assert_called_once()
+    assert warning.call_count == 2
 
 
 def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
     stop_event = Mock()
-    stop_event.wait.return_value = True
+    stop_event.is_set.return_value = True
 
     client = Mock()
     monkeypatch.setattr(
