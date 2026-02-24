@@ -11,9 +11,14 @@ _CONFIGURED = False
 
 
 class _LoggingSettingsProtocol(Protocol):
-    relaymd_env: str
-    relaymd_log_level: str
-    relaymd_log_format: str
+    @property
+    def relaymd_env(self) -> str: ...
+
+    @property
+    def relaymd_log_level(self) -> str: ...
+
+    @property
+    def relaymd_log_format(self) -> str: ...
 
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
