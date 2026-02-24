@@ -9,10 +9,12 @@
 #SBATCH --time={{ wall_time | default("4:00:00") }}
 #SBATCH --output=slurm-relaymd-%j.out
 #SBATCH --error=slurm-relaymd-%j.err
-#SBATCH --export=INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}
+#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}
 
 set -euo pipefail
 
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
 
-apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp {{ sif_path }} python -m relaymd.worker
+apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
+  --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
+  {{ sif_path }} python -m relaymd.worker

@@ -40,7 +40,7 @@ The rendered script includes:
 - `#SBATCH --account={{ account }}`
 - `#SBATCH --gres=gpu:{{ gpu_type }}:{{ gpu_count }}`
 - `#SBATCH --time={{ wall_time }}`
-- `#SBATCH --export=INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}`
+- `#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}`
 
 Runtime command includes validated Apptainer flags from `docs/hpc-notes.md`:
 

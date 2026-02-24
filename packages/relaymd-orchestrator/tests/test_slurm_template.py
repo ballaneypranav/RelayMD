@@ -31,7 +31,8 @@ def test_job_template_renders_cluster_a_values() -> None:
 
     assert "#SBATCH --partition=gpu" in rendered
     assert "#SBATCH --gres=gpu:a100:2" in rendered
-    assert "#SBATCH --export=INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" in rendered
+    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" in rendered
+    assert "#SBATCH --time=3:30:00" in rendered
 
 
 def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
@@ -49,5 +50,5 @@ def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
 
     assert "#SBATCH --partition=gpu-debug" in rendered
     assert "#SBATCH --gres=gpu:a40:1" in rendered
-    assert "#SBATCH --export=INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" in rendered
+    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" in rendered
     assert "#SBATCH --time=4:00:00" in rendered
