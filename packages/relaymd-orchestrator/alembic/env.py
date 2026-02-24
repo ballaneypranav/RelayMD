@@ -4,10 +4,9 @@ import os
 from logging.config import fileConfig
 
 from alembic import context
+from relaymd.models import Job, Worker
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
-
-from relaymd.models import Job, Worker
 
 config = context.config
 

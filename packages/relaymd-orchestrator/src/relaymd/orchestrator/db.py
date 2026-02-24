@@ -5,11 +5,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from relaymd.models import Job, Worker
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from relaymd.models import Job, Worker
 
 
 def _get_database_url() -> str:
