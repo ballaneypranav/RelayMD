@@ -17,7 +17,13 @@ DEFAULT_RELAYMD_CONFIG_PATH = "~/.config/relaymd/config.yaml"
 
 
 class CliSettings(BaseSettings):
-    orchestrator_url: str = "http://localhost:8000"
+    orchestrator_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices(
+            "orchestrator_url",
+            "RELAYMD_ORCHESTRATOR_URL",
+        ),
+    )
     api_token: str = Field(
         default="change-me",
         validation_alias=AliasChoices("api_token", "RELAYMD_API_TOKEN", "API_TOKEN"),
@@ -39,7 +45,7 @@ class CliSettings(BaseSettings):
         yaml_source: YamlConfigSettingsSource,
     ) -> None:
         env_override_map = {
-            "orchestrator_url": ("ORCHESTRATOR_URL",),
+            "orchestrator_url": ("RELAYMD_ORCHESTRATOR_URL",),
             "api_token": ("RELAYMD_API_TOKEN", "API_TOKEN"),
             "b2_endpoint_url": ("B2_ENDPOINT_URL",),
             "b2_bucket_name": ("B2_BUCKET_NAME",),

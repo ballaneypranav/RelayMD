@@ -20,6 +20,10 @@ Start from [deploy/config.example.yaml](../deploy/config.example.yaml) and set:
 - `b2_access_key_id`
 - `b2_secret_access_key`
 
+Environment overrides:
+- `RELAYMD_ORCHESTRATOR_URL`
+- `RELAYMD_API_TOKEN` or `API_TOKEN`
+
 ## Commands
 
 Submit job:
