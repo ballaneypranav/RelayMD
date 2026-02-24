@@ -1,9 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlmodel import Field, SQLModel
 
 from .enums import JobStatus
+
+
+def utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class Job(SQLModel, table=True):
@@ -15,8 +19,8 @@ class Job(SQLModel, table=True):
     last_checkpoint_at: datetime | None = None
     assigned_worker_id: uuid.UUID | None = None
     slurm_job_id: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow_naive)
+    updated_at: datetime = Field(default_factory=utcnow_naive)
 
 
 class JobCreate(SQLModel):
