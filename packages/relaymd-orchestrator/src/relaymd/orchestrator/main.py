@@ -55,6 +55,8 @@ def create_app(
 ) -> FastAPI:
     active_settings = settings or OrchestratorSettings()
     configure_logging(active_settings)
+    config_path = OrchestratorSettings.config_path()
+    LOG.info("orchestrator_config_yaml", path=str(config_path), loaded=config_path.is_file())
     app = FastAPI(lifespan=app_lifespan)
     app.state.settings = active_settings
     app.state.start_background_tasks = start_background_tasks
