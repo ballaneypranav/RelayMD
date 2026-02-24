@@ -70,6 +70,45 @@ def _fetch_json(orchestrator_url: str, token: str, path: str) -> list[dict[str, 
     return payload
 
 
+def _api_headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-API-Token": token,
+    }
+
+
+def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, str]:
+    with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        response = client.delete(
+            f"/jobs/{job_id}",
+            headers=_api_headers(token),
+            params={"force": True},
+        )
+    if response.status_code == 204:
+        return True, "Job cancelled"
+    return False, f"Cancel failed ({response.status_code}): {response.text}"
+
+
+def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tuple[bool, str]:
+    payload: dict[str, Any] = {
+        "title": f"{job.get('title', 'job')} (re-queued)",
+        "input_bundle_path": job.get("input_bundle_path"),
+    }
+    latest_checkpoint_path = job.get("latest_checkpoint_path")
+    if latest_checkpoint_path is not None:
+        payload["latest_checkpoint_path"] = latest_checkpoint_path
+
+    with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
+        response = client.post("/jobs", headers=_api_headers(token), json=payload)
+    if response.status_code < 400:
+        try:
+            created_job = response.json()
+            return True, f"Created job {created_job.get('id', '<unknown id>')}"
+        except ValueError:
+            return True, "Created re-queued job"
+    return False, f"Re-queue failed ({response.status_code}): {response.text}"
+
+
 def _job_row_style(status: str, row_length: int) -> list[str]:
     color = JOB_STATUS_COLORS.get(status, "#ffffff")
     return [f"background-color: {color}"] * row_length
@@ -201,6 +240,74 @@ def main() -> None:
             axis=1,
         )
         st.dataframe(styled_workers, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Manual Controls")
+    st.info(
+        "No drain worker button is provided. To drain workers, cancel assigned jobs; "
+        "workers stop naturally on their next poll cycle."
+    )
+
+    cancelable_jobs = [
+        job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}
+    ]
+    requeue_jobs = [
+        job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}
+    ]
+
+    st.markdown("### Cancel Job")
+    cancel_selected = st.selectbox(
+        "Cancelable jobs",
+        options=cancelable_jobs,
+        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+        key="cancel_job_select",
+        disabled=not cancelable_jobs,
+    )
+    if st.button("Cancel", disabled=not cancelable_jobs):
+        st.session_state["cancel_pending_job"] = cancel_selected
+
+    pending_cancel = st.session_state.get("cancel_pending_job")
+    if pending_cancel is not None:
+        title = str(pending_cancel.get("title", "<untitled>"))
+        st.warning(f"Cancel job '{title}'? This cannot be undone.")
+        confirm_col, abort_col = st.columns(2)
+        with confirm_col:
+            if st.button("Confirm", key="cancel_confirm"):
+                ok, message = _cancel_job(
+                    orchestrator_url=orchestrator_url,
+                    token=api_token,
+                    job_id=str(pending_cancel["id"]),
+                )
+                if ok:
+                    st.success(message)
+                else:
+                    st.error(message)
+                st.session_state["cancel_pending_job"] = None
+        with abort_col:
+            if st.button("Abort", key="cancel_abort"):
+                st.session_state["cancel_pending_job"] = None
+
+    st.markdown("### Re-queue Job")
+    requeue_selected = st.selectbox(
+        "Failed or cancelled jobs",
+        options=requeue_jobs,
+        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+        key="requeue_job_select",
+        disabled=not requeue_jobs,
+    )
+    if st.button("Re-queue", disabled=not requeue_jobs):
+        # Cancellation is state-only for running jobs: workers finish current chunk,
+        # may still POST /jobs/{id}/complete, orchestrator discards it for cancelled jobs,
+        # and workers then exit naturally on the next /jobs/request poll cycle.
+        ok, message = _requeue_job(
+            orchestrator_url=orchestrator_url,
+            token=api_token,
+            job=requeue_selected,
+        )
+        if ok:
+            st.success(message)
+        else:
+            st.error(message)
 
 
 if __name__ == "__main__":
