@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,5 +26,8 @@ class OrchestratorSettings(BaseSettings):
     salad_project: str | None = None
     salad_container_group: str | None = None
     salad_max_replicas: int = 4
+    relaymd_env: Literal["development", "production"] = "production"
+    relaymd_log_level: str = "INFO"
+    relaymd_log_format: Literal["auto", "json", "console"] = "auto"
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")

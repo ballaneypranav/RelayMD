@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 import threading
 from uuid import UUID
 
 import httpx
+from relaymd.worker.logging import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOG = get_logger(__name__)
 ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
 
 
@@ -38,9 +38,9 @@ class HeartbeatThread(threading.Thread):
                     response = client.post(f"/workers/{self._worker_id}/heartbeat")
                     response.raise_for_status()
                 except httpx.HTTPError:
-                    LOGGER.warning(
-                        "Failed to send heartbeat for worker %s",
-                        self._worker_id,
+                    LOG.warning(
+                        "heartbeat_send_failed",
+                        worker_id=str(self._worker_id),
                         exc_info=True,
                     )
                 if self._stop_event.wait(self._interval_seconds):

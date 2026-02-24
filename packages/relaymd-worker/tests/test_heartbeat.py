@@ -56,7 +56,7 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
         lambda *args, **kwargs: _client_cm(client),
     )
     warning = Mock()
-    monkeypatch.setattr("relaymd.worker.heartbeat.LOGGER.warning", warning)
+    monkeypatch.setattr("relaymd.worker.heartbeat.LOG.warning", warning)
 
     thread = HeartbeatThread(
         orchestrator_url="http://orchestrator",
@@ -126,6 +126,7 @@ def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
             worker_id=worker_id,
             stop_event=stop_event,
             heartbeat_thread=heartbeat_thread,
+            log=Mock(),
         )
 
     assert excinfo.value.code == 0

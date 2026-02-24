@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from relaymd.orchestrator import __version__
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
+from relaymd.orchestrator.logging import configure_logging, get_logger
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
@@ -17,10 +18,13 @@ from relaymd.orchestrator.scheduler import (
     stale_worker_reaper_loop,
 )
 
+LOG = get_logger(__name__)
+
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings: OrchestratorSettings = app.state.settings
+    LOG.info("orchestrator_starting")
     init_engine(settings.database_url)
     await create_db_and_tables()
 
@@ -36,6 +40,7 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         yield
     finally:
+        LOG.info("orchestrator_stopping")
         stop_event.set()
         for task in app.state.background_tasks:
             task.cancel()
@@ -48,8 +53,10 @@ def create_app(
     *,
     start_background_tasks: bool = True,
 ) -> FastAPI:
+    active_settings = settings or OrchestratorSettings()
+    configure_logging(active_settings)
     app = FastAPI(lifespan=app_lifespan)
-    app.state.settings = settings or OrchestratorSettings()
+    app.state.settings = active_settings
     app.state.start_background_tasks = start_background_tasks
 
     @app.get("/healthz")

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import os
 import shlex
 import signal
@@ -23,8 +22,9 @@ from relaymd.models import JobAssigned, Platform, WorkerRegister
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.heartbeat import HeartbeatThread
+from relaymd.worker.logging import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOG = get_logger(__name__)
 ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
 DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS = 300
 DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
@@ -62,7 +62,7 @@ def detect_gpu_info() -> tuple[str, int, int]:
         finally:
             pynvml.nvmlShutdown()
     except Exception:
-        LOGGER.exception("GPU detection failed; falling back to defaults")
+        LOG.exception("gpu_detection_failed_falling_back_to_defaults")
         return "unknown", 0, 0
 
 
@@ -187,13 +187,14 @@ def _handle_sigterm(
     worker_id: UUID,
     stop_event: threading.Event,
     heartbeat_thread: HeartbeatThread,
+    log: Any,
 ) -> None:
-    LOGGER.info("Received SIGTERM; shutting down worker gracefully")
+    log.info("sigterm_received_shutting_down_worker")
     process.terminate()
 
     final_checkpoint = _wait_for_final_checkpoint(workdir, checkpoint_glob_pattern)
     if final_checkpoint is None:
-        LOGGER.warning("No final checkpoint found during SIGTERM shutdown for job %s", job_id)
+        log.warning("sigterm_no_final_checkpoint_found", job_id=str(job_id))
     else:
         try:
             storage.upload_file(final_checkpoint, checkpoint_b2_key)
@@ -203,13 +204,17 @@ def _handle_sigterm(
             )
             checkpoint_response.raise_for_status()
         except Exception:
-            LOGGER.exception("Failed to upload final checkpoint during SIGTERM")
+            log.exception(
+                "sigterm_final_checkpoint_upload_failed",
+                job_id=str(job_id),
+                checkpoint_b2_key=checkpoint_b2_key,
+            )
 
     try:
         deregister_response = client.post(f"/workers/{worker_id}/deregister")
         deregister_response.raise_for_status()
     except Exception:
-        LOGGER.exception("Failed to deregister worker during SIGTERM")
+        log.exception("sigterm_worker_deregister_failed", worker_id=str(worker_id))
 
     stop_event.set()
     heartbeat_thread.join(timeout=5)
@@ -247,6 +252,7 @@ def run_worker(config: WorkerConfig) -> None:
         )
         register_response.raise_for_status()
         worker_id = UUID(register_response.json()["worker_id"])
+        worker_log = LOG.bind(worker_id=str(worker_id))
 
         while True:
             request_response = client.post("/jobs/request", params={"worker_id": str(worker_id)})
@@ -254,10 +260,11 @@ def run_worker(config: WorkerConfig) -> None:
             request_payload = request_response.json()
 
             if request_payload.get("status") == "no_job_available":
-                LOGGER.info("No job available, worker exiting")
+                worker_log.info("no_job_available_worker_exit")
                 return
 
             assignment = JobAssigned.model_validate(request_payload)
+            job_log = worker_log.bind(job_id=str(assignment.job_id))
             checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
 
             with tempfile.TemporaryDirectory(prefix=f"relaymd-{assignment.job_id}-") as tmpdir:
@@ -300,6 +307,7 @@ def run_worker(config: WorkerConfig) -> None:
                     stop_event: threading.Event = heartbeat_stop_event,
                     heartbeat: HeartbeatThread = heartbeat_thread,
                     process_ref: dict[str, subprocess.Popen[Any] | None] = process_holder,
+                    log_local: Any = job_log,
                 ) -> None:
                     _ = (signum, frame)
                     process = process_ref["process"]
@@ -310,8 +318,8 @@ def run_worker(config: WorkerConfig) -> None:
                             )
                             deregister_response.raise_for_status()
                         except Exception:
-                            LOGGER.exception(
-                                "Failed to deregister worker during pre-launch SIGTERM"
+                            worker_log.exception(
+                                "sigterm_prelaunch_worker_deregister_failed"
                             )
                         stop_event.set()
                         heartbeat.join(timeout=5)
@@ -327,6 +335,7 @@ def run_worker(config: WorkerConfig) -> None:
                         worker_id=worker_id_local,
                         stop_event=stop_event,
                         heartbeat_thread=heartbeat,
+                        log=log_local,
                     )
 
                 previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
