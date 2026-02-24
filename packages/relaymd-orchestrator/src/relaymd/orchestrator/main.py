@@ -5,8 +5,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from relaymd.orchestrator import __version__
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
+from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
 from relaymd.orchestrator.scheduler import orphaned_job_requeue_loop, stale_worker_reaper_loop
@@ -47,10 +49,11 @@ def create_app(
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": __version__}
 
     app.include_router(workers_router)
     app.include_router(jobs_worker_router)
+    app.include_router(jobs_operator_router)
 
     return app
 
