@@ -11,7 +11,11 @@ from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_e
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
-from relaymd.orchestrator.scheduler import orphaned_job_requeue_loop, stale_worker_reaper_loop
+from relaymd.orchestrator.scheduler import (
+    orphaned_job_requeue_loop,
+    sbatch_submission_loop,
+    stale_worker_reaper_loop,
+)
 
 
 @asynccontextmanager
@@ -26,7 +30,8 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if app.state.start_background_tasks:
         reaper_task = asyncio.create_task(stale_worker_reaper_loop(settings, stop_event))
         orphaned_task = asyncio.create_task(orphaned_job_requeue_loop(stop_event))
-        app.state.background_tasks = [reaper_task, orphaned_task]
+        sbatch_task = asyncio.create_task(sbatch_submission_loop(settings, stop_event))
+        app.state.background_tasks = [reaper_task, orphaned_task, sbatch_task]
 
     try:
         yield
