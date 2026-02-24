@@ -286,31 +286,44 @@ def run_worker(config: WorkerConfig) -> None:
                     stop_event=heartbeat_stop_event,
                 )
                 heartbeat_thread.start()
-                process: subprocess.Popen[Any] | None = None
+                process_holder: dict[str, subprocess.Popen[Any] | None] = {"process": None}
 
-                def _sigterm_handler(signum: int, frame: FrameType | None) -> None:
+                def _sigterm_handler(
+                    signum: int,
+                    frame: FrameType | None,
+                    *,
+                    workdir: Path = bundle_root,
+                    checkpoint_glob_pattern: str = execution_config.checkpoint_glob_pattern,
+                    checkpoint_path: str = checkpoint_b2_key,
+                    job_id: UUID = assignment.job_id,
+                    worker_id_local: UUID = worker_id,
+                    stop_event: threading.Event = heartbeat_stop_event,
+                    heartbeat: HeartbeatThread = heartbeat_thread,
+                    process_ref: dict[str, subprocess.Popen[Any] | None] = process_holder,
+                ) -> None:
                     _ = (signum, frame)
+                    process = process_ref["process"]
                     if process is None:
-                        heartbeat_stop_event.set()
-                        heartbeat_thread.join(timeout=5)
+                        stop_event.set()
+                        heartbeat.join(timeout=5)
                         sys.exit(0)
                     _handle_sigterm(
                         process=process,
-                        workdir=bundle_root,
-                        checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
-                        checkpoint_b2_key=checkpoint_b2_key,
+                        workdir=workdir,
+                        checkpoint_glob_pattern=checkpoint_glob_pattern,
+                        checkpoint_b2_key=checkpoint_path,
                         storage=storage,
                         client=client,
-                        job_id=assignment.job_id,
-                        worker_id=worker_id,
-                        stop_event=heartbeat_stop_event,
-                        heartbeat_thread=heartbeat_thread,
+                        job_id=job_id,
+                        worker_id=worker_id_local,
+                        stop_event=stop_event,
+                        heartbeat_thread=heartbeat,
                     )
 
                 previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
                 signal.signal(signal.SIGTERM, _sigterm_handler)
 
-                process = subprocess.Popen(  # noqa: S603
+                process_holder["process"] = subprocess.Popen(  # noqa: S603
                     execution_config.command,
                     cwd=bundle_root,
                 )
@@ -318,6 +331,9 @@ def run_worker(config: WorkerConfig) -> None:
                 last_uploaded_mtime: float | None = None
                 try:
                     while True:
+                        process = process_holder["process"]
+                        if process is None:
+                            raise RuntimeError("subprocess missing after launch")
                         process_exit = process.poll()
                         latest_checkpoint = _find_latest_checkpoint(
                             bundle_root, execution_config.checkpoint_glob_pattern
@@ -366,6 +382,7 @@ def run_worker(config: WorkerConfig) -> None:
                         time.sleep(checkpoint_poll_interval)
                 finally:
                     signal.signal(signal.SIGTERM, previous_sigterm_handler)
+                    process = process_holder["process"]
                     if process is not None:
                         process.terminate()
                         try:

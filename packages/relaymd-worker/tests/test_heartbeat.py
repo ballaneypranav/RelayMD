@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import httpx
 import pytest
-
 from relaymd.worker.heartbeat import HeartbeatThread
 from relaymd.worker.main import _handle_sigterm
 
@@ -26,7 +25,10 @@ def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
     response.raise_for_status.return_value = None
     client = Mock()
     client.post.return_value = response
-    monkeypatch.setattr("relaymd.worker.heartbeat.httpx.Client", lambda *args, **kwargs: _client_cm(client))
+    monkeypatch.setattr(
+        "relaymd.worker.heartbeat.httpx.Client",
+        lambda *args, **kwargs: _client_cm(client),
+    )
 
     thread = HeartbeatThread(
         orchestrator_url="http://orchestrator",
@@ -47,7 +49,10 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
 
     client = Mock()
     client.post.side_effect = httpx.HTTPError("heartbeat failed")
-    monkeypatch.setattr("relaymd.worker.heartbeat.httpx.Client", lambda *args, **kwargs: _client_cm(client))
+    monkeypatch.setattr(
+        "relaymd.worker.heartbeat.httpx.Client",
+        lambda *args, **kwargs: _client_cm(client),
+    )
     warning = Mock()
     monkeypatch.setattr("relaymd.worker.heartbeat.LOGGER.warning", warning)
 
@@ -67,7 +72,10 @@ def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
     stop_event.wait.return_value = True
 
     client = Mock()
-    monkeypatch.setattr("relaymd.worker.heartbeat.httpx.Client", lambda *args, **kwargs: _client_cm(client))
+    monkeypatch.setattr(
+        "relaymd.worker.heartbeat.httpx.Client",
+        lambda *args, **kwargs: _client_cm(client),
+    )
 
     thread = HeartbeatThread(
         orchestrator_url="http://orchestrator",
@@ -80,7 +88,10 @@ def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
     client.post.assert_not_called()
 
 
-def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(monkeypatch, tmp_path: Path) -> None:
+def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
     job_id = uuid4()
     worker_id = uuid4()
     checkpoint = tmp_path / "final.chk"
