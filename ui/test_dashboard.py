@@ -2,10 +2,20 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from ui.dashboard import _build_jobs_dataframe, _build_workers_dataframe
+import pytest
+
+
+def _import_dashboard_helpers():
+    pytest.importorskip("pandas")
+    pytest.importorskip("streamlit")
+    pytest.importorskip("streamlit_autorefresh")
+    from ui.dashboard import _build_jobs_dataframe, _build_workers_dataframe
+
+    return _build_jobs_dataframe, _build_workers_dataframe
 
 
 def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() -> None:
+    build_jobs_dataframe, _ = _import_dashboard_helpers()
     now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
     jobs = [
         {
@@ -16,7 +26,7 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
         }
     ]
 
-    df = _build_jobs_dataframe(jobs, now)
+    df = build_jobs_dataframe(jobs, now)
 
     assert list(df.columns) == [
         "title",
@@ -31,6 +41,7 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
 
 
 def test_build_workers_dataframe_marks_stale_workers() -> None:
+    _, build_workers_dataframe = _import_dashboard_helpers()
     now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
     workers = [
         {
@@ -49,7 +60,7 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
         },
     ]
 
-    df = _build_workers_dataframe(workers, now)
+    df = build_workers_dataframe(workers, now)
 
     assert list(df.columns) == [
         "platform",
