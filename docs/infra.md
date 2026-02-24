@@ -1,10 +1,5 @@
 # Infrastructure Documentation
 
-## Backblaze B2 Storage
-- **Bucket Name**: `relaymd-jobs`
-- **Region Constraints**: Defined per the endpoint (e.g., `us-west-004`).
-- **S3-Compatible Endpoint URL**: Sourced at runtime (stored in `B2_ENDPOINT`).
-
 ## Infisical Secrets Reference
 The application securely provisions credentials and configuration variables dynamically from Infisical at runtime. The following secrets have been configured dynamically under `/RelayMD` in the `production` environment:
 
