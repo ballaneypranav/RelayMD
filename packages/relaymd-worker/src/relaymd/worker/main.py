@@ -261,7 +261,7 @@ def run_worker(config: WorkerConfig) -> None:
                     cwd=bundle_root,
                 )
 
-                last_uploaded_checkpoint: Path | None = None
+                last_uploaded_mtime: float | None = None
                 try:
                     while True:
                         process_exit = process.poll()
@@ -269,9 +269,9 @@ def run_worker(config: WorkerConfig) -> None:
                             bundle_root, execution_config.checkpoint_glob_pattern
                         )
                         if latest_checkpoint is not None and (
-                            last_uploaded_checkpoint is None
+                            last_uploaded_mtime is None
                             or latest_checkpoint.stat().st_mtime
-                            > last_uploaded_checkpoint.stat().st_mtime
+                            > last_uploaded_mtime
                         ):
                             storage.upload_file(latest_checkpoint, checkpoint_b2_key)
                             checkpoint_response = client.post(
@@ -279,7 +279,7 @@ def run_worker(config: WorkerConfig) -> None:
                                 json={"checkpoint_path": checkpoint_b2_key},
                             )
                             checkpoint_response.raise_for_status()
-                            last_uploaded_checkpoint = latest_checkpoint
+                            last_uploaded_mtime = latest_checkpoint.stat().st_mtime
 
                         if process_exit is not None:
                             if process_exit == 0:
@@ -287,9 +287,9 @@ def run_worker(config: WorkerConfig) -> None:
                                     bundle_root, execution_config.checkpoint_glob_pattern
                                 )
                                 if final_checkpoint is not None and (
-                                    last_uploaded_checkpoint is None
+                                    last_uploaded_mtime is None
                                     or final_checkpoint.stat().st_mtime
-                                    > last_uploaded_checkpoint.stat().st_mtime
+                                    > last_uploaded_mtime
                                 ):
                                     storage.upload_file(final_checkpoint, checkpoint_b2_key)
                                     final_checkpoint_response = client.post(
