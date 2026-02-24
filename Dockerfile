@@ -12,12 +12,13 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.11 \
-        python3.11-pip \
+        python3.11-distutils \
+        python3.11-venv \
         git \
         wget \
         curl \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
-    && ln -sf /usr/bin/pip3.11 /usr/local/bin/pip \
+    && python3.11 -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
 

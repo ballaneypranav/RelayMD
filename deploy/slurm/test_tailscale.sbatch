@@ -52,12 +52,20 @@ apptainer exec ${APPTAINER_FLAGS} "${RELAYMD_SIF_PATH}" /bin/bash -lc '
     >/tmp/tailscaled.log 2>&1 &
   TS_PID=$!
 
+  tailscaled_ready=0
   for _ in $(seq 1 30); do
     if tailscale --socket=/tmp/tailscaled.sock status >/dev/null 2>&1; then
+      tailscaled_ready=1
       break
     fi
     sleep 1
   done
+  if [[ "${tailscaled_ready}" -ne 1 ]]; then
+    echo "tailscaled did not become ready within 30 seconds" >&2
+    echo "tailscaled log follows:" >&2
+    cat /tmp/tailscaled.log >&2 || true
+    exit 1
+  fi
 
   tailscale \
     --socket=/tmp/tailscaled.sock \
