@@ -29,8 +29,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - name: Build relaymd-cli wheel and sdist
-        run: uv build packages/relaymd-cli
+        run: uv build packages/relaymd-cli --out-dir dist
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: packages/relaymd-cli/dist
+          packages-dir: dist
