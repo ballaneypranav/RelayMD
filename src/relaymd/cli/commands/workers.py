@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import httpx
 import typer
-from rich.console import Console
-from rich.table import Table
 from relaymd_api_client.api.default import list_workers_workers_get
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.worker_read import WorkerRead
+from rich.console import Console
+from rich.table import Table
 
 from relaymd.cli.config import load_settings
 

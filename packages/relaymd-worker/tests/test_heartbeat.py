@@ -7,10 +7,15 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from relaymd_api_client import errors as api_errors
 from relaymd.worker.heartbeat import HeartbeatThread
 from relaymd.worker.main import _handle_sigterm
+from relaymd_api_client import errors as api_errors
 from tenacity import wait_none
+
+HEARTBEAT_SYNC_TARGET = (
+    "relaymd.worker.heartbeat."
+    "heartbeat_worker_workers_worker_id_heartbeat_post.sync"
+)
 
 
 class _FakeApiClient:
@@ -38,7 +43,7 @@ def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
 
     send = Mock(return_value=None)
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
-    monkeypatch.setattr("relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync", send)
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
 
     thread = HeartbeatThread(
         orchestrator_url="http://orchestrator",
@@ -62,7 +67,7 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
 
     send = Mock(side_effect=httpx.HTTPError("heartbeat failed"))
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
-    monkeypatch.setattr("relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync", send)
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
     monkeypatch.setattr("relaymd.worker.heartbeat.LOG.warning", warning)
 
@@ -87,7 +92,7 @@ def test_heartbeat_retries_on_transient_failure_then_succeeds(monkeypatch) -> No
 
     send = Mock(side_effect=[httpx.HTTPError("temporary outage"), None])
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
-    monkeypatch.setattr("relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync", send)
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
     monkeypatch.setattr("relaymd.worker.heartbeat.LOG.warning", warning)
 
@@ -112,7 +117,7 @@ def test_heartbeat_unexpected_status_logs_warning_and_continues(monkeypatch) -> 
 
     send = Mock(side_effect=api_errors.UnexpectedStatus(500, b"error"))
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
-    monkeypatch.setattr("relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync", send)
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
     monkeypatch.setattr("relaymd.worker.heartbeat.LOG.warning", warning)
 
@@ -133,7 +138,7 @@ def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
 
     send = Mock(return_value=None)
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
-    monkeypatch.setattr("relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync", send)
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
 
     thread = HeartbeatThread(
         orchestrator_url="http://orchestrator",
@@ -160,7 +165,7 @@ def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
     stop_event = Mock()
     heartbeat_thread = Mock()
 
-    api_client = object()
+    api_client = cast(Any, object())
     checkpoint_sync = Mock(return_value=None)
     deregister_sync = Mock(return_value=None)
     monkeypatch.setattr(

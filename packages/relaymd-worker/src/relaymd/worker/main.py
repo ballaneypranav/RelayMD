@@ -14,7 +14,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType, ModuleType
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
@@ -28,13 +28,12 @@ from relaymd_api_client.api.default import (
 )
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
-from relaymd_api_client.models.http_validation_error import HTTPValidationError as ApiHTTPValidationError
+from relaymd_api_client.models.http_validation_error import (
+    HTTPValidationError as ApiHTTPValidationError,
+)
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
-from relaymd_api_client.models.register_worker_workers_register_post_response_register_worker_workers_register_post import (
-    RegisterWorkerWorkersRegisterPostResponseRegisterWorkerWorkersRegisterPost as ApiWorkerRegisterResponse,
-)
 from relaymd_api_client.models.worker_register import WorkerRegister as ApiWorkerRegister
 
 from relaymd.models import Platform
@@ -282,11 +281,14 @@ def run_worker(config: WorkerConfig) -> None:
             ),
             x_api_token=config.relaymd_api_token,
         )
-        if not isinstance(register_response, ApiWorkerRegisterResponse):
-            _raise_if_validation_error(register_response)
+        _raise_if_validation_error(register_response)
+        if register_response is None:
             raise RuntimeError("Failed to register worker")
+        try:
+            worker_id = UUID(str(cast(Any, register_response)["worker_id"]))
+        except Exception as exc:  # pragma: no cover - defensive guard for malformed payloads
+            raise RuntimeError("Failed to parse worker registration response") from exc
 
-        worker_id = register_response["worker_id"]
         worker_log = LOG.bind(worker_id=str(worker_id))
 
         while True:
@@ -407,11 +409,15 @@ def run_worker(config: WorkerConfig) -> None:
                                 or current_mtime > last_uploaded_mtime
                             ):
                                 storage.upload_file(latest_checkpoint, checkpoint_b2_key)
-                                checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                                    job_id=assignment.job_id,
-                                    client=client,
-                                    body=ApiCheckpointReport(checkpoint_path=checkpoint_b2_key),
-                                    x_api_token=config.relaymd_api_token,
+                                checkpoint_response = (
+                                    report_checkpoint_jobs_job_id_checkpoint_post.sync(
+                                        job_id=assignment.job_id,
+                                        client=client,
+                                        body=ApiCheckpointReport(
+                                            checkpoint_path=checkpoint_b2_key
+                                        ),
+                                        x_api_token=config.relaymd_api_token,
+                                    )
                                 )
                                 _raise_if_validation_error(checkpoint_response)
                                 last_uploaded_mtime = current_mtime
@@ -428,13 +434,15 @@ def run_worker(config: WorkerConfig) -> None:
                                         or final_mtime > last_uploaded_mtime
                                     ):
                                         storage.upload_file(final_checkpoint, checkpoint_b2_key)
-                                        final_checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                                            job_id=assignment.job_id,
-                                            client=client,
-                                            body=ApiCheckpointReport(
-                                                checkpoint_path=checkpoint_b2_key
-                                            ),
-                                            x_api_token=config.relaymd_api_token,
+                                        final_checkpoint_response = (
+                                            report_checkpoint_jobs_job_id_checkpoint_post.sync(
+                                                job_id=assignment.job_id,
+                                                client=client,
+                                                body=ApiCheckpointReport(
+                                                    checkpoint_path=checkpoint_b2_key
+                                                ),
+                                                x_api_token=config.relaymd_api_token,
+                                            )
                                         )
                                         _raise_if_validation_error(final_checkpoint_response)
 

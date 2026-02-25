@@ -7,7 +7,9 @@ import httpx
 from relaymd_api_client import errors as api_errors
 from relaymd_api_client.api.default import heartbeat_worker_workers_worker_id_heartbeat_post
 from relaymd_api_client.client import Client as RelaymdApiClient
-from relaymd_api_client.models.http_validation_error import HTTPValidationError as ApiHTTPValidationError
+from relaymd_api_client.models.http_validation_error import (
+    HTTPValidationError as ApiHTTPValidationError,
+)
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from relaymd.worker.logging import get_logger

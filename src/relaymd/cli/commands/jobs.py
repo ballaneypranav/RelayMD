@@ -5,9 +5,6 @@ from uuid import UUID
 
 import httpx
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
 from relaymd_api_client.api.default import (
     cancel_job_jobs_job_id_delete,
     get_job_jobs_job_id_get,
@@ -17,6 +14,9 @@ from relaymd_api_client.api.default import (
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_read import JobRead
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from relaymd.cli.config import load_settings
 

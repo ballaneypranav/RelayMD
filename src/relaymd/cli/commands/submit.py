@@ -9,13 +9,13 @@ from typing import Annotated, Any
 
 import httpx
 import typer
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from relaymd_api_client.api.default import create_job_jobs_post
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.job_create import JobCreate
 from relaymd_api_client.models.job_read import JobRead
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from relaymd.cli.config import load_settings
 from relaymd.storage import StorageClient

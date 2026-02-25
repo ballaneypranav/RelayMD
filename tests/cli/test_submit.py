@@ -5,7 +5,6 @@ import tarfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import Mock
 
 import pytest
 import typer
