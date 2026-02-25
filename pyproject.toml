@@ -20,7 +20,7 @@ dependencies = [
     "httpx",
     "boto3",
     "typer",
-    "rich",
+    "rich>=13.0",
     "pyyaml",
 ]
 

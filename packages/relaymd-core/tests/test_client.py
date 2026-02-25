@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 import respx
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 from httpx import HTTPStatusError, Response
 from moto import mock_aws
@@ -131,3 +132,19 @@ def test_download_file_404_does_not_retry(tmp_path: Path, monkeypatch) -> None:
             client.download_file(b2_key=key, local_path=destination)
 
     assert len(route.calls) == 1
+
+
+def test_upload_file_passes_transfer_config(tmp_path: Path) -> None:
+    local_path = tmp_path / "tiny.bin"
+    local_path.write_bytes(b"x")
+
+    with mock_aws():
+        client = _build_client()
+        client._s3.create_bucket(Bucket="relaymd-bucket")
+
+        with patch.object(client._s3, "upload_file", wraps=client._s3.upload_file) as upload_spy:
+            client.upload_file(local_path=local_path, b2_key="jobs/1/input/tiny.bin")
+
+        _, kwargs = upload_spy.call_args
+        assert "Config" in kwargs
+        assert isinstance(kwargs["Config"], TransferConfig)
