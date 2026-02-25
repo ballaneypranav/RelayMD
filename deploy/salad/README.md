@@ -18,19 +18,18 @@ image from `W-150`, with secrets injected via Salad environment variables.
 
 Set these in the Salad dashboard:
 
-- `INFISICAL_BOOTSTRAP_TOKEN=<client_id>:<client_secret>`
-- `RELAYMD_PLATFORM=salad`
-- `RELAYMD_WALL_TIME_LIMIT_SECONDS=10800`
+- `INFISICAL_TOKEN=<client_id>:<client_secret>`
+- `WORKER_PLATFORM=salad`
 
 Current worker runtime compatibility notes:
 
 - Salad does not expand `${...}` references in env-var values.
-- Enter the same literal secret value for both:
-  - `INFISICAL_BOOTSTRAP_TOKEN=<client_id>:<client_secret>`
-  - `INFISICAL_TOKEN=<client_id>:<client_secret>`
-- Enter the same literal platform value for both:
-  - `RELAYMD_PLATFORM=salad`
-  - `WORKER_PLATFORM=salad`
+- If you keep `INFISICAL_BOOTSTRAP_TOKEN` for compatibility with old runbooks, set `INFISICAL_TOKEN` to the same literal value.
+
+Optional runtime tuning env vars:
+- `HEARTBEAT_INTERVAL_SECONDS` (default `60`)
+- `CHECKPOINT_POLL_INTERVAL_SECONDS` (default `300`)
+- `ORCHESTRATOR_TIMEOUT_SECONDS` (default `30.0`)
 
 ## Bring-Up and Validation Steps
 

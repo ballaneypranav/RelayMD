@@ -20,10 +20,13 @@ Start from [deploy/config.example.yaml](../deploy/config.example.yaml) and set:
 - `b2_bucket_name`
 - `b2_access_key_id`
 - `b2_secret_access_key`
+- `cf_worker_url` (if using Cloudflare proxy for downloads)
+- `orchestrator_timeout_seconds` (optional)
 
 Environment overrides:
 - `RELAYMD_ORCHESTRATOR_URL`
 - `RELAYMD_API_TOKEN` or `API_TOKEN`
+- `RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS` (optional)
 
 ## Commands
 

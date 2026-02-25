@@ -128,7 +128,14 @@ A missing YAML file is non-fatal — the orchestrator starts with defaults and l
 database_url: sqlite+aiosqlite:////home/USER/relaymd/relaymd.db
 api_token: change-me          # or set RELAYMD_API_TOKEN env var
 infisical_token: ""           # or set INFISICAL_TOKEN env var
+heartbeat_interval_seconds: 60
 heartbeat_timeout_multiplier: 2.0
+stale_worker_reaper_interval_seconds: 60
+orphaned_job_requeue_interval_seconds: 60
+sbatch_submission_interval_seconds: 60
+slurm_sigterm_margin_seconds: 300
+worker_heartbeat_interval_seconds: 60
+worker_checkpoint_poll_interval_seconds: 300
 
 slurm_cluster_configs:
   - name: clusterA-partitionA
@@ -164,9 +171,9 @@ b2_secret_access_key: ""      # or set B2_SECRET_ACCESS_KEY env var
 
 Three APScheduler interval jobs are registered from FastAPI `lifespan` using an in-memory `AsyncIOScheduler`:
 
-1. **`stale_worker_reaper_job`** — every 30s; marks workers stale if `last_heartbeat > heartbeat_interval × timeout_multiplier`; re-queues their jobs; calls Salad autoscaling.
-2. **`orphaned_job_requeue_once`** — every 30s; handles jobs that reached `assigned` state but whose worker never registered (e.g. SLURM job failed to boot).
-3. **`sbatch_submission_job`** — every 60s; for each `ClusterConfig`, if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions.
+1. **`stale_worker_reaper_job`** — every `stale_worker_reaper_interval_seconds` (default 60s); marks workers stale if `last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`; re-queues their jobs; calls Salad autoscaling.
+2. **`orphaned_job_requeue_once`** — every `orphaned_job_requeue_interval_seconds` (default 60s); handles jobs that reached `assigned` state but whose worker never registered (e.g. SLURM job failed to boot).
+3. **`sbatch_submission_job`** — every `sbatch_submission_interval_seconds` (default 60s); for each `ClusterConfig`, if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions.
 
 Scheduler settings: `coalesce=True`, `max_instances=1`, no persistent job store.
 
@@ -194,16 +201,15 @@ result = await asyncio.create_subprocess_exec(
 
 ### Configuration
 
-`pydantic-settings` (`BaseSettings`) with env vars injected at container launch. The bootstrap token is the only value that needs external injection:
+`pydantic-settings` (`BaseSettings`) with env vars injected at container launch. The bootstrap token is the only value that must be injected externally; runtime defaults can be overridden with env vars:
 
 ```python
 class WorkerSettings(BaseSettings):
-    infisical_token: str         # bootstrap token — only external injection needed
-    platform: Literal["hpc", "salad"] = "hpc"
-    wall_time_limit_seconds: int = 14400    # 4 hours
-    wall_time_margin_seconds: int = 300     # SIGTERM 5 min before wall time
+    worker_platform: Literal["hpc", "salad"] = "salad"
     heartbeat_interval_seconds: int = 60
     checkpoint_poll_interval_seconds: int = 300
+    orchestrator_timeout_seconds: float = 30.0
+    sigterm_checkpoint_wait_seconds: int = 60
 ```
 
 ### Secret Bootstrap
@@ -312,7 +318,7 @@ The refactor introduces three explicit module clusters:
 
 Filesystem polling every 5 minutes. The worker polls the simulation working directory for a file matching the `checkpoint_glob_pattern` from `relaymd-worker.json`. When a newer one is found, it uploads to B2 and reports immediately.
 
-On wall-time margin (default 5 min before SLURM kills the job), the worker sends SIGTERM to the subprocess, waits up to 60 seconds for a final checkpoint write, uploads, and exits. Worst-case checkpoint loss on a crash is 5 minutes.
+On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`), the worker sends SIGTERM to the subprocess, waits up to `sigterm_checkpoint_wait_seconds` (default 60s) for a final checkpoint write, uploads, and exits.
 
 The exact glob pattern for AToM-OpenMM checkpoints is to be confirmed during end-to-end testing.
 

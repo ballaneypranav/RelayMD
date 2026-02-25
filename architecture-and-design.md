@@ -85,8 +85,8 @@ On startup, a worker:
 4. Polls for a job assignment
 5. Downloads the input bundle and the latest checkpoint (if one exists) from object storage
 6. Launches the MD engine as a subprocess
-7. Sends heartbeats to the orchestrator every 60 seconds while the simulation runs
-8. On wall-time margin: sends SIGTERM to the subprocess, waits for a final checkpoint write, uploads it to object storage, and reports the checkpoint path to the orchestrator — then exits cleanly
+7. Sends heartbeats to the orchestrator every `worker_heartbeat_interval_seconds` (default 60s) while the worker process is alive (polling + running)
+8. On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`): sends SIGTERM to the subprocess, waits for a final checkpoint write, uploads it to object storage, and reports the checkpoint path to the orchestrator — then exits cleanly
 9. On clean subprocess exit: reports job completion and loops back to poll for another job
 
 The worker has no persistent state. If it dies mid-run, the orchestrator detects the missed heartbeat, marks the job as re-queued, and assigns it to the next available worker. That worker picks up from the last checkpoint as if nothing happened.
@@ -176,7 +176,7 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
 If the worker dies without reporting:
 
 ```
-Orchestrator detects stale heartbeat (last_heartbeat > 2× interval)
+Orchestrator detects stale heartbeat (`last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`, default `60 × 2 = 120s`)
          │
          ▼
 Job re-enters "queued" state with latest_checkpoint_path preserved
