@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +10,10 @@ from botocore.exceptions import ClientError
 from httpx import HTTPStatusError, Response
 from moto import mock_aws
 from relaymd.storage import StorageClient
+
+
+def _disable_retry_sleep(monkeypatch) -> None:
+    monkeypatch.setattr("tenacity.nap.sleep", lambda _seconds: None)
 
 
 def _build_client() -> StorageClient:
@@ -82,8 +87,9 @@ def test_upload_file_retries_on_transient_s3_error_then_succeeds(
             )
         return None
 
-    monkeypatch.setattr(StorageClient.upload_file.retry, "sleep", lambda _: None)
-    client._s3.upload_file = Mock(side_effect=flaky_upload)
+    _disable_retry_sleep(monkeypatch)
+    upload_mock = Mock(side_effect=flaky_upload)
+    monkeypatch.setattr(cast(Any, client._s3), "upload_file", upload_mock)
 
     client.upload_file(local_path=local_path, b2_key="jobs/1/input/payload.bin")
 
@@ -99,13 +105,14 @@ def test_upload_file_raises_after_five_attempts(tmp_path: Path, monkeypatch) -> 
         operation_name="PutObject",
     )
 
-    monkeypatch.setattr(StorageClient.upload_file.retry, "sleep", lambda _: None)
-    client._s3.upload_file = Mock(side_effect=error)
+    _disable_retry_sleep(monkeypatch)
+    upload_mock = Mock(side_effect=error)
+    monkeypatch.setattr(cast(Any, client._s3), "upload_file", upload_mock)
 
     with pytest.raises(ClientError):
         client.upload_file(local_path=local_path, b2_key="jobs/1/input/payload.bin")
 
-    assert client._s3.upload_file.call_count == 5
+    assert upload_mock.call_count == 5
 
 
 def test_download_file_404_does_not_retry(tmp_path: Path, monkeypatch) -> None:
@@ -117,7 +124,7 @@ def test_download_file_404_does_not_retry(tmp_path: Path, monkeypatch) -> None:
         "jobs/abc/checkpoints/missing"
     )
 
-    monkeypatch.setattr(StorageClient.download_file.retry, "sleep", lambda _: None)
+    _disable_retry_sleep(monkeypatch)
     with respx.mock(assert_all_called=True) as router:
         route = router.get(expected_url).mock(return_value=Response(404, text="not found"))
         with pytest.raises(HTTPStatusError):
