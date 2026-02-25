@@ -9,6 +9,7 @@ Create `~/.config/relaymd/config.yaml` from the canonical template:
 ```bash
 mkdir -p ~/.config/relaymd
 cp deploy/config.example.yaml ~/.config/relaymd/config.yaml
+chmod 600 ~/.config/relaymd/config.yaml
 ```
 
 SQLite recommendation: keep the database in a stable persistent directory (for example `/srv/relaymd/orchestrator/relaymd.db`), not `/tmp`.
@@ -52,3 +53,10 @@ tmux kill-session -t relaymd
 ```
 
 Logs are visible in the tmux session output.
+
+## Rollout Order
+
+Use this upgrade sequence for compatibility:
+1. deploy orchestrator first
+2. deploy worker image second
+3. upgrade CLI binaries last

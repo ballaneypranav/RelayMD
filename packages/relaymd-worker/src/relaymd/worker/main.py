@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import signal
-import subprocess
-import sys
 import tarfile
 import tempfile
 import threading
@@ -14,40 +11,24 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType, ModuleType
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
-import httpx
-from relaymd_api_client.api.default import (
-    complete_job_jobs_job_id_complete_post,
-    deregister_worker_workers_worker_id_deregister_post,
-    fail_job_jobs_job_id_fail_post,
-    register_worker_workers_register_post,
-    report_checkpoint_jobs_job_id_checkpoint_post,
-    request_job_jobs_request_post,
-)
-from relaymd_api_client.client import Client as RelaymdApiClient
-from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
-from relaymd_api_client.models.http_validation_error import (
-    HTTPValidationError as ApiHTTPValidationError,
-)
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
-from relaymd_api_client.models.worker_register import WorkerRegister as ApiWorkerRegister
 
 from relaymd.models import Platform
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
+from relaymd.worker.config import WorkerRuntimeSettings
+from relaymd.worker.context import WorkerContext
+from relaymd.worker.gateway import ApiOrchestratorGateway
 from relaymd.worker.heartbeat import HeartbeatThread
+from relaymd.worker.job_execution import JobExecution
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
-ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
-DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS = 300
-DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
-SIGTERM_CHECKPOINT_WAIT_SECONDS = 60
-SIGTERM_CHECKPOINT_POLL_SECONDS = 2
 
 
 @dataclass
@@ -164,29 +145,26 @@ def _extract_input_bundle(bundle_file: Path, destination: Path) -> Path:
     return destination
 
 
-def _build_storage_client(config: WorkerConfig) -> StorageClient:
-    cf_worker_url = os.getenv("CF_WORKER_URL", DEFAULT_CF_WORKER_URL)
-    cf_bearer_token = os.getenv("DOWNLOAD_BEARER_TOKEN", config.relaymd_api_token)
+def _build_storage_client(
+    config: WorkerConfig,
+    runtime_settings: WorkerRuntimeSettings,
+) -> StorageClient:
+    cf_bearer_token = runtime_settings.cf_bearer_token or config.relaymd_api_token
     return StorageClient(
         b2_endpoint_url=config.b2_endpoint,
         b2_bucket_name=config.bucket_name,
         b2_access_key_id=config.b2_application_key_id,
         b2_secret_access_key=config.b2_application_key,
-        cf_worker_url=cf_worker_url,
+        cf_worker_url=runtime_settings.cf_worker_url,
         cf_bearer_token=cf_bearer_token,
     )
-
-
-def _raise_if_validation_error(response: object) -> None:
-    if isinstance(response, ApiHTTPValidationError):
-        raise RuntimeError(response.to_dict())
 
 
 def _wait_for_final_checkpoint(
     workdir: Path,
     checkpoint_glob_pattern: str,
-    timeout_seconds: int = SIGTERM_CHECKPOINT_WAIT_SECONDS,
-    poll_interval_seconds: int = SIGTERM_CHECKPOINT_POLL_SECONDS,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
 ) -> Path | None:
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -197,280 +175,187 @@ def _wait_for_final_checkpoint(
             return None
         time.sleep(poll_interval_seconds)
 
-
-def _handle_sigterm(
+def _upload_checkpoint(
+    context: WorkerContext,
     *,
-    process: subprocess.Popen[Any],
-    workdir: Path,
-    checkpoint_glob_pattern: str,
+    checkpoint: Path,
     checkpoint_b2_key: str,
-    storage: StorageClient,
-    client: RelaymdApiClient,
-    api_token: str,
     job_id: UUID,
-    worker_id: UUID,
-    stop_event: threading.Event,
-    heartbeat_thread: HeartbeatThread,
-    log: Any,
+) -> float:
+    context.storage.upload_file(checkpoint, checkpoint_b2_key)
+    context.gateway.report_checkpoint(
+        job_id=job_id,
+        checkpoint_path=checkpoint_b2_key,
+    )
+    return checkpoint.stat().st_mtime
+
+
+def _run_assigned_job(
+    *,
+    context: WorkerContext,
+    assignment: ApiJobAssigned,
 ) -> None:
-    log.info("sigterm_received_shutting_down_worker")
-    process.terminate()
+    job_log = context.logger.bind(job_id=str(assignment.job_id))
+    checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
 
-    final_checkpoint = _wait_for_final_checkpoint(workdir, checkpoint_glob_pattern)
-    if final_checkpoint is None:
-        log.warning("sigterm_no_final_checkpoint_found", job_id=str(job_id))
-    else:
-        try:
-            storage.upload_file(final_checkpoint, checkpoint_b2_key)
-            checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                job_id=job_id,
-                client=client,
-                body=ApiCheckpointReport(checkpoint_path=checkpoint_b2_key),
-                x_api_token=api_token,
-            )
-            if isinstance(checkpoint_response, ApiHTTPValidationError):
-                raise RuntimeError(checkpoint_response.to_dict())
-        except Exception:
-            log.exception(
-                "sigterm_final_checkpoint_upload_failed",
-                job_id=str(job_id),
-                checkpoint_b2_key=checkpoint_b2_key,
+    with tempfile.TemporaryDirectory(prefix=f"relaymd-{assignment.job_id}-") as tmpdir:
+        workdir = Path(tmpdir)
+        input_bundle_path = workdir / Path(assignment.input_bundle_path).name
+        context.storage.download_file(assignment.input_bundle_path, input_bundle_path)
+
+        bundle_root = _extract_input_bundle(input_bundle_path, workdir / "bundle")
+
+        if assignment.latest_checkpoint_path:
+            checkpoint_download_path = workdir / Path(assignment.latest_checkpoint_path).name
+            context.storage.download_file(
+                assignment.latest_checkpoint_path,
+                checkpoint_download_path,
             )
 
-    try:
-        deregister_response = deregister_worker_workers_worker_id_deregister_post.sync(
-            worker_id=worker_id,
-            client=client,
-            x_api_token=api_token,
+        execution_config = _load_bundle_execution_config(bundle_root)
+        execution = JobExecution(
+            command=execution_config.command,
+            workdir=bundle_root,
+            checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
+            checkpoint_b2_key=checkpoint_b2_key,
         )
-        if isinstance(deregister_response, ApiHTTPValidationError):
-            raise RuntimeError(deregister_response.to_dict())
-    except Exception:
-        log.exception("sigterm_worker_deregister_failed", worker_id=str(worker_id))
+        execution.start()
 
-    stop_event.set()
-    heartbeat_thread.join(timeout=5)
-    sys.exit(0)
+        last_uploaded_mtime: float | None = None
+        try:
+            while True:
+                if context.shutdown_event.is_set():
+                    job_log.info("shutdown_requested_terminating_job")
+                    execution.request_terminate()
+                    final_checkpoint = _wait_for_final_checkpoint(
+                        bundle_root,
+                        execution_config.checkpoint_glob_pattern,
+                        timeout_seconds=context.sigterm_checkpoint_wait_seconds,
+                        poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
+                    )
+                    if final_checkpoint is not None:
+                        last_uploaded_mtime = _upload_checkpoint(
+                            context,
+                            checkpoint=final_checkpoint,
+                            checkpoint_b2_key=checkpoint_b2_key,
+                            job_id=assignment.job_id,
+                        )
+                    execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
+                    return
+
+                for checkpoint in execution.iter_new_checkpoints():
+                    last_uploaded_mtime = _upload_checkpoint(
+                        context,
+                        checkpoint=checkpoint,
+                        checkpoint_b2_key=checkpoint_b2_key,
+                        job_id=assignment.job_id,
+                    )
+
+                process_exit = execution.poll_exit_code()
+                if process_exit is not None:
+                    break
+
+                context.shutdown_event.wait(timeout=context.checkpoint_poll_interval_seconds)
+
+            final_checkpoint = execution.latest_checkpoint()
+            if final_checkpoint is not None:
+                final_mtime = final_checkpoint.stat().st_mtime
+                if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
+                    _upload_checkpoint(
+                        context,
+                        checkpoint=final_checkpoint,
+                        checkpoint_b2_key=checkpoint_b2_key,
+                        job_id=assignment.job_id,
+                    )
+
+            result = execution.result()
+            if result.status == "completed":
+                context.gateway.complete_job(job_id=assignment.job_id)
+            elif result.status == "failed":
+                context.gateway.fail_job(job_id=assignment.job_id)
+        finally:
+            if execution.is_running():
+                job_log.warning("job_execution_cleanup_terminating_process")
+                execution.request_terminate()
+                if execution.wait(timeout_seconds=context.sigterm_process_wait_seconds) is None:
+                    job_log.warning("job_execution_cleanup_killing_process")
+                    execution.kill()
+                    execution.wait(timeout_seconds=5)
 
 
 def run_worker(config: WorkerConfig) -> None:
-    storage = _build_storage_client(config)
-    checkpoint_poll_interval = int(
-        os.getenv("CHECKPOINT_POLL_INTERVAL_SECONDS", str(DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS))
-    )
+    runtime_settings = WorkerRuntimeSettings()
+    storage = _build_storage_client(config, runtime_settings)
 
     gpu_model, gpu_count, vram_gb = detect_gpu_info()
-    platform_raw = os.getenv("WORKER_PLATFORM", Platform.salad.value)
+    platform_raw = runtime_settings.worker_platform
     try:
         platform = Platform(platform_raw)
     except ValueError:
         platform = Platform.salad
 
-    with RelaymdApiClient(
-        base_url=config.relaymd_orchestrator_url.rstrip("/"),
-        timeout=httpx.Timeout(ORCHESTRATOR_TIMEOUT_SECONDS),
-        raise_on_unexpected_status=True,
-    ) as client:
-        register_response = register_worker_workers_register_post.sync(
-            client=client,
-            body=ApiWorkerRegister(
+    shutdown_event = threading.Event()
+    previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
+
+    def _sigterm_handler(signum: int, frame: FrameType | None) -> None:
+        _ = (signum, frame)
+        LOG.info("sigterm_received_requesting_shutdown")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
+    worker_id: UUID | None = None
+    heartbeat_thread: HeartbeatThread | None = None
+
+    try:
+        with ApiOrchestratorGateway(
+            orchestrator_url=config.relaymd_orchestrator_url,
+            api_token=config.relaymd_api_token,
+            logger=LOG,
+            timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
+        ) as gateway:
+            worker_id = gateway.register_worker(
                 platform=ApiPlatform(platform.value),
                 gpu_model=gpu_model,
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
-            ),
-            x_api_token=config.relaymd_api_token,
-        )
-        _raise_if_validation_error(register_response)
-        if register_response is None:
-            raise RuntimeError("Failed to register worker")
-        try:
-            worker_id = UUID(str(cast(Any, register_response)["worker_id"]))
-        except Exception as exc:  # pragma: no cover - defensive guard for malformed payloads
-            raise RuntimeError("Failed to parse worker registration response") from exc
-
-        worker_log = LOG.bind(worker_id=str(worker_id))
-
-        while True:
-            request_response = request_job_jobs_request_post.sync(
-                client=client,
-                worker_id=worker_id,
-                x_api_token=config.relaymd_api_token,
             )
-            if isinstance(request_response, ApiNoJobAvailable):
-                worker_log.info("no_job_available_worker_exit")
-                return
-            if not isinstance(request_response, ApiJobAssigned):
-                _raise_if_validation_error(request_response)
-                raise RuntimeError("Failed to parse job assignment response")
+            worker_log = LOG.bind(worker_id=str(worker_id))
 
-            assignment = request_response
-            job_log = worker_log.bind(job_id=str(assignment.job_id))
-            checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
+            heartbeat_thread = HeartbeatThread(
+                orchestrator_url=config.relaymd_orchestrator_url,
+                worker_id=worker_id,
+                api_token=config.relaymd_api_token,
+                interval_seconds=runtime_settings.heartbeat_interval_seconds,
+                timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
+                stop_event=shutdown_event,
+            )
+            heartbeat_thread.start()
 
-            with tempfile.TemporaryDirectory(prefix=f"relaymd-{assignment.job_id}-") as tmpdir:
-                workdir = Path(tmpdir)
+            context = WorkerContext(
+                gateway=gateway,
+                storage=storage,
+                shutdown_event=shutdown_event,
+                checkpoint_poll_interval_seconds=runtime_settings.checkpoint_poll_interval_seconds,
+                sigterm_checkpoint_wait_seconds=runtime_settings.sigterm_checkpoint_wait_seconds,
+                sigterm_checkpoint_poll_seconds=runtime_settings.sigterm_checkpoint_poll_seconds,
+                sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
+                logger=worker_log,
+            )
 
-                input_bundle_path = workdir / Path(assignment.input_bundle_path).name
-                storage.download_file(assignment.input_bundle_path, input_bundle_path)
+            while not shutdown_event.is_set():
+                request_response = gateway.request_job(worker_id=worker_id)
+                if isinstance(request_response, ApiNoJobAvailable):
+                    worker_log.info("no_job_available_worker_exit")
+                    break
 
-                bundle_root = _extract_input_bundle(input_bundle_path, workdir / "bundle")
+                _run_assigned_job(context=context, assignment=request_response)
 
-                if assignment.latest_checkpoint_path:
-                    checkpoint_download_path = (
-                        workdir / Path(assignment.latest_checkpoint_path).name
-                    )
-                    storage.download_file(
-                        assignment.latest_checkpoint_path,
-                        checkpoint_download_path,
-                    )
-
-                execution_config = _load_bundle_execution_config(bundle_root)
-                heartbeat_stop_event = threading.Event()
-                heartbeat_thread = HeartbeatThread(
-                    orchestrator_url=config.relaymd_orchestrator_url,
-                    worker_id=worker_id,
-                    api_token=config.relaymd_api_token,
-                    stop_event=heartbeat_stop_event,
-                )
-                heartbeat_thread.start()
-                process_holder: dict[str, subprocess.Popen[Any] | None] = {"process": None}
-
-                def _sigterm_handler(
-                    signum: int,
-                    frame: FrameType | None,
-                    *,
-                    workdir: Path = bundle_root,
-                    checkpoint_glob_pattern: str = execution_config.checkpoint_glob_pattern,
-                    checkpoint_path: str = checkpoint_b2_key,
-                    job_id: UUID = assignment.job_id,
-                    worker_id_local: UUID = worker_id,
-                    stop_event: threading.Event = heartbeat_stop_event,
-                    heartbeat: HeartbeatThread = heartbeat_thread,
-                    process_ref: dict[str, subprocess.Popen[Any] | None] = process_holder,
-                    log_local: Any = job_log,
-                ) -> None:
-                    _ = (signum, frame)
-                    process = process_ref["process"]
-                    if process is None:
-                        try:
-                            deregister_response = (
-                                deregister_worker_workers_worker_id_deregister_post.sync(
-                                    worker_id=worker_id_local,
-                                    client=client,
-                                    x_api_token=config.relaymd_api_token,
-                                )
-                            )
-                            _raise_if_validation_error(deregister_response)
-                        except Exception:
-                            worker_log.exception(
-                                "sigterm_prelaunch_worker_deregister_failed"
-                            )
-                        stop_event.set()
-                        heartbeat.join(timeout=5)
-                        sys.exit(0)
-                    _handle_sigterm(
-                        process=process,
-                        workdir=workdir,
-                        checkpoint_glob_pattern=checkpoint_glob_pattern,
-                        checkpoint_b2_key=checkpoint_path,
-                        storage=storage,
-                        client=client,
-                        api_token=config.relaymd_api_token,
-                        job_id=job_id,
-                        worker_id=worker_id_local,
-                        stop_event=stop_event,
-                        heartbeat_thread=heartbeat,
-                        log=log_local,
-                    )
-
-                previous_sigterm_handler = signal.getsignal(signal.SIGTERM)
-                signal.signal(signal.SIGTERM, _sigterm_handler)
-
-                process_holder["process"] = subprocess.Popen(  # noqa: S603
-                    execution_config.command,
-                    cwd=bundle_root,
-                )
-
-                last_uploaded_mtime: float | None = None
-                try:
-                    while True:
-                        process = process_holder["process"]
-                        if process is None:
-                            raise RuntimeError("subprocess missing after launch")
-                        process_exit = process.poll()
-                        latest_checkpoint = _find_latest_checkpoint(
-                            bundle_root, execution_config.checkpoint_glob_pattern
-                        )
-                        if latest_checkpoint is not None:
-                            current_mtime = latest_checkpoint.stat().st_mtime
-                            if (
-                                last_uploaded_mtime is None
-                                or current_mtime > last_uploaded_mtime
-                            ):
-                                storage.upload_file(latest_checkpoint, checkpoint_b2_key)
-                                checkpoint_response = (
-                                    report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                                        job_id=assignment.job_id,
-                                        client=client,
-                                        body=ApiCheckpointReport(
-                                            checkpoint_path=checkpoint_b2_key
-                                        ),
-                                        x_api_token=config.relaymd_api_token,
-                                    )
-                                )
-                                _raise_if_validation_error(checkpoint_response)
-                                last_uploaded_mtime = current_mtime
-
-                        if process_exit is not None:
-                            if process_exit == 0:
-                                final_checkpoint = _find_latest_checkpoint(
-                                    bundle_root, execution_config.checkpoint_glob_pattern
-                                )
-                                if final_checkpoint is not None:
-                                    final_mtime = final_checkpoint.stat().st_mtime
-                                    if (
-                                        last_uploaded_mtime is None
-                                        or final_mtime > last_uploaded_mtime
-                                    ):
-                                        storage.upload_file(final_checkpoint, checkpoint_b2_key)
-                                        final_checkpoint_response = (
-                                            report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                                                job_id=assignment.job_id,
-                                                client=client,
-                                                body=ApiCheckpointReport(
-                                                    checkpoint_path=checkpoint_b2_key
-                                                ),
-                                                x_api_token=config.relaymd_api_token,
-                                            )
-                                        )
-                                        _raise_if_validation_error(final_checkpoint_response)
-
-                                complete_response = complete_job_jobs_job_id_complete_post.sync(
-                                    job_id=assignment.job_id,
-                                    client=client,
-                                    x_api_token=config.relaymd_api_token,
-                                )
-                                _raise_if_validation_error(complete_response)
-                            else:
-                                fail_response = fail_job_jobs_job_id_fail_post.sync(
-                                    job_id=assignment.job_id,
-                                    client=client,
-                                    x_api_token=config.relaymd_api_token,
-                                )
-                                _raise_if_validation_error(fail_response)
-                            break
-
-                        time.sleep(checkpoint_poll_interval)
-                finally:
-                    signal.signal(signal.SIGTERM, previous_sigterm_handler)
-                    process = process_holder["process"]
-                    if process is not None:
-                        process.terminate()
-                        try:
-                            process.wait(timeout=10)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            process.wait()
-                    heartbeat_stop_event.set()
-                    heartbeat_thread.join(timeout=5)
+            shutdown_event.set()
+            if worker_id is not None:
+                gateway.deregister_worker(worker_id=worker_id)
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
+        shutdown_event.set()
+        if heartbeat_thread is not None:
+            heartbeat_thread.join(timeout=5)

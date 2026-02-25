@@ -1,31 +1,19 @@
 from __future__ import annotations
 
-import httpx
 import typer
-from relaymd_api_client.api.default import list_workers_workers_get
-from relaymd_api_client.client import Client as RelaymdApiClient
-from relaymd_api_client.models.worker_read import WorkerRead
 from rich.console import Console
 from rich.table import Table
 
-from relaymd.cli.config import load_settings
+from relaymd.cli.context import create_cli_context
+from relaymd.cli.services.workers_service import WorkersService
 
 app = typer.Typer(help="List workers.")
 console = Console()
 
 
-def _api_client() -> RelaymdApiClient:
-    settings = load_settings()
-    return RelaymdApiClient(
-        base_url=settings.orchestrator_url.rstrip("/"),
-        timeout=httpx.Timeout(30.0),
-        raise_on_unexpected_status=True,
-    )
-
-
 def _short_id(value: str | None) -> str:
     if not value:
-        return "—"
+        return "-"
     return str(value)[:8]
 
 
@@ -52,13 +40,15 @@ def _render_workers_table(workers: list[dict[str, object]]) -> Table:
         style = _status_style(status)
         worker_id = worker.get("id")
         worker_id_str = worker_id if isinstance(worker_id, str) else None
+        vram_gb = worker.get("vram_gb")
+        jobs_completed = worker.get("jobs_completed")
         table.add_row(
             _short_id(worker_id_str),
             str(worker.get("platform") or "-"),
             str(worker.get("gpu_model") or "-"),
-            str(worker.get("vram_gb") or "-"),
+            "-" if vram_gb is None else str(vram_gb),
             str(worker.get("last_heartbeat") or "-"),
-            str(worker.get("jobs_completed") or "0"),
+            "0" if jobs_completed is None else str(jobs_completed),
             f"[{style}]{status}[/{style}]",
         )
 
@@ -67,18 +57,8 @@ def _render_workers_table(workers: list[dict[str, object]]) -> Table:
 
 @app.command("list")
 def list_workers() -> None:
-    settings = load_settings()
-
     try:
-        with _api_client() as client:
-            workers = list_workers_workers_get.sync(
-                client=client,
-                x_api_token=settings.api_token,
-            )
-        if workers is None or not isinstance(workers, list):
-            raise RuntimeError("Failed to parse list workers response")
-        if workers and not isinstance(workers[0], WorkerRead):
-            raise RuntimeError("Unexpected response model for list workers")
+        workers = WorkersService(create_cli_context()).list_workers()
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to list workers:[/red] {exc}")
         raise typer.Exit(code=1) from exc

@@ -11,6 +11,7 @@ The B2 bucket relies on the following structural layout:
 
 - `jobs/{job_id}/checkpoints/latest` 
   This path houses a single checkpoint file. It is uniquely designed to be continually overwritten by the latest worker checkpoint in real-time. The orchestrator tracks state by storing solely this key path in its database.
+  Checkpoint reports are accepted only while the job is in `assigned` or `running` state.
 
 **Note on `{job_id}`**: 
 The `{job_id}` parameter represents the true UUID matching the `jobs` table primary key in the backing database.

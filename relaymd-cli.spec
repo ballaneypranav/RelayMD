@@ -24,5 +24,4 @@ exe = EXE(
     strip=True,
     upx=False,
     console=True,
-    onefile=True,
 )

@@ -40,6 +40,7 @@ The rendered script includes:
 - `#SBATCH --account={{ account }}`
 - `#SBATCH --gres=gpu:{{ gpu_type }}:{{ gpu_count }}`
 - `#SBATCH --time={{ wall_time }}`
+- `#SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds }}`
 - `#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}`
 
 Runtime command includes validated Apptainer flags from `docs/hpc-notes.md`:
@@ -47,6 +48,8 @@ Runtime command includes validated Apptainer flags from `docs/hpc-notes.md`:
 ```bash
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp <sif_path> python -m relaymd.worker
 ```
+
+Runtime env vars are injected by the template (`WORKER_PLATFORM`, heartbeat/checkpoint intervals, and timeout knobs) from orchestrator config defaults.
 
 ## Dry-Run Test
 

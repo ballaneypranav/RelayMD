@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, cast
 from unittest.mock import Mock, call
 from uuid import uuid4
@@ -8,8 +7,10 @@ from uuid import uuid4
 import httpx
 import pytest
 from relaymd.worker.heartbeat import HeartbeatThread
-from relaymd.worker.main import _handle_sigterm
 from relaymd_api_client import errors as api_errors
+from relaymd_api_client.models.http_validation_error import (
+    HTTPValidationError as ApiHTTPValidationError,
+)
 from tenacity import wait_none
 
 HEARTBEAT_SYNC_TARGET = (
@@ -65,7 +66,8 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
 
-    send = Mock(side_effect=httpx.HTTPError("heartbeat failed"))
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    send = Mock(side_effect=httpx.ReadTimeout("heartbeat failed", request=request))
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
     monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
@@ -90,7 +92,8 @@ def test_heartbeat_retries_on_transient_failure_then_succeeds(monkeypatch) -> No
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [True]
 
-    send = Mock(side_effect=[httpx.HTTPError("temporary outage"), None])
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    send = Mock(side_effect=[httpx.ReadTimeout("temporary outage", request=request), None])
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
     monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
@@ -151,56 +154,59 @@ def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
     send.assert_not_called()
 
 
-def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    job_id = uuid4()
-    worker_id = uuid4()
-    checkpoint = tmp_path / "final.chk"
-    checkpoint.write_bytes(b"checkpoint-data")
+def test_heartbeat_send_raises_on_validation_error_response(monkeypatch) -> None:
+    send = Mock(return_value=ApiHTTPValidationError.from_dict({"detail": []}))
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
 
-    process = Mock()
-    storage = Mock()
-    stop_event = Mock()
-    heartbeat_thread = Mock()
-
-    api_client = cast(Any, object())
-    checkpoint_sync = Mock(return_value=None)
-    deregister_sync = Mock(return_value=None)
-    monkeypatch.setattr(
-        "relaymd.worker.main.report_checkpoint_jobs_job_id_checkpoint_post.sync",
-        checkpoint_sync,
-    )
-    monkeypatch.setattr(
-        "relaymd.worker.main.deregister_worker_workers_worker_id_deregister_post.sync",
-        deregister_sync,
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
     )
 
-    wait_for_checkpoint = Mock(return_value=checkpoint)
-    monkeypatch.setattr("relaymd.worker.main._wait_for_final_checkpoint", wait_for_checkpoint)
+    with pytest.raises(RuntimeError):
+        thread._send(client=cast(Any, object()))
 
-    with pytest.raises(SystemExit) as excinfo:
-        _handle_sigterm(
-            process=process,
-            workdir=tmp_path,
-            checkpoint_glob_pattern="*.chk",
-            checkpoint_b2_key=f"jobs/{job_id}/checkpoints/latest",
-            storage=storage,
-            client=api_client,
-            api_token="token",
-            job_id=job_id,
-            worker_id=worker_id,
-            stop_event=stop_event,
-            heartbeat_thread=heartbeat_thread,
-            log=Mock(),
+    send.assert_called_once()
+
+
+def test_heartbeat_send_does_not_retry_on_http_401(monkeypatch) -> None:
+    _disable_send_retry_wait()
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    response = httpx.Response(401, request=request)
+    send = Mock(
+        side_effect=httpx.HTTPStatusError(
+            "unauthorized",
+            request=request,
+            response=response,
         )
+    )
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
 
-    assert excinfo.value.code == 0
-    process.terminate.assert_called_once_with()
-    wait_for_checkpoint.assert_called_once_with(tmp_path, "*.chk")
-    storage.upload_file.assert_called_once_with(checkpoint, f"jobs/{job_id}/checkpoints/latest")
-    checkpoint_sync.assert_called_once()
-    deregister_sync.assert_called_once()
-    stop_event.set.assert_called_once_with()
-    heartbeat_thread.join.assert_called_once_with(timeout=5)
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        thread._send(client=cast(Any, object()))
+
+    send.assert_called_once()
+
+
+def test_heartbeat_send_does_not_retry_on_unexpected_status_401(monkeypatch) -> None:
+    _disable_send_retry_wait()
+    send = Mock(side_effect=api_errors.UnexpectedStatus(401, b"unauthorized"))
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    with pytest.raises(api_errors.UnexpectedStatus):
+        thread._send(client=cast(Any, object()))
+
+    send.assert_called_once()

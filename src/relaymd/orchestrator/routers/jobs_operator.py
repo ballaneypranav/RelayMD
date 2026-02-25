@@ -8,9 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobCreate, JobRead, JobStatus
+from relaymd.models import Job, JobConflict, JobCreate, JobRead, JobStatus
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
+from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
+
+from ._responses import job_transition_conflict_response
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 
@@ -53,7 +56,16 @@ async def get_job(
     return JobRead.model_validate(job)
 
 
-@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
 async def cancel_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -64,39 +76,50 @@ async def cancel_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
     if job.status == JobStatus.running and not force:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Running job requires force=true for cancellation",
+        return job_transition_conflict_response(
+            JobTransitionConflictError(
+                message="Running job requires force=true for cancellation",
+                job_id=job.id,
+                current_status=job.status,
+                requested_status=JobStatus.cancelled,
+            )
         )
 
-    job.status = JobStatus.cancelled
-    job.assigned_worker_id = None
-    job.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    transitions = JobTransitionService()
+    try:
+        transitions.cancel_job(job)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
     session.add(job)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{job_id}/requeue", response_model=JobRead)
+@router.post(
+    "/{job_id}/requeue",
+    response_model=JobRead,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
 async def requeue_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> JobRead:
+) -> JobRead | Response:
     existing_job = await session.get(Job, job_id)
     if existing_job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    now = datetime.now(UTC).replace(tzinfo=None)
-    requeued_job = Job(
-        title=existing_job.title,
-        input_bundle_path=existing_job.input_bundle_path,
-        status=JobStatus.queued,
-        latest_checkpoint_path=existing_job.latest_checkpoint_path,
-        last_checkpoint_at=existing_job.last_checkpoint_at,
-        assigned_worker_id=None,
-        created_at=now,
-        updated_at=now,
-    )
+    transitions = JobTransitionService()
+    try:
+        requeued_job = transitions.build_requeue_clone(existing_job)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
     session.add(requeued_job)
     await session.commit()
     await session.refresh(requeued_job)

@@ -15,8 +15,10 @@ jobs:
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
+      - run: uv pip install --python .venv/bin/python -r ui/requirements.txt
       - run: uv run pytest
       - name: Upload coverage report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report

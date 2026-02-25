@@ -10,12 +10,25 @@ from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.http_validation_error import (
     HTTPValidationError as ApiHTTPValidationError,
 )
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
-ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
+
+
+def _is_retryable_heartbeat_error(exception: BaseException) -> bool:
+    if isinstance(exception, api_errors.UnexpectedStatus):
+        return exception.status_code >= 500
+
+    if not isinstance(exception, httpx.HTTPError):
+        return False
+
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code >= 500
+
+    return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
 
 
 class HeartbeatThread(threading.Thread):
@@ -25,6 +38,7 @@ class HeartbeatThread(threading.Thread):
         worker_id: UUID,
         api_token: str,
         interval_seconds: int = 60,
+        timeout_seconds: float = DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
         stop_event: threading.Event | None = None,
     ) -> None:
         super().__init__(daemon=True, name=f"heartbeat-{worker_id}")
@@ -32,12 +46,13 @@ class HeartbeatThread(threading.Thread):
         self._worker_id = worker_id
         self._api_token = api_token
         self._interval_seconds = interval_seconds
+        self._timeout_seconds = timeout_seconds
         self._stop_event = stop_event or threading.Event()
 
     def run(self) -> None:
         with RelaymdApiClient(
             base_url=self._orchestrator_url,
-            timeout=httpx.Timeout(ORCHESTRATOR_TIMEOUT_SECONDS),
+            timeout=httpx.Timeout(self._timeout_seconds),
             raise_on_unexpected_status=True,
         ) as client:
             while not self._stop_event.is_set():
@@ -55,7 +70,7 @@ class HeartbeatThread(threading.Thread):
     @retry(
         wait=wait_exponential(multiplier=1, min=1, max=30),
         stop=stop_after_attempt(3),
-        retry=retry_if_exception_type((httpx.HTTPError, api_errors.UnexpectedStatus)),
+        retry=retry_if_exception(_is_retryable_heartbeat_error),
         reraise=True,
     )
     def _send(self, client: RelaymdApiClient) -> None:

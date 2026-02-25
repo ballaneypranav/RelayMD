@@ -28,6 +28,9 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
+    monkeypatch.delenv("RELAYMD_INFISICAL_TOKEN", raising=False)
 
     settings = OrchestratorSettings()
 
@@ -53,6 +56,7 @@ def test_missing_yaml_path_is_non_fatal(monkeypatch, tmp_path) -> None:
     missing_config_path = tmp_path / "missing.yaml"
     monkeypatch.setenv("RELAYMD_CONFIG", str(missing_config_path))
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
 
     settings = OrchestratorSettings()
 
@@ -70,6 +74,18 @@ def test_env_secret_overrides_yaml_value(monkeypatch, tmp_path) -> None:
     assert settings.api_token == "env-token"
 
 
+def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("RELAYMD_API_TOKEN: yaml-token\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.setenv("API_TOKEN", "env-token")
+
+    settings = OrchestratorSettings()
+
+    assert settings.api_token == "env-token"
+
+
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     home_config = tmp_path / "home-config.yaml"
     home_config.write_text("api_token: home-token\n", encoding="utf-8")
@@ -80,6 +96,7 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.setattr(orchestrator_config, "DEFAULT_RELAYMD_CONFIG_PATH", str(home_config))
     monkeypatch.chdir(cwd_dir)
 
@@ -98,6 +115,7 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setenv("RELAYMD_CONFIG", str(explicit_config))
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.chdir(cwd_dir)
 
     settings = OrchestratorSettings()

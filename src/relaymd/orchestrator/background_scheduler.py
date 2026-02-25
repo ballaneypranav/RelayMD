@@ -4,8 +4,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.scheduler import (
-    HEARTBEAT_INTERVAL_SECONDS,
-    SBATCH_INTERVAL_SECONDS,
     orphaned_job_requeue_once,
     sbatch_submission_job,
     stale_worker_reaper_job,
@@ -17,7 +15,7 @@ def build_background_scheduler(settings: OrchestratorSettings) -> AsyncIOSchedul
     scheduler.add_job(
         stale_worker_reaper_job,
         trigger="interval",
-        seconds=HEARTBEAT_INTERVAL_SECONDS,
+        seconds=settings.stale_worker_reaper_interval_seconds,
         args=[settings],
         id="stale_worker_reaper",
         coalesce=True,
@@ -26,7 +24,7 @@ def build_background_scheduler(settings: OrchestratorSettings) -> AsyncIOSchedul
     scheduler.add_job(
         orphaned_job_requeue_once,
         trigger="interval",
-        seconds=HEARTBEAT_INTERVAL_SECONDS,
+        seconds=settings.orphaned_job_requeue_interval_seconds,
         id="orphaned_job_requeue",
         coalesce=True,
         max_instances=1,
@@ -34,7 +32,7 @@ def build_background_scheduler(settings: OrchestratorSettings) -> AsyncIOSchedul
     scheduler.add_job(
         sbatch_submission_job,
         trigger="interval",
-        seconds=SBATCH_INTERVAL_SECONDS,
+        seconds=settings.sbatch_submission_interval_seconds,
         args=[settings],
         id="sbatch_submission",
         coalesce=True,

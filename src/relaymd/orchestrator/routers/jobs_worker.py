@@ -1,17 +1,28 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import CheckpointReport, Job, JobAssigned, JobStatus, NoJobAvailable
+from relaymd.models import (
+    CheckpointReport,
+    Job,
+    JobAssigned,
+    JobConflict,
+    NoJobAvailable,
+)
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_session
-from relaymd.orchestrator.scheduling import assign_job_for_requesting_worker
+from relaymd.orchestrator.services import (
+    AssignmentService,
+    JobTransitionConflictError,
+    JobTransitionService,
+)
+
+from ._responses import job_transition_conflict_response
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 
@@ -26,10 +37,12 @@ async def request_job(
     session: Annotated[AsyncSession, Depends(get_session)],
     settings: Annotated[OrchestratorSettings, Depends(_get_settings)],
 ) -> JobAssigned | NoJobAvailable:
-    assigned_job = await assign_job_for_requesting_worker(
+    assigned_job = await AssignmentService(
         session,
-        requesting_worker_id=worker_id,
+        heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
         heartbeat_timeout_multiplier=settings.heartbeat_timeout_multiplier,
+    ).assign_job_for_requesting_worker(
+        requesting_worker_id=worker_id,
     )
     if assigned_job is None:
         return NoJobAvailable()
@@ -41,7 +54,16 @@ async def request_job(
     )
 
 
-@router.post("/{job_id}/checkpoint", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{job_id}/checkpoint",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
 async def report_checkpoint(
     job_id: UUID,
     payload: CheckpointReport,
@@ -51,16 +73,27 @@ async def report_checkpoint(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    now = datetime.now(UTC).replace(tzinfo=None)
-    job.latest_checkpoint_path = payload.checkpoint_path
-    job.last_checkpoint_at = now
-    job.updated_at = now
+    transitions = JobTransitionService()
+    try:
+        transitions.report_checkpoint(job, checkpoint_path=payload.checkpoint_path)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
     session.add(job)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{job_id}/complete", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{job_id}/complete",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
 async def complete_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -69,14 +102,27 @@ async def complete_job(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    job.status = JobStatus.completed
-    job.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    transitions = JobTransitionService()
+    try:
+        transitions.mark_job_completed(job)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
     session.add(job)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{job_id}/fail", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{job_id}/fail",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
 async def fail_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -85,8 +131,12 @@ async def fail_job(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
-    job.status = JobStatus.failed
-    job.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    transitions = JobTransitionService()
+    try:
+        transitions.mark_job_failed(job)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
     session.add(job)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

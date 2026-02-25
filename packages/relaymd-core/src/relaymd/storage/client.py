@@ -10,7 +10,6 @@ from botocore.exceptions import BotoCoreError, ClientError, EndpointResolutionEr
 from tenacity import (
     retry,
     retry_if_exception,
-    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -23,6 +22,25 @@ def _is_retryable_http_error(exception: BaseException) -> bool:
         status_code = exception.response.status_code
         if 400 <= status_code < 500:
             return False
+    return True
+
+
+def _is_retryable_s3_error(exception: BaseException) -> bool:
+    if isinstance(exception, (EndpointResolutionError, BotoCoreError)):
+        return True
+    if not isinstance(exception, ClientError):
+        return False
+
+    error = exception.response.get("Error", {})
+    code = str(error.get("Code", ""))
+    if code in {"AccessDenied", "InvalidBucketName", "NoSuchBucket", "NoSuchKey"}:
+        return False
+
+    response_metadata = exception.response.get("ResponseMetadata", {})
+    status_code = response_metadata.get("HTTPStatusCode")
+    if isinstance(status_code, int) and 400 <= status_code < 500:
+        return code in {"RequestTimeout", "SlowDown", "Throttling", "ThrottlingException"}
+
     return True
 
 
@@ -55,7 +73,7 @@ class StorageClient:
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=60),
         stop=stop_after_attempt(5),
-        retry=retry_if_exception_type((ClientError, EndpointResolutionError, BotoCoreError)),
+        retry=retry_if_exception(_is_retryable_s3_error),
         reraise=True,
     )
     def upload_file(self, local_path: Path, b2_key: str) -> None:

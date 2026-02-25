@@ -1,7 +1,7 @@
 # RelayMD API Client
 
 This package contains typed client code generated from the orchestrator OpenAPI schema.
-Generated artifacts are intentionally not committed; they are produced in CI/build and local bootstrap.
+Generated artifacts are intentionally not committed; regenerate after API contract changes.
 
 ## Regenerate
 

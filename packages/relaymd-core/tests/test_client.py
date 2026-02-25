@@ -116,6 +116,28 @@ def test_upload_file_raises_after_five_attempts(tmp_path: Path, monkeypatch) -> 
     assert upload_mock.call_count == 5
 
 
+def test_upload_file_access_denied_does_not_retry(tmp_path: Path, monkeypatch) -> None:
+    local_path = tmp_path / "payload.bin"
+    local_path.write_bytes(b"payload")
+    client = _build_client()
+    error = ClientError(
+        error_response={
+            "Error": {"Code": "AccessDenied", "Message": "denied"},
+            "ResponseMetadata": {"HTTPStatusCode": 403},
+        },
+        operation_name="PutObject",
+    )
+
+    _disable_retry_sleep(monkeypatch)
+    upload_mock = Mock(side_effect=error)
+    monkeypatch.setattr(cast(Any, client._s3), "upload_file", upload_mock)
+
+    with pytest.raises(ClientError):
+        client.upload_file(local_path=local_path, b2_key="jobs/1/input/payload.bin")
+
+    assert upload_mock.call_count == 1
+
+
 def test_download_file_404_does_not_retry(tmp_path: Path, monkeypatch) -> None:
     client = _build_client()
     destination = tmp_path / "downloads" / "missing.chk"
