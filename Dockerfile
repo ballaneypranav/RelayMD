@@ -7,7 +7,7 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg \
+    && apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg curl \
     && add-apt-repository -y ppa:deadsnakes/ppa \
     && mkdir -p --mode=0755 /usr/share/keyrings \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
