@@ -307,3 +307,7 @@ async def test_late_worker_callbacks_return_typed_conflicts() -> None:
         complete_response = await client.post(f"/jobs/{job.id}/complete", headers=headers)
         assert complete_response.status_code == 409
         assert complete_response.json()["error"] == "job_transition_conflict"
+
+        fail_response = await client.post(f"/jobs/{job.id}/fail", headers=headers)
+        assert fail_response.status_code == 409
+        assert fail_response.json()["error"] == "job_transition_conflict"
