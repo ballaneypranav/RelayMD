@@ -49,6 +49,9 @@ async def test_operator_endpoints_require_api_token() -> None:
         assert (
             await client.delete("/jobs/00000000-0000-0000-0000-000000000000")
         ).status_code == 401
+        assert (
+            await client.post("/jobs/00000000-0000-0000-0000-000000000000/requeue")
+        ).status_code == 401
 
 
 @pytest.mark.asyncio
@@ -117,3 +120,52 @@ async def test_create_list_get_and_cancel_paths() -> None:
             assert cancelled_running_job is not None
             assert cancelled_running_job.status == JobStatus.cancelled
             assert cancelled_running_job.assigned_worker_id is None
+
+
+@pytest.mark.asyncio
+async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(make_settings()) as (_app, client):
+        create_response = await client.post(
+            "/jobs",
+            headers=headers,
+            json={"title": "job-requeue", "input_bundle_path": "jobs/requeue/input/bundle.tar.gz"},
+        )
+        assert create_response.status_code == 200
+        original_job = create_response.json()
+        original_job_id = original_job["id"]
+
+        checkpoint_response = await client.post(
+            f"/jobs/{original_job_id}/checkpoint",
+            headers=headers,
+            json={"checkpoint_path": "jobs/requeue/checkpoints/latest"},
+        )
+        assert checkpoint_response.status_code == 204
+
+        fail_response = await client.post(f"/jobs/{original_job_id}/fail", headers=headers)
+        assert fail_response.status_code == 204
+
+        requeue_response = await client.post(f"/jobs/{original_job_id}/requeue", headers=headers)
+        assert requeue_response.status_code == 200
+        requeued_job = requeue_response.json()
+
+        assert requeued_job["id"] != original_job_id
+        assert requeued_job["title"] == "job-requeue"
+        assert requeued_job["status"] == "queued"
+        assert requeued_job["input_bundle_path"] == "jobs/requeue/input/bundle.tar.gz"
+        assert requeued_job["latest_checkpoint_path"] == "jobs/requeue/checkpoints/latest"
+        assert requeued_job["last_checkpoint_at"] is not None
+        assert requeued_job["assigned_worker_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_requeue_missing_job_returns_404() -> None:
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(make_settings()) as (_app, client):
+        response = await client.post(
+            "/jobs/00000000-0000-0000-0000-000000000000/requeue",
+            headers=headers,
+        )
+        assert response.status_code == 404
