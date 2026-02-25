@@ -14,6 +14,7 @@ from pydantic_settings.sources import DefaultSettingsSource, PydanticBaseSetting
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
 DEFAULT_RELAYMD_CONFIG_PATH = "~/.config/relaymd/config.yaml"
+DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
 
 
 class CliSettings(BaseSettings):
@@ -32,6 +33,8 @@ class CliSettings(BaseSettings):
     b2_bucket_name: str = ""
     b2_access_key_id: str = ""
     b2_secret_access_key: str = ""
+    cf_worker_url: str = DEFAULT_CF_WORKER_URL
+    cf_bearer_token: str = ""
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -56,6 +59,8 @@ class CliSettings(BaseSettings):
             "b2_bucket_name": ("B2_BUCKET_NAME",),
             "b2_access_key_id": ("B2_ACCESS_KEY_ID",),
             "b2_secret_access_key": ("B2_SECRET_ACCESS_KEY",),
+            "cf_worker_url": ("CF_WORKER_URL",),
+            "cf_bearer_token": ("CF_BEARER_TOKEN", "DOWNLOAD_BEARER_TOKEN"),
         }
         raw_init_kwargs: object = getattr(yaml_source, "init_kwargs", None)
         if isinstance(raw_init_kwargs, dict):

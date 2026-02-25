@@ -19,6 +19,8 @@ class _FakeSettings:
     b2_bucket_name = "bucket"
     b2_access_key_id = "key"
     b2_secret_access_key = "secret"
+    cf_worker_url = "https://cloudflare.example"
+    cf_bearer_token = ""
 
 
 def test_create_bundle_archive_uses_flat_archive_root(tmp_path: Path) -> None:
@@ -49,10 +51,26 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
 
     uploaded = {}
 
-    class FakeBoto3Client:
-        def upload_file(self, local_path: str, bucket_name: str, b2_key: str) -> None:
-            uploaded["path"] = Path(local_path)
-            uploaded["bucket"] = bucket_name
+    class FakeStorageClient:
+        def __init__(
+            self,
+            *,
+            b2_endpoint_url: str,
+            b2_bucket_name: str,
+            b2_access_key_id: str,
+            b2_secret_access_key: str,
+            cf_worker_url: str,
+            cf_bearer_token: str,
+        ) -> None:
+            uploaded["bucket"] = b2_bucket_name
+            assert b2_endpoint_url == "https://b2.example"
+            assert b2_access_key_id == "key"
+            assert b2_secret_access_key == "secret"
+            assert cf_worker_url == "https://cloudflare.example"
+            assert cf_bearer_token == ""
+
+        def upload_file(self, local_path: Path, b2_key: str) -> None:
+            uploaded["path"] = local_path
             uploaded["key"] = b2_key
             with tarfile.open(local_path, "r:gz") as tar:
                 uploaded["tar_names"] = tar.getnames()
@@ -69,7 +87,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     fake_http_cm.__enter__ = Mock(return_value=fake_http_client)
     fake_http_cm.__exit__ = Mock(return_value=False)
 
-    monkeypatch.setattr(submit_cmd.boto3, "client", Mock(return_value=FakeBoto3Client()))
+    monkeypatch.setattr(submit_cmd, "StorageClient", FakeStorageClient)
     monkeypatch.setattr(submit_cmd.httpx, "Client", Mock(return_value=fake_http_cm))
     monkeypatch.setattr(submit_cmd, "load_settings", lambda: _FakeSettings())
 

@@ -61,6 +61,12 @@ b2_access_key_id: your-key-id
 # B2 application key secret for uploads.
 b2_secret_access_key: your-secret
 
+# Cloudflare Worker URL used by relaymd storage downloads.
+cf_worker_url: https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev
+
+# Optional bearer token for Cloudflare Worker downloads.
+cf_bearer_token: ""
+
 # Logging
 relaymd_env: production        # development enables console renderer
 relaymd_log_level: INFO
