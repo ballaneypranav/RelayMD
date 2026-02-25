@@ -66,7 +66,8 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
 
-    send = Mock(side_effect=httpx.HTTPError("heartbeat failed"))
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    send = Mock(side_effect=httpx.ReadTimeout("heartbeat failed", request=request))
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
     monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
@@ -91,7 +92,8 @@ def test_heartbeat_retries_on_transient_failure_then_succeeds(monkeypatch) -> No
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [True]
 
-    send = Mock(side_effect=[httpx.HTTPError("temporary outage"), None])
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    send = Mock(side_effect=[httpx.ReadTimeout("temporary outage", request=request), None])
     monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", lambda **_: _FakeApiClient())
     monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
     warning = Mock()
@@ -163,6 +165,48 @@ def test_heartbeat_send_raises_on_validation_error_response(monkeypatch) -> None
     )
 
     with pytest.raises(RuntimeError):
+        thread._send(client=cast(Any, object()))
+
+    send.assert_called_once()
+
+
+def test_heartbeat_send_does_not_retry_on_http_401(monkeypatch) -> None:
+    _disable_send_retry_wait()
+    request = httpx.Request("POST", "http://orchestrator/workers/x/heartbeat")
+    response = httpx.Response(401, request=request)
+    send = Mock(
+        side_effect=httpx.HTTPStatusError(
+            "unauthorized",
+            request=request,
+            response=response,
+        )
+    )
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    with pytest.raises(httpx.HTTPStatusError):
+        thread._send(client=cast(Any, object()))
+
+    send.assert_called_once()
+
+
+def test_heartbeat_send_does_not_retry_on_unexpected_status_401(monkeypatch) -> None:
+    _disable_send_retry_wait()
+    send = Mock(side_effect=api_errors.UnexpectedStatus(401, b"unauthorized"))
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    with pytest.raises(api_errors.UnexpectedStatus):
         thread._send(client=cast(Any, object()))
 
     send.assert_called_once()

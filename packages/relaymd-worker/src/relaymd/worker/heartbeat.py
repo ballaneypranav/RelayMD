@@ -10,12 +10,25 @@ from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.http_validation_error import (
     HTTPValidationError as ApiHTTPValidationError,
 )
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
+
+
+def _is_retryable_heartbeat_error(exception: BaseException) -> bool:
+    if isinstance(exception, api_errors.UnexpectedStatus):
+        return exception.status_code >= 500
+
+    if not isinstance(exception, httpx.HTTPError):
+        return False
+
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code >= 500
+
+    return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
 
 
 class HeartbeatThread(threading.Thread):
@@ -57,7 +70,7 @@ class HeartbeatThread(threading.Thread):
     @retry(
         wait=wait_exponential(multiplier=1, min=1, max=30),
         stop=stop_after_attempt(3),
-        retry=retry_if_exception_type((httpx.HTTPError, api_errors.UnexpectedStatus)),
+        retry=retry_if_exception(_is_retryable_heartbeat_error),
         reraise=True,
     )
     def _send(self, client: RelaymdApiClient) -> None:
