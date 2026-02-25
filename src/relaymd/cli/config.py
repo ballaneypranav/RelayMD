@@ -37,8 +37,22 @@ class CliSettings(BaseSettings):
     b2_access_key_id: str = ""
     b2_secret_access_key: str = ""
     cf_worker_url: str = DEFAULT_CF_WORKER_URL
-    cf_bearer_token: str = ""
-    orchestrator_timeout_seconds: float = DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
+    cf_bearer_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "cf_bearer_token",
+            "CF_BEARER_TOKEN",
+            "DOWNLOAD_BEARER_TOKEN",
+        ),
+    )
+    orchestrator_timeout_seconds: float = Field(
+        default=DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+        validation_alias=AliasChoices(
+            "orchestrator_timeout_seconds",
+            "ORCHESTRATOR_TIMEOUT_SECONDS",
+            "RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS",
+        ),
+    )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

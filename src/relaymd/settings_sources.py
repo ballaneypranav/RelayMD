@@ -54,5 +54,7 @@ def _drop_yaml_keys_with_env_overrides(
 
     for field_name, env_keys in env_override_map.items():
         if any(os.getenv(env_key) is not None for env_key in env_keys):
+            keys_to_drop = [field_name, *env_keys]
             for config_dict in config_dicts:
-                config_dict.pop(field_name, None)
+                for key in keys_to_drop:
+                    config_dict.pop(key, None)
