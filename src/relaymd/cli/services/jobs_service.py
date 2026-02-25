@@ -60,7 +60,7 @@ class JobsService:
                 client=client,
                 x_api_token=self._context.settings.api_token,
             )
-        if isinstance(response, JobConflict):
+        if isinstance(response, HTTPValidationError | JobConflict):
             raise RuntimeError(response.to_dict())
         if response is None or not isinstance(response, JobRead):
             raise RuntimeError("Failed to parse requeue response")

@@ -47,8 +47,13 @@ def create_bundle_archive(input_dir: Path, archive_path: Path) -> None:
             tar.add(path, arcname=str(arcname))
 
 
-def upload_bundle(local_archive: Path, b2_key: str) -> None:
-    service = SubmitService(create_cli_context())
+def upload_bundle(
+    local_archive: Path,
+    b2_key: str,
+    *,
+    service: SubmitService | None = None,
+) -> None:
+    submit_service = service or SubmitService(create_cli_context())
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -57,12 +62,13 @@ def upload_bundle(local_archive: Path, b2_key: str) -> None:
         transient=True,
     ) as progress:
         task_id = progress.add_task("Uploading bundle to B2...", total=None)
-        service.upload_bundle(local_archive=local_archive, b2_key=b2_key)
+        submit_service.upload_bundle(local_archive=local_archive, b2_key=b2_key)
         progress.update(task_id, description="Upload complete")
 
 
-def register_job(title: str, b2_key: str) -> str:
-    return SubmitService(create_cli_context()).register_job(title=title, b2_key=b2_key)
+def register_job(title: str, b2_key: str, *, service: SubmitService | None = None) -> str:
+    submit_service = service or SubmitService(create_cli_context())
+    return submit_service.register_job(title=title, b2_key=b2_key)
 
 
 def submit(
@@ -93,12 +99,13 @@ def submit(
     b2_key = f"jobs/{job_id}/input/bundle.tar.gz"
 
     try:
+        submit_service = SubmitService(create_cli_context())
         with tempfile.TemporaryDirectory() as tmpdir:
             archive_path = Path(tmpdir) / "bundle.tar.gz"
             create_bundle_archive(input_dir, archive_path)
-            upload_bundle(archive_path, b2_key)
+            upload_bundle(archive_path, b2_key, service=submit_service)
 
-        created_job_id = register_job(title, b2_key)
+        created_job_id = register_job(title, b2_key, service=submit_service)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to submit job:[/red] {exc}")
         raise typer.Exit(code=1) from exc

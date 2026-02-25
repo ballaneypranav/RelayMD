@@ -87,7 +87,10 @@ def test_jobs_service_list_jobs_returns_typed_payload(monkeypatch) -> None:
 @pytest.mark.parametrize("payload", [None, "not-a-list"])
 def test_jobs_service_list_jobs_rejects_non_list(monkeypatch, payload: object) -> None:
     context = _FakeContext()
-    monkeypatch.setattr("relaymd.cli.services.jobs_service.list_jobs_jobs_get.sync", Mock(return_value=payload))
+    monkeypatch.setattr(
+        "relaymd.cli.services.jobs_service.list_jobs_jobs_get.sync",
+        Mock(return_value=payload),
+    )
 
     with pytest.raises(RuntimeError, match="Failed to parse list jobs response"):
         JobsService(context).list_jobs()
@@ -95,7 +98,10 @@ def test_jobs_service_list_jobs_rejects_non_list(monkeypatch, payload: object) -
 
 def test_jobs_service_list_jobs_rejects_unexpected_item_type(monkeypatch) -> None:
     context = _FakeContext()
-    monkeypatch.setattr("relaymd.cli.services.jobs_service.list_jobs_jobs_get.sync", Mock(return_value=[object()]))
+    monkeypatch.setattr(
+        "relaymd.cli.services.jobs_service.list_jobs_jobs_get.sync",
+        Mock(return_value=[object()]),
+    )
 
     with pytest.raises(RuntimeError, match="Unexpected response model"):
         JobsService(context).list_jobs()
@@ -103,7 +109,10 @@ def test_jobs_service_list_jobs_rejects_unexpected_item_type(monkeypatch) -> Non
 
 def test_jobs_service_get_job_rejects_non_job_model(monkeypatch) -> None:
     context = _FakeContext()
-    monkeypatch.setattr("relaymd.cli.services.jobs_service.get_job_jobs_job_id_get.sync", Mock(return_value=None))
+    monkeypatch.setattr(
+        "relaymd.cli.services.jobs_service.get_job_jobs_job_id_get.sync",
+        Mock(return_value=None),
+    )
 
     with pytest.raises(RuntimeError, match="Failed to parse get job response"):
         JobsService(context).get_job(job_id=uuid4())
@@ -147,6 +156,13 @@ def test_jobs_service_requeue_job_handles_success_and_errors(monkeypatch) -> Non
 
     monkeypatch.setattr(
         "relaymd.cli.services.jobs_service.requeue_job_jobs_job_id_requeue_post.sync",
+        Mock(return_value=HTTPValidationError.from_dict({"detail": []})),
+    )
+    with pytest.raises(RuntimeError):
+        service.requeue_job(job_id=uuid4())
+
+    monkeypatch.setattr(
+        "relaymd.cli.services.jobs_service.requeue_job_jobs_job_id_requeue_post.sync",
         Mock(return_value=None),
     )
     with pytest.raises(RuntimeError, match="Failed to parse requeue response"):
@@ -164,7 +180,10 @@ def test_submit_service_upload_bundle_delegates_to_storage() -> None:
 
 def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:
     context = _FakeContext()
-    monkeypatch.setattr("relaymd.cli.services.submit_service.create_job_jobs_post.sync", Mock(return_value=None))
+    monkeypatch.setattr(
+        "relaymd.cli.services.submit_service.create_job_jobs_post.sync",
+        Mock(return_value=None),
+    )
 
     with pytest.raises(RuntimeError, match="Failed to parse create job response"):
         SubmitService(context).register_job(title="train", b2_key="jobs/a/input/bundle.tar.gz")

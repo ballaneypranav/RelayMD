@@ -5,6 +5,7 @@ import tarfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import typer
@@ -76,7 +77,8 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
             return str(created_job.id)
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
-    monkeypatch.setattr(submit_cmd, "create_cli_context", lambda: object())
+    create_context = Mock(return_value=object())
+    monkeypatch.setattr(submit_cmd, "create_cli_context", create_context)
 
     submit_cmd.submit(
         input_dir=input_dir,
@@ -96,6 +98,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     assert uploaded["worker_config"] == worker_payload
     assert uploaded["key"].startswith("jobs/")
     assert uploaded["key"].endswith("/input/bundle.tar.gz")
+    create_context.assert_called_once_with()
 
 
 def test_submit_aborts_when_worker_config_missing_and_no_command(tmp_path: Path) -> None:
