@@ -12,6 +12,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
       - run: uv run pytest
       - name: Upload coverage report
