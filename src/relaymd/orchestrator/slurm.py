@@ -11,7 +11,7 @@ from relaymd.orchestrator.config import ClusterConfig
 
 
 def _template_environment() -> Environment:
-    repo_root = Path(__file__).resolve().parents[5]
+    repo_root = Path(__file__).resolve().parents[3]
     return Environment(
         loader=FileSystemLoader(str(repo_root)),
         autoescape=False,

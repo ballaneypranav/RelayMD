@@ -6,7 +6,7 @@ from jinja2 import Environment, FileSystemLoader
 
 
 def _render_template(payload: dict[str, object]) -> str:
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = Path(__file__).resolve().parents[2]
     environment = Environment(
         loader=FileSystemLoader(str(repo_root)),
         autoescape=False,

@@ -21,7 +21,7 @@ def up(
         import uvicorn
     except ModuleNotFoundError as exc:
         typer.echo(
-            "relaymd-orchestrator is not installed. Run: uv sync",
+            "relaymd dependencies are not installed. Run: uv sync",
             err=True,
         )
         raise typer.Exit(code=1) from exc
@@ -31,7 +31,7 @@ def up(
     except ModuleNotFoundError as exc:
         if exc.name and exc.name.startswith("relaymd.orchestrator"):
             typer.echo(
-                "relaymd-orchestrator is not installed. Run: uv sync",
+                "relaymd dependencies are not installed. Run: uv sync",
                 err=True,
             )
             raise typer.Exit(code=1) from exc

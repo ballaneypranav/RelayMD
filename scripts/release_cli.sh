@@ -2,14 +2,14 @@
 set -euo pipefail
 
 usage() {
-    cat <<'EOF'
+    cat <<'USAGE_EOF'
 Usage:
   scripts/release_cli.sh <version> [--push]
 
 Examples:
   scripts/release_cli.sh 0.1.1
   scripts/release_cli.sh 0.1.1 --push
-EOF
+USAGE_EOF
 }
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
@@ -34,8 +34,8 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PYPROJECT_PATH="packages/relaymd-cli/pyproject.toml"
-INIT_PATH="packages/relaymd-cli/src/relaymd/cli/__init__.py"
+PYPROJECT_PATH="pyproject.toml"
+INIT_PATH="src/relaymd/cli/__init__.py"
 
 CURRENT_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$PYPROJECT_PATH" | head -n 1)"
 if [[ -z "$CURRENT_VERSION" ]]; then
@@ -59,7 +59,7 @@ sed -i "s/^__version__ = \".*\"$/__version__ = \"$VERSION\"/" "$INIT_PATH"
 UV_CACHE_DIR=/tmp/uv-cache uv lock
 
 git add "$PYPROJECT_PATH" "$INIT_PATH" uv.lock
-git commit -m "Bump relaymd-cli version to $VERSION"
+git commit -m "Bump relaymd version to $VERSION"
 git tag "v$VERSION"
 
 if [[ "$PUSH" -eq 1 ]]; then
@@ -67,7 +67,7 @@ if [[ "$PUSH" -eq 1 ]]; then
     git push origin "v$VERSION"
 fi
 
-echo "Released relaymd-cli $VERSION"
+echo "Released relaymd $VERSION"
 if [[ "$PUSH" -eq 0 ]]; then
     echo "Next: git push origin main && git push origin v$VERSION"
 fi

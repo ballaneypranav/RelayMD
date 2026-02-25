@@ -40,8 +40,7 @@ RUN python -m pip install --no-cache-dir \
 COPY packages ./packages
 
 RUN python -m pip install --no-cache-dir \
-    ./packages/relaymd-models \
-    ./packages/relaymd-storage \
+    ./packages/relaymd-core \
     ./packages/relaymd-worker
 
 ENTRYPOINT ["python", "-m", "relaymd.worker"]
