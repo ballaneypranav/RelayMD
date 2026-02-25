@@ -163,6 +163,6 @@ def test_heartbeat_send_raises_on_validation_error_response(monkeypatch) -> None
     )
 
     with pytest.raises(RuntimeError):
-        thread._send(client=object())
+        thread._send(client=cast(Any, object()))
 
     send.assert_called_once()

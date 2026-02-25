@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from relaymd.cli import context as cli_context
+from relaymd.cli.config import CliSettings
 
 
-def _settings(**overrides):
-    base = {
+def _settings(**overrides: object) -> CliSettings:
+    base: dict[str, object] = {
         "orchestrator_url": "https://orchestrator.example/",
         "orchestrator_timeout_seconds": 17.5,
+        "api_token": "test-token",
         "b2_endpoint_url": "https://b2.example",
         "b2_bucket_name": "bucket",
         "b2_access_key_id": "access",
@@ -17,7 +17,7 @@ def _settings(**overrides):
         "cf_bearer_token": "token",
     }
     base.update(overrides)
-    return SimpleNamespace(**base)
+    return CliSettings.model_validate(base)
 
 
 def test_api_client_uses_trimmed_base_url_and_timeout(monkeypatch) -> None:

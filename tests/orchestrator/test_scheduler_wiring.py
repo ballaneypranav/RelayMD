@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.orchestrator import background_scheduler, scheduler, scheduling
 from relaymd.orchestrator.config import OrchestratorSettings
 
 
-def _settings(**overrides) -> OrchestratorSettings:
-    base = {
+def _settings(**overrides: object) -> OrchestratorSettings:
+    base: dict[str, object] = {
         "database_url": "sqlite+aiosqlite:///:memory:",
         "api_token": "test-token",
     }
     base.update(overrides)
-    return OrchestratorSettings(**base)
+    return OrchestratorSettings.model_validate(base)
 
 
 class _SessionContextManager:
@@ -83,7 +85,7 @@ async def test_scheduling_assign_job_for_requesting_worker_passes_args(monkeypat
             return expected
 
     monkeypatch.setattr(scheduling, "AssignmentService", FakeAssignmentService)
-    session = object()
+    session = cast(AsyncSession, object())
     worker_id = uuid4()
 
     result = await scheduling.assign_job_for_requesting_worker(
@@ -123,7 +125,7 @@ async def test_scheduling_assign_job_passes_args(monkeypatch) -> None:
             return expected
 
     monkeypatch.setattr(scheduling, "AssignmentService", FakeAssignmentService)
-    session = object()
+    session = cast(AsyncSession, object())
 
     result = await scheduling.assign_job(
         session,
@@ -144,23 +146,19 @@ async def test_scheduler_assign_job_passes_settings_to_service(monkeypatch) -> N
     captured: dict[str, object] = {}
     expected = object()
 
-    class FakeAssignmentService:
-        def __init__(
-            self,
-            session: object,
-            *,
-            heartbeat_interval_seconds: int,
-            heartbeat_timeout_multiplier: float,
-        ) -> None:
-            captured["session"] = session
-            captured["interval"] = heartbeat_interval_seconds
-            captured["timeout_multiplier"] = heartbeat_timeout_multiplier
+    async def fake_assign_job(
+        session: AsyncSession,
+        *,
+        heartbeat_interval_seconds: int,
+        heartbeat_timeout_multiplier: float,
+    ) -> object:
+        captured["session"] = session
+        captured["interval"] = heartbeat_interval_seconds
+        captured["timeout_multiplier"] = heartbeat_timeout_multiplier
+        return expected
 
-        async def assign_next_job(self) -> object:
-            return expected
-
-    monkeypatch.setattr(scheduler, "AssignmentService", FakeAssignmentService)
-    session = object()
+    monkeypatch.setattr(scheduler.scheduling, "assign_job", fake_assign_job)
+    session = cast(AsyncSession, object())
     settings = _settings(heartbeat_interval_seconds=6, heartbeat_timeout_multiplier=1.2)
 
     result = await scheduler.assign_job(session, settings)
