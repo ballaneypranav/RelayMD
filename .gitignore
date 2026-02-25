@@ -28,7 +28,7 @@ env/
 
 # Local databases
 relaymd.db
-relaymd-config.yaml # project-local config override (see deploy/config.example.yaml)
+relaymd-config.yaml
 
 # Infisical
 .infisical.json
