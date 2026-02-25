@@ -42,6 +42,7 @@ members = [
 dev = [
     "relaymd-worker",
     "pytest>=8",
+    "pytest-cov",
     "pytest-asyncio",
     "httpx",
     "respx",
@@ -60,11 +61,20 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
-addopts = ["--import-mode=importlib"]
+addopts = "--import-mode=importlib --cov=relaymd --cov=packages/relaymd-core/src/relaymd --cov-report=term-missing --cov-report=xml"
 pythonpath = [
     "src",
     "packages/relaymd-core/src",
 ]
+
+[tool.coverage.run]
+branch = true
+omit = ["*/tests/*", "*/__main__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 0
 
 [tool.pyright]
 pythonVersion = "3.11"
