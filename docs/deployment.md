@@ -9,6 +9,7 @@ Create `~/.config/relaymd/config.yaml` from the canonical template:
 ```bash
 mkdir -p ~/.config/relaymd
 cp deploy/config.example.yaml ~/.config/relaymd/config.yaml
+chmod 600 ~/.config/relaymd/config.yaml
 ```
 
 SQLite recommendation: keep the database in a stable persistent directory (for example `/srv/relaymd/orchestrator/relaymd.db`), not `/tmp`.
