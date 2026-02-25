@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import signal
 import tarfile
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import ANY, Mock
 
@@ -173,10 +174,10 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
         lambda *args, **kwargs: heartbeat_thread,
     )
 
-    captured_handler: dict[str, object] = {}
+    captured_handler: dict[str, Callable[[int, object | None], None]] = {}
     monkeypatch.setattr("relaymd.worker.main.signal.getsignal", lambda *_: Mock())
 
-    def register_handler(signum: int, handler: object) -> None:
+    def register_handler(signum: int, handler: Callable[[int, object | None], None]) -> None:
         if signum == signal.SIGTERM:
             captured_handler["handler"] = handler
 
