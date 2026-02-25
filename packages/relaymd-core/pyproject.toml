@@ -11,6 +11,7 @@ dependencies = [
     "sqlmodel>=0.0.18",
     "boto3",
     "httpx",
+    "tenacity>=8.2",
 ]
 
 [tool.pytest.ini_options]

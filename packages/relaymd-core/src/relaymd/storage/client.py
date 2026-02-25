@@ -5,6 +5,24 @@ from urllib.parse import quote
 
 import boto3
 import httpx
+from botocore.exceptions import BotoCoreError, ClientError, EndpointResolutionError
+from tenacity import (
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+
+def _is_retryable_http_error(exception: BaseException) -> bool:
+    if not isinstance(exception, httpx.HTTPError):
+        return False
+    if isinstance(exception, httpx.HTTPStatusError):
+        status_code = exception.response.status_code
+        if 400 <= status_code < 500:
+            return False
+    return True
 
 
 class StorageClient:
@@ -27,9 +45,21 @@ class StorageClient:
             aws_secret_access_key=b2_secret_access_key,
         )
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception_type((ClientError, EndpointResolutionError, BotoCoreError)),
+        reraise=True,
+    )
     def upload_file(self, local_path: Path, b2_key: str) -> None:
         self._s3.upload_file(str(local_path), self._b2_bucket_name, b2_key)
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception(_is_retryable_http_error),
+        reraise=True,
+    )
     def download_file(self, b2_key: str, local_path: Path) -> None:
         encoded_key = quote(b2_key.lstrip("/"), safe="/")
         url = f"{self._cf_worker_url}/files/{encoded_key}"
