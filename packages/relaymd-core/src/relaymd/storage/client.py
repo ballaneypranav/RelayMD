@@ -85,5 +85,8 @@ class StorageClient:
                     file_obj.write(chunk)
 
     def list_keys(self, prefix: str) -> list[str]:
-        response = self._s3.list_objects_v2(Bucket=self._b2_bucket_name, Prefix=prefix)
-        return [obj["Key"] for obj in response.get("Contents", [])]
+        paginator = self._s3.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=self._b2_bucket_name, Prefix=prefix):
+            keys.extend(obj["Key"] for obj in page.get("Contents", []))
+        return keys

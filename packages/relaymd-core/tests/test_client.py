@@ -148,3 +148,22 @@ def test_upload_file_passes_transfer_config(tmp_path: Path) -> None:
         _, kwargs = upload_spy.call_args
         assert "Config" in kwargs
         assert isinstance(kwargs["Config"], TransferConfig)
+
+
+def test_list_keys_paginates_beyond_1000_results() -> None:
+    prefix = "jobs/huge/checkpoints/"
+    object_count = 1005
+
+    with mock_aws():
+        client = _build_client()
+        client._s3.create_bucket(Bucket="relaymd-bucket")
+
+        for index in range(object_count):
+            key = f"{prefix}{index:04d}.chk"
+            client._s3.put_object(Bucket="relaymd-bucket", Key=key, Body=b"x")
+
+        keys = client.list_keys(prefix=prefix)
+
+    assert len(keys) == object_count
+    assert keys[0] == f"{prefix}0000.chk"
+    assert keys[-1] == f"{prefix}1004.chk"
