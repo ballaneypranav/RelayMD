@@ -34,16 +34,19 @@ This document records all concrete framework and tooling decisions for the Relay
 
 ```
 relaymd/
+├── src/
+│   └── relaymd/
+│       ├── cli/                # Operator CLI commands
+│       └── orchestrator/       # FastAPI app, DB, scheduler, sbatch
 ├── packages/
-│   ├── relaymd-models/        # Shared Pydantic/SQLModel types
-│   ├── relaymd-storage/       # Dual-endpoint StorageClient (boto3 + httpx)
-│   ├── relaymd-worker/        # Worker bootstrap, main loop, heartbeat
-│   ├── relaymd-orchestrator/  # FastAPI app, DB, scheduler, sbatch
-│   └── relaymd-cli/           # Operator CLI (submit, jobs, workers)
+│   ├── relaymd-core/          # Shared models + storage only
+│   │   └── src/relaymd/
+│   │       ├── models/
+│   │       └── storage/
+│   └── relaymd-worker/        # Worker bootstrap, main loop, heartbeat
 ├── deploy/
 │   ├── slurm/                 # SLURM .sbatch.j2 templates + cluster configs
 │   ├── salad/                 # Salad Cloud container group config
-│   ├── systemd/               # systemd user service unit
 │   ├── tmux/                  # tmux launcher script
 │   └── config.example.yaml    # Canonical reference config for orchestrator + CLI
 ├── docs/
@@ -54,10 +57,10 @@ relaymd/
 │   └── storage-layout.md
 ├── ui/                        # Streamlit monitoring dashboard
 ├── Dockerfile                 # Worker container image
-└── pyproject.toml             # Root uv workspace config
+└── pyproject.toml             # Root relaymd package + workspace config
 ```
 
-`relaymd-models` and `relaymd-storage` are workspace dependencies of all other packages. A `uv` workspace at the repo root manages all five packages with a single lockfile.
+`relaymd-core` is the shared dependency layer: it carries only `relaymd.models` + `relaymd.storage`. The worker container installs `relaymd-core` + `relaymd-worker` only; it does not install `relaymd` (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A `uv` workspace at the repo root manages these three packages with one lockfile.
 
 ---
 
@@ -231,7 +234,7 @@ A `threading.Thread` (daemon=True). The main loop is synchronous (it blocks on a
 
 ### Package
 
-`relaymd-cli` is a uv workspace member in `packages/relaymd-cli/`. It is **not** installed inside the worker container — it is strictly a login-node tool.
+The operator CLI now lives in the root `relaymd` package (`src/relaymd/cli`). It is **not** installed inside the worker container — it is strictly a login-node tool.
 
 ### Distribution
 
@@ -301,7 +304,7 @@ Endpoint selection is automatic by operation type. Used by the orchestrator, wor
 
 ## Shared Data Models
 
-All API request/response models live in `relaymd-models`, shared by all packages. If a field changes, it changes in one place and all consumers break loudly at import time rather than silently at runtime.
+All API request/response models live in `relaymd-core` under `relaymd.models`, shared by `relaymd` and `relaymd-worker`. If a field changes, it changes in one place and all consumers break loudly at import time rather than silently at runtime.
 
 ---
 

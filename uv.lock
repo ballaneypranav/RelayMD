@@ -4,24 +4,9 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
-    "relaymd-cli",
-    "relaymd-models",
-    "relaymd-orchestrator",
-    "relaymd-storage",
+    "relaymd",
+    "relaymd-core",
     "relaymd-worker",
-]
-
-[manifest.dependency-groups]
-dev = [
-    { name = "freezegun" },
-    { name = "httpx" },
-    { name = "moto", extras = ["s3"] },
-    { name = "pyinstaller" },
-    { name = "pyright" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-asyncio" },
-    { name = "respx" },
-    { name = "ruff" },
 ]
 
 [[package]]
@@ -1131,106 +1116,103 @@ wheels = [
 ]
 
 [[package]]
-name = "relaymd-cli"
+name = "relaymd"
 version = "0.1.4"
-source = { editable = "packages/relaymd-cli" }
+source = { editable = "." }
 dependencies = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
     { name = "boto3" },
+    { name = "fastapi" },
     { name = "httpx" },
+    { name = "jinja2" },
+    { name = "orjson" },
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "pyyaml" },
+    { name = "relaymd-core" },
     { name = "rich" },
+    { name = "sqlmodel" },
+    { name = "structlog" },
     { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "freezegun" },
+    { name = "httpx" },
+    { name = "moto", extra = ["s3"] },
+    { name = "pyinstaller" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "relaymd-worker" },
+    { name = "respx" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite" },
+    { name = "alembic" },
     { name = "boto3" },
+    { name = "fastapi", specifier = ">=0.111" },
     { name = "httpx" },
-    { name = "pydantic-settings", extras = ["yaml"] },
+    { name = "jinja2" },
+    { name = "orjson" },
+    { name = "pydantic-settings", extras = ["yaml"], specifier = ">=2.0" },
     { name = "pyyaml" },
+    { name = "relaymd-core", editable = "packages/relaymd-core" },
     { name = "rich" },
+    { name = "sqlmodel", specifier = ">=0.0.18" },
+    { name = "structlog" },
     { name = "typer" },
+    { name = "uvicorn", extras = ["standard"] },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "freezegun" },
+    { name = "httpx" },
+    { name = "moto", extras = ["s3"] },
+    { name = "pyinstaller" },
+    { name = "pyright" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-asyncio" },
+    { name = "relaymd-worker", editable = "packages/relaymd-worker" },
+    { name = "respx" },
+    { name = "ruff" },
 ]
 
 [[package]]
-name = "relaymd-models"
+name = "relaymd-core"
 version = "0.1.0"
-source = { editable = "packages/relaymd-models" }
+source = { editable = "packages/relaymd-core" }
 dependencies = [
+    { name = "boto3" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "sqlmodel" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3" },
+    { name = "httpx" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "sqlmodel", specifier = ">=0.0.18" },
 ]
 
 [[package]]
-name = "relaymd-orchestrator"
-version = "0.1.0"
-source = { editable = "packages/relaymd-orchestrator" }
-dependencies = [
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "orjson" },
-    { name = "pydantic-settings", extra = ["yaml"] },
-    { name = "relaymd-models" },
-    { name = "relaymd-storage" },
-    { name = "sqlmodel" },
-    { name = "structlog" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiosqlite" },
-    { name = "alembic" },
-    { name = "fastapi", specifier = ">=0.111" },
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "orjson" },
-    { name = "pydantic-settings", extras = ["yaml"], specifier = ">=2.0" },
-    { name = "relaymd-models", editable = "packages/relaymd-models" },
-    { name = "relaymd-storage", editable = "packages/relaymd-storage" },
-    { name = "sqlmodel", specifier = ">=0.0.18" },
-    { name = "structlog" },
-    { name = "uvicorn", extras = ["standard"] },
-]
-
-[[package]]
-name = "relaymd-storage"
-version = "0.1.0"
-source = { editable = "packages/relaymd-storage" }
-dependencies = [
-    { name = "boto3" },
-    { name = "httpx" },
-    { name = "relaymd-models" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3" },
-    { name = "httpx" },
-    { name = "relaymd-models", editable = "packages/relaymd-models" },
-]
-
-[[package]]
 name = "relaymd-worker"
 version = "0.1.0"
-source = { virtual = "packages/relaymd-worker" }
+source = { editable = "packages/relaymd-worker" }
 dependencies = [
     { name = "httpx" },
     { name = "orjson" },
     { name = "pydantic-settings" },
     { name = "pynvml" },
-    { name = "relaymd-models" },
-    { name = "relaymd-storage" },
+    { name = "relaymd-core" },
     { name = "structlog" },
 ]
 
@@ -1240,8 +1222,7 @@ requires-dist = [
     { name = "orjson" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pynvml" },
-    { name = "relaymd-models", editable = "packages/relaymd-models" },
-    { name = "relaymd-storage", editable = "packages/relaymd-storage" },
+    { name = "relaymd-core", editable = "packages/relaymd-core" },
     { name = "structlog" },
 ]
 

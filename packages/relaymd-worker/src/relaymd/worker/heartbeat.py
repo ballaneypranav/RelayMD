@@ -4,6 +4,7 @@ import threading
 from uuid import UUID
 
 import httpx
+
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)

@@ -1,14 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "relaymd"
+version = "0.1.4"
+requires-python = ">=3.11"
+dependencies = [
+    "relaymd-core",
+    "fastapi>=0.111",
+    "uvicorn[standard]",
+    "sqlmodel>=0.0.18",
+    "aiosqlite",
+    "alembic",
+    "pydantic-settings[yaml]>=2.0",
+    "orjson",
+    "structlog",
+    "jinja2",
+    "httpx",
+    "boto3",
+    "typer",
+    "rich",
+    "pyyaml",
+]
+
+[project.scripts]
+relaymd = "relaymd.cli.__main__:app"
+relaymd-orchestrator = "relaymd.orchestrator.main:start"
+
+[tool.uv.sources]
+relaymd-core = { workspace = true }
+relaymd-worker = { workspace = true }
+
 [tool.uv.workspace]
 members = [
-    "packages/relaymd-models",
-    "packages/relaymd-storage",
+    "packages/relaymd-core",
     "packages/relaymd-worker",
-    "packages/relaymd-orchestrator",
-    "packages/relaymd-cli",
 ]
 
 [dependency-groups]
 dev = [
+    "relaymd-worker",
     "pytest>=8",
     "pytest-asyncio",
     "httpx",
@@ -30,20 +62,19 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
 pythonpath = [
-    "packages/relaymd-models/src",
-    "packages/relaymd-storage/src",
-    "packages/relaymd-worker/src",
-    "packages/relaymd-orchestrator/src",
-    "packages/relaymd-cli/src",
+    "src",
+    "packages/relaymd-core/src",
 ]
 
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 extraPaths = [
-    "packages/relaymd-models/src",
-    "packages/relaymd-storage/src",
-    "packages/relaymd-orchestrator/src",
-    "packages/relaymd-worker/src",
-    "packages/relaymd-cli/src",
+    "src",
+    "packages/relaymd-core/src",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/relaymd"]

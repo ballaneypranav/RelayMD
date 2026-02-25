@@ -1,8 +1,0 @@
-[project]
-name = "relaymd-storage"
-version = "0.1.0"
-requires-python = ">=3.11"
-dependencies = ["boto3", "httpx", "relaymd-models"]
-
-[tool.uv.sources]
-relaymd-models = { workspace = true }
