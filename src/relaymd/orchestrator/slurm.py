@@ -10,6 +10,11 @@ from jinja2 import Environment, PackageLoader
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 
 
+def _shell_single_quote(value: str) -> str:
+    # Always return a single-quoted shell literal.
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def _template_environment() -> Environment:
     return Environment(
         loader=PackageLoader("relaymd.orchestrator", "templates"),
@@ -31,7 +36,7 @@ def _render_sbatch_script(
         gpu_count=cluster.gpu_count,
         wall_time=cluster.wall_time,
         sif_path=cluster.sif_path,
-        infisical_token=settings.infisical_token,
+        infisical_token_shell_quoted=_shell_single_quote(settings.infisical_token),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
         worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,

@@ -92,7 +92,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert "#SBATCH --gres=gpu:a100:2" in rendered
     assert "#SBATCH --export=ALL" in rendered
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
-    assert 'export INFISICAL_BOOTSTRAP_TOKEN="client-id:client-secret"' in rendered
+    assert "export INFISICAL_BOOTSTRAP_TOKEN='client-id:client-secret'" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
@@ -141,6 +141,48 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         await submit_slurm_job(cluster, settings)
 
     assert kill_called["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = kwargs
+        script_path = str(args[2])
+        captured["script"] = Path(script_path).read_text(encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        gpu_type="a100",
+        gpu_count=2,
+        sif_path="/shared/relaymd.sif",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="tok$HOME`date`'abc\\def",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "export INFISICAL_BOOTSTRAP_TOKEN='tok$HOME`date`'\"'\"'abc\\def'" in rendered
 
 
 @pytest.mark.asyncio

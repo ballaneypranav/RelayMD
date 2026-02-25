@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-export INFISICAL_BOOTSTRAP_TOKEN="{{ infisical_token }}"
+export INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token_shell_quoted }}
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
