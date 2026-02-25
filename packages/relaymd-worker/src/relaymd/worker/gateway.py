@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Protocol, cast
 from uuid import UUID
 
@@ -107,6 +108,25 @@ class ApiOrchestratorGateway:
             return False
         return exc.status_code == 409
 
+    def _call_with_conflict_handling(
+        self,
+        *,
+        job_id: UUID,
+        log_event: str,
+        api_call: Callable[[], object],
+    ) -> None:
+        try:
+            response = api_call()
+        except Exception as exc:  # noqa: BLE001
+            if self._is_conflict_exception(exc):
+                self._logger.warning(log_event, job_id=str(job_id))
+                return
+            raise
+
+        self._raise_if_validation_error(response)
+        if self._is_conflict_response(response):
+            self._logger.warning(log_event, job_id=str(job_id))
+
     def register_worker(
         self,
         *,
@@ -145,62 +165,38 @@ class ApiOrchestratorGateway:
         return response
 
     def report_checkpoint(self, *, job_id: UUID, checkpoint_path: str) -> None:
-        try:
-            response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
+        self._call_with_conflict_handling(
+            job_id=job_id,
+            log_event="checkpoint_conflict_ignored",
+            api_call=lambda: report_checkpoint_jobs_job_id_checkpoint_post.sync(
                 job_id=job_id,
                 client=self.client,
                 body=ApiCheckpointReport(checkpoint_path=checkpoint_path),
                 x_api_token=self._api_token,
-            )
-        except Exception as exc:  # noqa: BLE001
-            if self._is_conflict_exception(exc):
-                self._logger.warning(
-                    "checkpoint_conflict_ignored",
-                    job_id=str(job_id),
-                )
-                return
-            raise
-
-        self._raise_if_validation_error(response)
-        if self._is_conflict_response(response):
-            self._logger.warning(
-                "checkpoint_conflict_ignored",
-                job_id=str(job_id),
-            )
+            ),
+        )
 
     def complete_job(self, *, job_id: UUID) -> None:
-        try:
-            response = complete_job_jobs_job_id_complete_post.sync(
+        self._call_with_conflict_handling(
+            job_id=job_id,
+            log_event="complete_conflict_ignored",
+            api_call=lambda: complete_job_jobs_job_id_complete_post.sync(
                 job_id=job_id,
                 client=self.client,
                 x_api_token=self._api_token,
-            )
-        except Exception as exc:  # noqa: BLE001
-            if self._is_conflict_exception(exc):
-                self._logger.warning("complete_conflict_ignored", job_id=str(job_id))
-                return
-            raise
-
-        self._raise_if_validation_error(response)
-        if self._is_conflict_response(response):
-            self._logger.warning("complete_conflict_ignored", job_id=str(job_id))
+            ),
+        )
 
     def fail_job(self, *, job_id: UUID) -> None:
-        try:
-            response = fail_job_jobs_job_id_fail_post.sync(
+        self._call_with_conflict_handling(
+            job_id=job_id,
+            log_event="fail_conflict_ignored",
+            api_call=lambda: fail_job_jobs_job_id_fail_post.sync(
                 job_id=job_id,
                 client=self.client,
                 x_api_token=self._api_token,
-            )
-        except Exception as exc:  # noqa: BLE001
-            if self._is_conflict_exception(exc):
-                self._logger.warning("fail_conflict_ignored", job_id=str(job_id))
-                return
-            raise
-
-        self._raise_if_validation_error(response)
-        if self._is_conflict_response(response):
-            self._logger.warning("fail_conflict_ignored", job_id=str(job_id))
+            ),
+        )
 
     def deregister_worker(self, *, worker_id: UUID) -> None:
         try:
