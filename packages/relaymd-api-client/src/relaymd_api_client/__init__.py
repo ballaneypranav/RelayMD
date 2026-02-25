@@ -1,1 +1,8 @@
-"""Typed RelayMD API client package generated from the orchestrator OpenAPI schema."""
+"""A client library for accessing FastAPI"""
+
+from .client import AuthenticatedClient, Client
+
+__all__ = (
+    "AuthenticatedClient",
+    "Client",
+)
