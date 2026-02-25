@@ -9,21 +9,13 @@ from typing import cast
 from unittest.mock import ANY, Mock
 
 import pytest
+from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
+from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
+from relaymd_api_client.models.register_worker_workers_register_post_response_register_worker_workers_register_post import (
+    RegisterWorkerWorkersRegisterPostResponseRegisterWorkerWorkersRegisterPost as ApiWorkerRegisterResponse,
+)
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.main import run_worker
-
-
-class FakeResponse:
-    def __init__(self, status_code: int, payload: dict[str, object]) -> None:
-        self.status_code = status_code
-        self._payload = payload
-
-    def json(self) -> dict[str, object]:
-        return self._payload
-
-    def raise_for_status(self) -> None:
-        if self.status_code >= 400:
-            raise RuntimeError(f"HTTP error: {self.status_code}")
 
 
 def _write_bundle_tar(local_path: Path) -> None:
@@ -84,29 +76,63 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     monkeypatch.setattr("relaymd.worker.main.subprocess.Popen", lambda *args, **kwargs: process)
     monkeypatch.setattr("relaymd.worker.main.time.sleep", lambda *_: None)
 
-    client = Mock()
-    client.post.side_effect = [
-        FakeResponse(200, {"worker_id": "0a05f971-0f5b-46cb-bd86-d13133f998aa"}),
-        FakeResponse(
-            200,
-            {
-                "status": "assigned",
-                "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
-                "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
-                "latest_checkpoint_path": "jobs/job-1/checkpoints/latest",
-            },
-        ),
-        FakeResponse(204, {}),
-        FakeResponse(204, {}),
-        FakeResponse(200, {"status": "no_job_available"}),
-    ]
+    class _FakeApiClient:
+        def __enter__(self) -> object:
+            return object()
 
-    httpx_client_cm = Mock()
-    httpx_client_cm.__enter__ = Mock(return_value=client)
-    httpx_client_cm.__exit__ = Mock(return_value=False)
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = (exc_type, exc, tb)
+            return False
+
+    monkeypatch.setattr("relaymd.worker.main.RelaymdApiClient", lambda **_: _FakeApiClient())
+
+    api_calls: list[str] = []
+    request_responses = iter(
+        [
+            ApiJobAssigned.from_dict(
+                {
+                    "status": "assigned",
+                    "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
+                    "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
+                    "latest_checkpoint_path": "jobs/job-1/checkpoints/latest",
+                }
+            ),
+            ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ]
+    )
+
+    def _register_sync(**kwargs):
+        _ = kwargs
+        api_calls.append("/workers/register")
+        return ApiWorkerRegisterResponse.from_dict(
+            {"worker_id": "0a05f971-0f5b-46cb-bd86-d13133f998aa"}
+        )
+
+    def _request_sync(**kwargs):
+        _ = kwargs
+        api_calls.append("/jobs/request")
+        return next(request_responses)
+
+    def _checkpoint_sync(**kwargs):
+        _ = kwargs
+        api_calls.append("/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint")
+        return None
+
+    def _complete_sync(**kwargs):
+        _ = kwargs
+        api_calls.append("/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/complete")
+        return None
+
+    monkeypatch.setattr("relaymd.worker.main.register_worker_workers_register_post.sync", _register_sync)
+    monkeypatch.setattr("relaymd.worker.main.request_job_jobs_request_post.sync", _request_sync)
     monkeypatch.setattr(
-        "relaymd.worker.main.httpx.Client",
-        lambda *args, **kwargs: httpx_client_cm,
+        "relaymd.worker.main.report_checkpoint_jobs_job_id_checkpoint_post.sync",
+        _checkpoint_sync,
+    )
+    monkeypatch.setattr("relaymd.worker.main.complete_job_jobs_job_id_complete_post.sync", _complete_sync)
+    monkeypatch.setattr(
+        "relaymd.worker.main.fail_job_jobs_job_id_fail_post.sync",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("fail endpoint should not be called")),
     )
 
     run_worker(config)
@@ -118,8 +144,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
         "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/latest",
     )
 
-    posted_paths = [call.args[0] for call in client.post.call_args_list]
-    assert posted_paths == [
+    assert api_calls == [
         "/workers/register",
         "/jobs/request",
         "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint",
@@ -192,32 +217,48 @@ def test_sigterm_before_subprocess_start_still_deregisters_worker(monkeypatch) -
 
     monkeypatch.setattr("relaymd.worker.main.subprocess.Popen", popen_side_effect)
 
-    client = Mock()
-    client.post.side_effect = [
-        FakeResponse(200, {"worker_id": "0a05f971-0f5b-46cb-bd86-d13133f998aa"}),
-        FakeResponse(
-            200,
-            {
-                "status": "assigned",
-                "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
-                "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
-                "latest_checkpoint_path": None,
-            },
-        ),
-        FakeResponse(204, {}),
-    ]
+    class _FakeApiClient:
+        def __enter__(self) -> object:
+            return object()
 
-    httpx_client_cm = Mock()
-    httpx_client_cm.__enter__ = Mock(return_value=client)
-    httpx_client_cm.__exit__ = Mock(return_value=False)
-    monkeypatch.setattr("relaymd.worker.main.httpx.Client", lambda *args, **kwargs: httpx_client_cm)
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = (exc_type, exc, tb)
+            return False
+
+    monkeypatch.setattr("relaymd.worker.main.RelaymdApiClient", lambda **_: _FakeApiClient())
+
+    api_calls: list[str] = []
+    monkeypatch.setattr(
+        "relaymd.worker.main.register_worker_workers_register_post.sync",
+        lambda **kwargs: (
+            api_calls.append("/workers/register"),
+            ApiWorkerRegisterResponse.from_dict({"worker_id": "0a05f971-0f5b-46cb-bd86-d13133f998aa"}),
+        )[1],
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main.request_job_jobs_request_post.sync",
+        lambda **kwargs: (
+            api_calls.append("/jobs/request"),
+            ApiJobAssigned.from_dict(
+                {
+                    "status": "assigned",
+                    "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
+                    "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
+                    "latest_checkpoint_path": None,
+                }
+            ),
+        )[1],
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main.deregister_worker_workers_worker_id_deregister_post.sync",
+        lambda **kwargs: (api_calls.append("/workers/0a05f971-0f5b-46cb-bd86-d13133f998aa/deregister"), None)[1],
+    )
 
     with pytest.raises(SystemExit) as excinfo:
         run_worker(config)
 
     assert excinfo.value.code == 0
-    posted_paths = [call.args[0] for call in client.post.call_args_list]
-    assert posted_paths == [
+    assert api_calls == [
         "/workers/register",
         "/jobs/request",
         "/workers/0a05f971-0f5b-46cb-bd86-d13133f998aa/deregister",

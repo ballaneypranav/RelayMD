@@ -4,6 +4,10 @@ import threading
 from uuid import UUID
 
 import httpx
+from relaymd_api_client import errors as api_errors
+from relaymd_api_client.api.default import heartbeat_worker_workers_worker_id_heartbeat_post
+from relaymd_api_client.client import Client as RelaymdApiClient
+from relaymd_api_client.models.http_validation_error import HTTPValidationError as ApiHTTPValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from relaymd.worker.logging import get_logger
@@ -29,16 +33,15 @@ class HeartbeatThread(threading.Thread):
         self._stop_event = stop_event or threading.Event()
 
     def run(self) -> None:
-        headers = {"X-API-Token": self._api_token}
-        with httpx.Client(
+        with RelaymdApiClient(
             base_url=self._orchestrator_url,
-            headers=headers,
-            timeout=ORCHESTRATOR_TIMEOUT_SECONDS,
+            timeout=httpx.Timeout(ORCHESTRATOR_TIMEOUT_SECONDS),
+            raise_on_unexpected_status=True,
         ) as client:
             while not self._stop_event.is_set():
                 try:
                     self._send(client)
-                except httpx.HTTPError:
+                except (httpx.HTTPError, api_errors.UnexpectedStatus):
                     LOG.warning(
                         "heartbeat_send_failed",
                         worker_id=str(self._worker_id),
@@ -50,9 +53,14 @@ class HeartbeatThread(threading.Thread):
     @retry(
         wait=wait_exponential(multiplier=1, min=1, max=30),
         stop=stop_after_attempt(3),
-        retry=retry_if_exception_type(httpx.HTTPError),
+        retry=retry_if_exception_type((httpx.HTTPError, api_errors.UnexpectedStatus)),
         reraise=True,
     )
-    def _send(self, client: httpx.Client) -> None:
-        response = client.post(f"/workers/{self._worker_id}/heartbeat")
-        response.raise_for_status()
+    def _send(self, client: RelaymdApiClient) -> None:
+        response = heartbeat_worker_workers_worker_id_heartbeat_post.sync(
+            worker_id=self._worker_id,
+            client=client,
+            x_api_token=self._api_token,
+        )
+        if isinstance(response, ApiHTTPValidationError):
+            raise RuntimeError(response.to_dict())

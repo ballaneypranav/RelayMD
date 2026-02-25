@@ -18,8 +18,26 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from relaymd_api_client.api.default import (
+    complete_job_jobs_job_id_complete_post,
+    deregister_worker_workers_worker_id_deregister_post,
+    fail_job_jobs_job_id_fail_post,
+    register_worker_workers_register_post,
+    report_checkpoint_jobs_job_id_checkpoint_post,
+    request_job_jobs_request_post,
+)
+from relaymd_api_client.client import Client as RelaymdApiClient
+from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
+from relaymd_api_client.models.http_validation_error import HTTPValidationError as ApiHTTPValidationError
+from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
+from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
+from relaymd_api_client.models.platform import Platform as ApiPlatform
+from relaymd_api_client.models.register_worker_workers_register_post_response_register_worker_workers_register_post import (
+    RegisterWorkerWorkersRegisterPostResponseRegisterWorkerWorkersRegisterPost as ApiWorkerRegisterResponse,
+)
+from relaymd_api_client.models.worker_register import WorkerRegister as ApiWorkerRegister
 
-from relaymd.models import JobAssigned, Platform, WorkerRegister
+from relaymd.models import Platform
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.heartbeat import HeartbeatThread
@@ -160,6 +178,11 @@ def _build_storage_client(config: WorkerConfig) -> StorageClient:
     )
 
 
+def _raise_if_validation_error(response: object) -> None:
+    if isinstance(response, ApiHTTPValidationError):
+        raise RuntimeError(response.to_dict())
+
+
 def _wait_for_final_checkpoint(
     workdir: Path,
     checkpoint_glob_pattern: str,
@@ -183,7 +206,8 @@ def _handle_sigterm(
     checkpoint_glob_pattern: str,
     checkpoint_b2_key: str,
     storage: StorageClient,
-    client: httpx.Client,
+    client: RelaymdApiClient,
+    api_token: str,
     job_id: UUID,
     worker_id: UUID,
     stop_event: threading.Event,
@@ -199,11 +223,14 @@ def _handle_sigterm(
     else:
         try:
             storage.upload_file(final_checkpoint, checkpoint_b2_key)
-            checkpoint_response = client.post(
-                f"/jobs/{job_id}/checkpoint",
-                json={"checkpoint_path": checkpoint_b2_key},
+            checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
+                job_id=job_id,
+                client=client,
+                body=ApiCheckpointReport(checkpoint_path=checkpoint_b2_key),
+                x_api_token=api_token,
             )
-            checkpoint_response.raise_for_status()
+            if isinstance(checkpoint_response, ApiHTTPValidationError):
+                raise RuntimeError(checkpoint_response.to_dict())
         except Exception:
             log.exception(
                 "sigterm_final_checkpoint_upload_failed",
@@ -212,8 +239,13 @@ def _handle_sigterm(
             )
 
     try:
-        deregister_response = client.post(f"/workers/{worker_id}/deregister")
-        deregister_response.raise_for_status()
+        deregister_response = deregister_worker_workers_worker_id_deregister_post.sync(
+            worker_id=worker_id,
+            client=client,
+            x_api_token=api_token,
+        )
+        if isinstance(deregister_response, ApiHTTPValidationError):
+            raise RuntimeError(deregister_response.to_dict())
     except Exception:
         log.exception("sigterm_worker_deregister_failed", worker_id=str(worker_id))
 
@@ -235,36 +267,42 @@ def run_worker(config: WorkerConfig) -> None:
     except ValueError:
         platform = Platform.salad
 
-    headers = {"X-API-Token": config.relaymd_api_token}
-
-    with httpx.Client(
+    with RelaymdApiClient(
         base_url=config.relaymd_orchestrator_url.rstrip("/"),
-        headers=headers,
-        timeout=ORCHESTRATOR_TIMEOUT_SECONDS,
+        timeout=httpx.Timeout(ORCHESTRATOR_TIMEOUT_SECONDS),
+        raise_on_unexpected_status=True,
     ) as client:
-        register_response = client.post(
-            "/workers/register",
-            json=WorkerRegister(
-                platform=platform,
+        register_response = register_worker_workers_register_post.sync(
+            client=client,
+            body=ApiWorkerRegister(
+                platform=ApiPlatform(platform.value),
                 gpu_model=gpu_model,
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
-            ).model_dump(mode="json"),
+            ),
+            x_api_token=config.relaymd_api_token,
         )
-        register_response.raise_for_status()
-        worker_id = UUID(register_response.json()["worker_id"])
+        if not isinstance(register_response, ApiWorkerRegisterResponse):
+            _raise_if_validation_error(register_response)
+            raise RuntimeError("Failed to register worker")
+
+        worker_id = register_response["worker_id"]
         worker_log = LOG.bind(worker_id=str(worker_id))
 
         while True:
-            request_response = client.post("/jobs/request", params={"worker_id": str(worker_id)})
-            request_response.raise_for_status()
-            request_payload = request_response.json()
-
-            if request_payload.get("status") == "no_job_available":
+            request_response = request_job_jobs_request_post.sync(
+                client=client,
+                worker_id=worker_id,
+                x_api_token=config.relaymd_api_token,
+            )
+            if isinstance(request_response, ApiNoJobAvailable):
                 worker_log.info("no_job_available_worker_exit")
                 return
+            if not isinstance(request_response, ApiJobAssigned):
+                _raise_if_validation_error(request_response)
+                raise RuntimeError("Failed to parse job assignment response")
 
-            assignment = JobAssigned.model_validate(request_payload)
+            assignment = request_response
             job_log = worker_log.bind(job_id=str(assignment.job_id))
             checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
 
@@ -314,10 +352,14 @@ def run_worker(config: WorkerConfig) -> None:
                     process = process_ref["process"]
                     if process is None:
                         try:
-                            deregister_response = client.post(
-                                f"/workers/{worker_id_local}/deregister"
+                            deregister_response = (
+                                deregister_worker_workers_worker_id_deregister_post.sync(
+                                    worker_id=worker_id_local,
+                                    client=client,
+                                    x_api_token=config.relaymd_api_token,
+                                )
                             )
-                            deregister_response.raise_for_status()
+                            _raise_if_validation_error(deregister_response)
                         except Exception:
                             worker_log.exception(
                                 "sigterm_prelaunch_worker_deregister_failed"
@@ -332,6 +374,7 @@ def run_worker(config: WorkerConfig) -> None:
                         checkpoint_b2_key=checkpoint_path,
                         storage=storage,
                         client=client,
+                        api_token=config.relaymd_api_token,
                         job_id=job_id,
                         worker_id=worker_id_local,
                         stop_event=stop_event,
@@ -364,11 +407,13 @@ def run_worker(config: WorkerConfig) -> None:
                                 or current_mtime > last_uploaded_mtime
                             ):
                                 storage.upload_file(latest_checkpoint, checkpoint_b2_key)
-                                checkpoint_response = client.post(
-                                    f"/jobs/{assignment.job_id}/checkpoint",
-                                    json={"checkpoint_path": checkpoint_b2_key},
+                                checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
+                                    job_id=assignment.job_id,
+                                    client=client,
+                                    body=ApiCheckpointReport(checkpoint_path=checkpoint_b2_key),
+                                    x_api_token=config.relaymd_api_token,
                                 )
-                                checkpoint_response.raise_for_status()
+                                _raise_if_validation_error(checkpoint_response)
                                 last_uploaded_mtime = current_mtime
 
                         if process_exit is not None:
@@ -383,19 +428,29 @@ def run_worker(config: WorkerConfig) -> None:
                                         or final_mtime > last_uploaded_mtime
                                     ):
                                         storage.upload_file(final_checkpoint, checkpoint_b2_key)
-                                        final_checkpoint_response = client.post(
-                                            f"/jobs/{assignment.job_id}/checkpoint",
-                                            json={"checkpoint_path": checkpoint_b2_key},
+                                        final_checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
+                                            job_id=assignment.job_id,
+                                            client=client,
+                                            body=ApiCheckpointReport(
+                                                checkpoint_path=checkpoint_b2_key
+                                            ),
+                                            x_api_token=config.relaymd_api_token,
                                         )
-                                        final_checkpoint_response.raise_for_status()
+                                        _raise_if_validation_error(final_checkpoint_response)
 
-                                complete_response = client.post(
-                                    f"/jobs/{assignment.job_id}/complete"
+                                complete_response = complete_job_jobs_job_id_complete_post.sync(
+                                    job_id=assignment.job_id,
+                                    client=client,
+                                    x_api_token=config.relaymd_api_token,
                                 )
-                                complete_response.raise_for_status()
+                                _raise_if_validation_error(complete_response)
                             else:
-                                fail_response = client.post(f"/jobs/{assignment.job_id}/fail")
-                                fail_response.raise_for_status()
+                                fail_response = fail_job_jobs_job_id_fail_post.sync(
+                                    job_id=assignment.job_id,
+                                    client=client,
+                                    x_api_token=config.relaymd_api_token,
+                                )
+                                _raise_if_validation_error(fail_response)
                             break
 
                         time.sleep(checkpoint_poll_interval)
