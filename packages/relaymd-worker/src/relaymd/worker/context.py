@@ -14,4 +14,7 @@ class WorkerContext:
     storage: StorageClient
     shutdown_event: threading.Event
     checkpoint_poll_interval_seconds: int
+    sigterm_checkpoint_wait_seconds: int
+    sigterm_checkpoint_poll_seconds: int
+    sigterm_process_wait_seconds: int
     logger: Any

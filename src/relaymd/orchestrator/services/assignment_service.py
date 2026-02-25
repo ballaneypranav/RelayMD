@@ -10,8 +10,6 @@ from relaymd.models import Job, JobStatus, Platform, Worker
 
 from .job_transitions import JobTransitionService
 
-HEARTBEAT_INTERVAL_SECONDS = 30
-
 # GPU model strings observed/expected across HPC and Salad deployments.
 VRAM_TIERS: dict[str, int] = {
     "NVIDIA H100": 94,
@@ -41,14 +39,16 @@ class AssignmentService:
         self,
         session: AsyncSession,
         *,
+        heartbeat_interval_seconds: int,
         heartbeat_timeout_multiplier: float,
     ) -> None:
         self._session = session
+        self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._heartbeat_timeout_multiplier = heartbeat_timeout_multiplier
         self._transitions = JobTransitionService()
 
     def _stale_cutoff(self) -> datetime:
-        timeout_seconds = self._heartbeat_timeout_multiplier * HEARTBEAT_INTERVAL_SECONDS
+        timeout_seconds = self._heartbeat_timeout_multiplier * self._heartbeat_interval_seconds
         return datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
 
     async def _busy_worker_ids(self) -> set[UUID]:

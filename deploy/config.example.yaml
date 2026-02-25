@@ -1,3 +1,7 @@
+# Copy this file to either:
+# - ~/.config/relaymd/config.yaml (user-global default)
+# - ./relaymd-config.yaml (project-local override, gitignored)
+
 # Path to the SQLite database file. Use an absolute path on a stable filesystem.
 database_url: sqlite+aiosqlite:////home/USER/relaymd/relaymd.db
 
@@ -9,9 +13,28 @@ api_token: change-me
 # Prefer setting this via INFISICAL_TOKEN env var.
 infisical_token: ""
 
+# Worker heartbeats are expected at this cadence.
+heartbeat_interval_seconds: 60
+
 # Heartbeat timeout multiplier. A worker is considered stale after
 # heartbeat_interval * heartbeat_timeout_multiplier seconds of silence.
 heartbeat_timeout_multiplier: 2.0
+
+# Orchestrator scheduler intervals.
+stale_worker_reaper_interval_seconds: 60
+orphaned_job_requeue_interval_seconds: 60
+sbatch_submission_interval_seconds: 60
+
+# Injected into sbatch as: #SBATCH --signal=TERM@<seconds>
+slurm_sigterm_margin_seconds: 300
+
+# Worker runtime defaults injected into sbatch environments.
+worker_heartbeat_interval_seconds: 60
+worker_checkpoint_poll_interval_seconds: 300
+worker_orchestrator_timeout_seconds: 30.0
+worker_sigterm_checkpoint_wait_seconds: 60
+worker_sigterm_checkpoint_poll_seconds: 2
+worker_sigterm_process_wait_seconds: 10
 
 # SLURM cluster definitions used for sbatch submission.
 slurm_cluster_configs:
@@ -44,6 +67,10 @@ salad_container_group: null
 # Can be set via SALAD_MAX_REPLICAS env var.
 salad_max_replicas: 4
 
+# Timeout for SaladCloud API requests.
+# Can be set via SALAD_API_TIMEOUT_SECONDS env var.
+salad_api_timeout_seconds: 10.0
+
 # CLI settings
 
 # Orchestrator base URL for relaymd CLI commands.
@@ -66,6 +93,10 @@ cf_worker_url: https://cloudflare-backblaze-worker.pranav-purdue-account.workers
 
 # Optional bearer token for Cloudflare Worker downloads.
 cf_bearer_token: ""
+
+# Timeout for CLI requests to the orchestrator API.
+# Can be set via ORCHESTRATOR_TIMEOUT_SECONDS env var.
+orchestrator_timeout_seconds: 30.0
 
 # Logging
 relaymd_env: production        # development enables console renderer

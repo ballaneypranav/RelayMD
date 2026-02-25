@@ -77,13 +77,21 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         sif_path="/shared/relaymd.sif",
         wall_time="3:30:00",
     )
-    job_id = await submit_slurm_job(cluster, gpu_count=2, infisical_token="client-id:client-secret")
+    settings = OrchestratorSettings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+    )
+    job_id = await submit_slurm_job(cluster, settings)
 
     assert job_id == "12345"
     assert command_args == ["sbatch", "--parsable"]
     rendered = captured["script"]
     assert "#SBATCH --gres=gpu:a100:2" in rendered
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" in rendered
+    assert "#SBATCH --signal=TERM@300" in rendered
+    assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
+    assert '--env WORKER_PLATFORM="hpc"' in rendered
 
 
 @pytest.mark.asyncio

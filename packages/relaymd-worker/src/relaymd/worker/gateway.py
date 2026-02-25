@@ -23,7 +23,7 @@ from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJo
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 from relaymd_api_client.models.worker_register import WorkerRegister as ApiWorkerRegister
 
-ORCHESTRATOR_TIMEOUT_SECONDS = 30.0
+from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
 
 
 class OrchestratorGateway(Protocol):
@@ -54,7 +54,7 @@ class ApiOrchestratorGateway:
         orchestrator_url: str,
         api_token: str,
         logger: Any,
-        timeout_seconds: float = ORCHESTRATOR_TIMEOUT_SECONDS,
+        timeout_seconds: float = DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
     ) -> None:
         self._orchestrator_url = orchestrator_url.rstrip("/")
         self._api_token = api_token

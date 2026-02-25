@@ -45,6 +45,7 @@ async def request_job(
 ) -> JobAssigned | NoJobAvailable:
     assigned_job = await AssignmentService(
         session,
+        heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
         heartbeat_timeout_multiplier=settings.heartbeat_timeout_multiplier,
     ).assign_job_for_requesting_worker(
         requesting_worker_id=worker_id,

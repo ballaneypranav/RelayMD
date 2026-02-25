@@ -16,7 +16,7 @@ class CliContext:
     def api_client(self) -> RelaymdApiClient:
         return RelaymdApiClient(
             base_url=self.settings.orchestrator_url.rstrip("/"),
-            timeout=httpx.Timeout(30.0),
+            timeout=httpx.Timeout(self.settings.orchestrator_timeout_seconds),
             raise_on_unexpected_status=True,
         )
 

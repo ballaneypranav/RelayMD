@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from relaymd.orchestrator.config import ClusterConfig
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 
 
 def _template_environment() -> Environment:
@@ -22,8 +22,7 @@ def _template_environment() -> Environment:
 def _render_sbatch_script(
     cluster: ClusterConfig,
     *,
-    gpu_count: int,
-    infisical_token: str,
+    settings: OrchestratorSettings,
 ) -> str:
     template = _template_environment().get_template("deploy/slurm/job.sbatch.j2")
     return template.render(
@@ -31,18 +30,25 @@ def _render_sbatch_script(
         partition=cluster.partition,
         account=cluster.account,
         gpu_type=cluster.gpu_type,
-        gpu_count=gpu_count,
+        gpu_count=cluster.gpu_count,
         wall_time=cluster.wall_time,
         sif_path=cluster.sif_path,
-        infisical_token=infisical_token,
+        infisical_token=settings.infisical_token,
+        slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
+        worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
+        worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,
+        worker_orchestrator_timeout_seconds=settings.worker_orchestrator_timeout_seconds,
+        worker_sigterm_checkpoint_wait_seconds=settings.worker_sigterm_checkpoint_wait_seconds,
+        worker_sigterm_checkpoint_poll_seconds=settings.worker_sigterm_checkpoint_poll_seconds,
+        worker_sigterm_process_wait_seconds=settings.worker_sigterm_process_wait_seconds,
+        worker_platform="hpc",
     )
 
 
-async def submit_slurm_job(cluster: ClusterConfig, gpu_count: int, infisical_token: str) -> str:
+async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSettings) -> str:
     rendered = _render_sbatch_script(
         cluster,
-        gpu_count=gpu_count,
-        infisical_token=infisical_token,
+        settings=settings,
     )
 
     tmp_script_path: str | None = None

@@ -198,7 +198,12 @@ def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
 
     assert excinfo.value.code == 0
     process.terminate.assert_called_once_with()
-    wait_for_checkpoint.assert_called_once_with(tmp_path, "*.chk")
+    wait_for_checkpoint.assert_called_once_with(
+        tmp_path,
+        "*.chk",
+        timeout_seconds=60,
+        poll_interval_seconds=2,
+    )
     storage.upload_file.assert_called_once_with(checkpoint, f"jobs/{job_id}/checkpoints/latest")
     checkpoint_sync.assert_called_once()
     deregister_sync.assert_called_once()

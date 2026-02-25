@@ -8,9 +8,6 @@ from relaymd.models import Job, Worker
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.services import AssignmentService, WorkerLifecycleService
-from relaymd.orchestrator.services.assignment_service import (
-    HEARTBEAT_INTERVAL_SECONDS,
-)
 from relaymd.orchestrator.services.salad_autoscaling_service import SaladAutoscalingService
 from relaymd.orchestrator.services.slurm_provisioning_service import (
     pending_slurm_job_marker,
@@ -20,17 +17,22 @@ from relaymd.orchestrator.services.slurm_provisioning_service import (
 )
 from relaymd.orchestrator.slurm import submit_slurm_job
 
-SBATCH_INTERVAL_SECONDS = 60
 
-
-async def assign_job(session: AsyncSession) -> tuple[Job, Worker] | None:
-    service = AssignmentService(session, heartbeat_timeout_multiplier=1.0)
+async def assign_job(
+    session: AsyncSession,
+    settings: OrchestratorSettings,
+) -> tuple[Job, Worker] | None:
+    service = AssignmentService(
+        session,
+        heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
+        heartbeat_timeout_multiplier=settings.heartbeat_timeout_multiplier,
+    )
     return await service.assign_next_job()
 
 
 async def reap_stale_workers(settings: OrchestratorSettings) -> int:
     sessionmaker = get_sessionmaker()
-    timeout_seconds = settings.heartbeat_timeout_multiplier * HEARTBEAT_INTERVAL_SECONDS
+    timeout_seconds = settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds
     stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
 
     async with sessionmaker() as session:

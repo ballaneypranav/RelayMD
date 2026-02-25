@@ -1,4 +1,4 @@
-from .assignment_service import HEARTBEAT_INTERVAL_SECONDS, AssignmentService, score_worker
+from .assignment_service import AssignmentService, score_worker
 from .errors import JobTransitionConflictError, OrchestratorDomainError
 from .job_transitions import (
     ACTIVE_CHECKPOINT_JOB_STATUSES,
@@ -14,7 +14,6 @@ __all__ = [
     "ACTIVE_CHECKPOINT_JOB_STATUSES",
     "ALLOWED_TRANSITIONS",
     "AssignmentService",
-    "HEARTBEAT_INTERVAL_SECONDS",
     "JobTransitionConflictError",
     "JobTransitionService",
     "OrchestratorDomainError",

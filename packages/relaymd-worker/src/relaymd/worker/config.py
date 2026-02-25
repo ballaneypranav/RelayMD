@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from pydantic import AliasChoices, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from relaymd.runtime_defaults import (
+    DEFAULT_CF_WORKER_URL,
+    DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+    DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
+    DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
+    DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
+)
+
+
+class WorkerRuntimeSettings(BaseSettings):
+    worker_platform: str = Field(
+        default="salad",
+        validation_alias=AliasChoices("worker_platform", "WORKER_PLATFORM", "RELAYMD_PLATFORM"),
+    )
+    heartbeat_interval_seconds: int = Field(
+        default=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+        validation_alias=AliasChoices(
+            "heartbeat_interval_seconds",
+            "HEARTBEAT_INTERVAL_SECONDS",
+            "RELAYMD_WORKER_HEARTBEAT_INTERVAL_SECONDS",
+        ),
+    )
+    checkpoint_poll_interval_seconds: int = Field(
+        default=DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS,
+        validation_alias=AliasChoices(
+            "checkpoint_poll_interval_seconds",
+            "CHECKPOINT_POLL_INTERVAL_SECONDS",
+            "RELAYMD_WORKER_CHECKPOINT_POLL_INTERVAL_SECONDS",
+        ),
+    )
+    orchestrator_timeout_seconds: float = Field(
+        default=DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+        validation_alias=AliasChoices(
+            "orchestrator_timeout_seconds",
+            "ORCHESTRATOR_TIMEOUT_SECONDS",
+            "RELAYMD_WORKER_ORCHESTRATOR_TIMEOUT_SECONDS",
+        ),
+    )
+    cf_worker_url: str = Field(
+        default=DEFAULT_CF_WORKER_URL,
+        validation_alias=AliasChoices("cf_worker_url", "CF_WORKER_URL"),
+    )
+    cf_bearer_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "cf_bearer_token",
+            "CF_BEARER_TOKEN",
+            "DOWNLOAD_BEARER_TOKEN",
+        ),
+    )
+    sigterm_checkpoint_wait_seconds: int = Field(
+        default=DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
+        validation_alias=AliasChoices(
+            "sigterm_checkpoint_wait_seconds",
+            "SIGTERM_CHECKPOINT_WAIT_SECONDS",
+            "RELAYMD_WORKER_SIGTERM_CHECKPOINT_WAIT_SECONDS",
+        ),
+    )
+    sigterm_checkpoint_poll_seconds: int = Field(
+        default=DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
+        validation_alias=AliasChoices(
+            "sigterm_checkpoint_poll_seconds",
+            "SIGTERM_CHECKPOINT_POLL_SECONDS",
+            "RELAYMD_WORKER_SIGTERM_CHECKPOINT_POLL_SECONDS",
+        ),
+    )
+    sigterm_process_wait_seconds: int = Field(
+        default=DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
+        validation_alias=AliasChoices(
+            "sigterm_process_wait_seconds",
+            "SIGTERM_PROCESS_WAIT_SECONDS",
+            "RELAYMD_WORKER_SIGTERM_PROCESS_WAIT_SECONDS",
+        ),
+    )
+
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore")

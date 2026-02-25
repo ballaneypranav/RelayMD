@@ -12,9 +12,7 @@ from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.slurm import submit_slurm_job
 
-from .assignment_service import HEARTBEAT_INTERVAL_SECONDS
-
-SubmitSlurmJobFn = Callable[[ClusterConfig, int, str], Awaitable[str]]
+SubmitSlurmJobFn = Callable[[ClusterConfig, OrchestratorSettings], Awaitable[str]]
 
 
 def pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
@@ -72,8 +70,7 @@ class SlurmProvisioningService:
 
         slurm_job_id = await self._submit_job(
             cluster,
-            cluster.gpu_count,
-            self._settings.infisical_token,
+            self._settings,
         )
         placeholder_worker = Worker(
             id=uuid4(),
@@ -99,7 +96,7 @@ async def submit_pending_slurm_jobs(
         return 0
 
     stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(
-        seconds=settings.heartbeat_timeout_multiplier * HEARTBEAT_INTERVAL_SECONDS
+        seconds=settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds
     )
     sessionmaker = get_sessionmaker()
     submissions = 0

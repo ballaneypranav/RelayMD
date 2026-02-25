@@ -9,16 +9,20 @@ from pydantic_settings import (
 )
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
+from relaymd.runtime_defaults import (
+    DEFAULT_CF_WORKER_URL,
+    DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+    DEFAULT_ORCHESTRATOR_URL,
+)
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
 DEFAULT_RELAYMD_CONFIG_PATH = "~/.config/relaymd/config.yaml"
-DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
 
 
 class CliSettings(BaseSettings):
     orchestrator_url: str = Field(
-        default="http://localhost:8000",
+        default=DEFAULT_ORCHESTRATOR_URL,
         validation_alias=AliasChoices(
             "orchestrator_url",
             "RELAYMD_ORCHESTRATOR_URL",
@@ -34,6 +38,7 @@ class CliSettings(BaseSettings):
     b2_secret_access_key: str = ""
     cf_worker_url: str = DEFAULT_CF_WORKER_URL
     cf_bearer_token: str = ""
+    orchestrator_timeout_seconds: float = DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -66,6 +71,10 @@ class CliSettings(BaseSettings):
                 "b2_secret_access_key": ("B2_SECRET_ACCESS_KEY",),
                 "cf_worker_url": ("CF_WORKER_URL",),
                 "cf_bearer_token": ("CF_BEARER_TOKEN", "DOWNLOAD_BEARER_TOKEN"),
+                "orchestrator_timeout_seconds": (
+                    "ORCHESTRATOR_TIMEOUT_SECONDS",
+                    "RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS",
+                ),
             },
             config_paths=cls.config_paths(),
         )

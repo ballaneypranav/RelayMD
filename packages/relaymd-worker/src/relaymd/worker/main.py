@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shlex
 import signal
 import subprocess
@@ -30,8 +29,13 @@ from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJo
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 
 from relaymd.models import Platform
+from relaymd.runtime_defaults import (
+    DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
+    DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
+)
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
+from relaymd.worker.config import WorkerRuntimeSettings
 from relaymd.worker.context import WorkerContext
 from relaymd.worker.gateway import ApiOrchestratorGateway
 from relaymd.worker.heartbeat import HeartbeatThread
@@ -39,11 +43,6 @@ from relaymd.worker.job_execution import JobExecution
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
-DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS = 300
-DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
-SIGTERM_CHECKPOINT_WAIT_SECONDS = 60
-SIGTERM_CHECKPOINT_POLL_SECONDS = 2
-SIGTERM_PROCESS_WAIT_SECONDS = 10
 
 
 @dataclass
@@ -160,15 +159,17 @@ def _extract_input_bundle(bundle_file: Path, destination: Path) -> Path:
     return destination
 
 
-def _build_storage_client(config: WorkerConfig) -> StorageClient:
-    cf_worker_url = os.getenv("CF_WORKER_URL", DEFAULT_CF_WORKER_URL)
-    cf_bearer_token = os.getenv("DOWNLOAD_BEARER_TOKEN", config.relaymd_api_token)
+def _build_storage_client(
+    config: WorkerConfig,
+    runtime_settings: WorkerRuntimeSettings,
+) -> StorageClient:
+    cf_bearer_token = runtime_settings.cf_bearer_token or config.relaymd_api_token
     return StorageClient(
         b2_endpoint_url=config.b2_endpoint,
         b2_bucket_name=config.bucket_name,
         b2_access_key_id=config.b2_application_key_id,
         b2_secret_access_key=config.b2_application_key,
-        cf_worker_url=cf_worker_url,
+        cf_worker_url=runtime_settings.cf_worker_url,
         cf_bearer_token=cf_bearer_token,
     )
 
@@ -176,8 +177,8 @@ def _build_storage_client(config: WorkerConfig) -> StorageClient:
 def _wait_for_final_checkpoint(
     workdir: Path,
     checkpoint_glob_pattern: str,
-    timeout_seconds: int = SIGTERM_CHECKPOINT_WAIT_SECONDS,
-    poll_interval_seconds: int = SIGTERM_CHECKPOINT_POLL_SECONDS,
+    timeout_seconds: int,
+    poll_interval_seconds: int,
 ) -> Path | None:
     deadline = time.monotonic() + timeout_seconds
     while True:
@@ -203,11 +204,18 @@ def _handle_sigterm(
     stop_event: threading.Event,
     heartbeat_thread: HeartbeatThread,
     log: Any,
+    checkpoint_wait_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
+    checkpoint_poll_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
 ) -> None:
     log.info("sigterm_received_shutting_down_worker")
     process.terminate()
 
-    final_checkpoint = _wait_for_final_checkpoint(workdir, checkpoint_glob_pattern)
+    final_checkpoint = _wait_for_final_checkpoint(
+        workdir,
+        checkpoint_glob_pattern,
+        timeout_seconds=checkpoint_wait_seconds,
+        poll_interval_seconds=checkpoint_poll_seconds,
+    )
     if final_checkpoint is None:
         log.warning("sigterm_no_final_checkpoint_found", job_id=str(job_id))
     else:
@@ -298,6 +306,8 @@ def _run_assigned_job(
                 final_checkpoint = _wait_for_final_checkpoint(
                     bundle_root,
                     execution_config.checkpoint_glob_pattern,
+                    timeout_seconds=context.sigterm_checkpoint_wait_seconds,
+                    poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
                 )
                 if final_checkpoint is not None:
                     last_uploaded_mtime = _upload_checkpoint(
@@ -306,7 +316,7 @@ def _run_assigned_job(
                         checkpoint_b2_key=checkpoint_b2_key,
                         job_id=assignment.job_id,
                     )
-                execution.wait(timeout_seconds=SIGTERM_PROCESS_WAIT_SECONDS)
+                execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                 return
 
             for checkpoint in execution.iter_new_checkpoints():
@@ -342,13 +352,11 @@ def _run_assigned_job(
 
 
 def run_worker(config: WorkerConfig) -> None:
-    storage = _build_storage_client(config)
-    checkpoint_poll_interval = int(
-        os.getenv("CHECKPOINT_POLL_INTERVAL_SECONDS", str(DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS))
-    )
+    runtime_settings = WorkerRuntimeSettings()
+    storage = _build_storage_client(config, runtime_settings)
 
     gpu_model, gpu_count, vram_gb = detect_gpu_info()
-    platform_raw = os.getenv("WORKER_PLATFORM", Platform.salad.value)
+    platform_raw = runtime_settings.worker_platform
     try:
         platform = Platform(platform_raw)
     except ValueError:
@@ -372,6 +380,7 @@ def run_worker(config: WorkerConfig) -> None:
             orchestrator_url=config.relaymd_orchestrator_url,
             api_token=config.relaymd_api_token,
             logger=LOG,
+            timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
         ) as gateway:
             worker_id = gateway.register_worker(
                 platform=ApiPlatform(platform.value),
@@ -385,6 +394,8 @@ def run_worker(config: WorkerConfig) -> None:
                 orchestrator_url=config.relaymd_orchestrator_url,
                 worker_id=worker_id,
                 api_token=config.relaymd_api_token,
+                interval_seconds=runtime_settings.heartbeat_interval_seconds,
+                timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
                 stop_event=shutdown_event,
             )
             heartbeat_thread.start()
@@ -393,7 +404,10 @@ def run_worker(config: WorkerConfig) -> None:
                 gateway=gateway,
                 storage=storage,
                 shutdown_event=shutdown_event,
-                checkpoint_poll_interval_seconds=checkpoint_poll_interval,
+                checkpoint_poll_interval_seconds=runtime_settings.checkpoint_poll_interval_seconds,
+                sigterm_checkpoint_wait_seconds=runtime_settings.sigterm_checkpoint_wait_seconds,
+                sigterm_checkpoint_poll_seconds=runtime_settings.sigterm_checkpoint_poll_seconds,
+                sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
                 logger=worker_log,
             )
 

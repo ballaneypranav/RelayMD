@@ -9,8 +9,6 @@ from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.salad_scaler import SaladScaler
 
-from .assignment_service import HEARTBEAT_INTERVAL_SECONDS
-
 
 class SaladAutoscalingService:
     def __init__(self, settings: OrchestratorSettings) -> None:
@@ -26,7 +24,9 @@ class SaladAutoscalingService:
         ):
             return
 
-        timeout_seconds = settings.heartbeat_timeout_multiplier * HEARTBEAT_INTERVAL_SECONDS
+        timeout_seconds = (
+            settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds
+        )
         stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
 
         sessionmaker = get_sessionmaker()
@@ -73,6 +73,7 @@ class SaladAutoscalingService:
             container_group_name=settings.salad_container_group,
             api_key=settings.salad_api_key,
             max_replicas=settings.salad_max_replicas,
+            timeout_seconds=settings.salad_api_timeout_seconds,
         )
         current_replicas = await scaler.get_current_replicas()
         if current_replicas != scale_target:
