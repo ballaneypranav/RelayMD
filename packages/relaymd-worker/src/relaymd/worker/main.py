@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 import shlex
 import signal
-import subprocess
-import sys
 import tarfile
 import tempfile
 import threading
@@ -16,23 +14,11 @@ from types import FrameType, ModuleType
 from typing import Any
 from uuid import UUID
 
-from relaymd_api_client.api.default import (
-    deregister_worker_workers_worker_id_deregister_post,
-    report_checkpoint_jobs_job_id_checkpoint_post,
-)
-from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
-from relaymd_api_client.models.http_validation_error import (
-    HTTPValidationError as ApiHTTPValidationError,
-)
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 
 from relaymd.models import Platform
-from relaymd.runtime_defaults import (
-    DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
-    DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
-)
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.config import WorkerRuntimeSettings
@@ -189,69 +175,6 @@ def _wait_for_final_checkpoint(
             return None
         time.sleep(poll_interval_seconds)
 
-
-def _handle_sigterm(
-    *,
-    process: subprocess.Popen[Any],
-    workdir: Path,
-    checkpoint_glob_pattern: str,
-    checkpoint_b2_key: str,
-    storage: StorageClient,
-    client: Any,
-    api_token: str,
-    job_id: UUID,
-    worker_id: UUID,
-    stop_event: threading.Event,
-    heartbeat_thread: HeartbeatThread,
-    log: Any,
-    checkpoint_wait_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
-    checkpoint_poll_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
-) -> None:
-    log.info("sigterm_received_shutting_down_worker")
-    process.terminate()
-
-    final_checkpoint = _wait_for_final_checkpoint(
-        workdir,
-        checkpoint_glob_pattern,
-        timeout_seconds=checkpoint_wait_seconds,
-        poll_interval_seconds=checkpoint_poll_seconds,
-    )
-    if final_checkpoint is None:
-        log.warning("sigterm_no_final_checkpoint_found", job_id=str(job_id))
-    else:
-        try:
-            storage.upload_file(final_checkpoint, checkpoint_b2_key)
-            checkpoint_response = report_checkpoint_jobs_job_id_checkpoint_post.sync(
-                job_id=job_id,
-                client=client,
-                body=ApiCheckpointReport(checkpoint_path=checkpoint_b2_key),
-                x_api_token=api_token,
-            )
-            if isinstance(checkpoint_response, ApiHTTPValidationError):
-                raise RuntimeError(checkpoint_response.to_dict())
-        except Exception:
-            log.exception(
-                "sigterm_final_checkpoint_upload_failed",
-                job_id=str(job_id),
-                checkpoint_b2_key=checkpoint_b2_key,
-            )
-
-    try:
-        deregister_response = deregister_worker_workers_worker_id_deregister_post.sync(
-            worker_id=worker_id,
-            client=client,
-            x_api_token=api_token,
-        )
-        if isinstance(deregister_response, ApiHTTPValidationError):
-            raise RuntimeError(deregister_response.to_dict())
-    except Exception:
-        log.exception("sigterm_worker_deregister_failed", worker_id=str(worker_id))
-
-    stop_event.set()
-    heartbeat_thread.join(timeout=5)
-    sys.exit(0)
-
-
 def _upload_checkpoint(
     context: WorkerContext,
     *,
@@ -299,56 +222,65 @@ def _run_assigned_job(
         execution.start()
 
         last_uploaded_mtime: float | None = None
-        while True:
-            if context.shutdown_event.is_set():
-                job_log.info("shutdown_requested_terminating_job")
-                execution.request_terminate()
-                final_checkpoint = _wait_for_final_checkpoint(
-                    bundle_root,
-                    execution_config.checkpoint_glob_pattern,
-                    timeout_seconds=context.sigterm_checkpoint_wait_seconds,
-                    poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
-                )
-                if final_checkpoint is not None:
+        try:
+            while True:
+                if context.shutdown_event.is_set():
+                    job_log.info("shutdown_requested_terminating_job")
+                    execution.request_terminate()
+                    final_checkpoint = _wait_for_final_checkpoint(
+                        bundle_root,
+                        execution_config.checkpoint_glob_pattern,
+                        timeout_seconds=context.sigterm_checkpoint_wait_seconds,
+                        poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
+                    )
+                    if final_checkpoint is not None:
+                        last_uploaded_mtime = _upload_checkpoint(
+                            context,
+                            checkpoint=final_checkpoint,
+                            checkpoint_b2_key=checkpoint_b2_key,
+                            job_id=assignment.job_id,
+                        )
+                    execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
+                    return
+
+                for checkpoint in execution.iter_new_checkpoints():
                     last_uploaded_mtime = _upload_checkpoint(
+                        context,
+                        checkpoint=checkpoint,
+                        checkpoint_b2_key=checkpoint_b2_key,
+                        job_id=assignment.job_id,
+                    )
+
+                process_exit = execution.poll_exit_code()
+                if process_exit is not None:
+                    break
+
+                context.shutdown_event.wait(timeout=context.checkpoint_poll_interval_seconds)
+
+            final_checkpoint = execution.latest_checkpoint()
+            if final_checkpoint is not None:
+                final_mtime = final_checkpoint.stat().st_mtime
+                if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
+                    _upload_checkpoint(
                         context,
                         checkpoint=final_checkpoint,
                         checkpoint_b2_key=checkpoint_b2_key,
                         job_id=assignment.job_id,
                     )
-                execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
-                return
 
-            for checkpoint in execution.iter_new_checkpoints():
-                last_uploaded_mtime = _upload_checkpoint(
-                    context,
-                    checkpoint=checkpoint,
-                    checkpoint_b2_key=checkpoint_b2_key,
-                    job_id=assignment.job_id,
-                )
-
-            process_exit = execution.poll_exit_code()
-            if process_exit is not None:
-                break
-
-            time.sleep(context.checkpoint_poll_interval_seconds)
-
-        final_checkpoint = execution.latest_checkpoint()
-        if final_checkpoint is not None:
-            final_mtime = final_checkpoint.stat().st_mtime
-            if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
-                _upload_checkpoint(
-                    context,
-                    checkpoint=final_checkpoint,
-                    checkpoint_b2_key=checkpoint_b2_key,
-                    job_id=assignment.job_id,
-                )
-
-        result = execution.result()
-        if result.status == "completed":
-            context.gateway.complete_job(job_id=assignment.job_id)
-        elif result.status == "failed":
-            context.gateway.fail_job(job_id=assignment.job_id)
+            result = execution.result()
+            if result.status == "completed":
+                context.gateway.complete_job(job_id=assignment.job_id)
+            elif result.status == "failed":
+                context.gateway.fail_job(job_id=assignment.job_id)
+        finally:
+            if execution.is_running():
+                job_log.warning("job_execution_cleanup_terminating_process")
+                execution.request_terminate()
+                if execution.wait(timeout_seconds=context.sigterm_process_wait_seconds) is None:
+                    job_log.warning("job_execution_cleanup_killing_process")
+                    execution.kill()
+                    execution.wait(timeout_seconds=5)
 
 
 def run_worker(config: WorkerConfig) -> None:

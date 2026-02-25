@@ -4,6 +4,7 @@ import subprocess
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, Literal
 
 
@@ -46,11 +47,11 @@ class JobExecution:
         return self._require_process().poll()
 
     def iter_new_checkpoints(self) -> Iterator[Path]:
-        latest = self._find_latest_checkpoint()
+        latest = self._find_latest_checkpoint_with_mtime()
         if latest is None:
             return
 
-        latest_mtime = latest.stat().st_mtime
+        latest_path, latest_mtime = latest
         if (
             self._last_seen_checkpoint_mtime is not None
             and latest_mtime <= self._last_seen_checkpoint_mtime
@@ -58,7 +59,7 @@ class JobExecution:
             return
 
         self._last_seen_checkpoint_mtime = latest_mtime
-        yield latest
+        yield latest_path
 
     def request_terminate(self) -> None:
         process = self._require_process()
@@ -71,6 +72,9 @@ class JobExecution:
             return process.wait(timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             return None
+
+    def kill(self) -> None:
+        self._require_process().kill()
 
     def result(self) -> JobExecutionResult:
         exit_code = self.poll_exit_code()
@@ -95,12 +99,25 @@ class JobExecution:
         return self._find_latest_checkpoint()
 
     def _find_latest_checkpoint(self) -> Path | None:
-        candidates = [
-            path for path in self._workdir.glob(self._checkpoint_glob_pattern) if path.is_file()
-        ]
-        if not candidates:
+        latest = self._find_latest_checkpoint_with_mtime()
+        if latest is None:
             return None
-        return max(candidates, key=lambda path: path.stat().st_mtime)
+        return latest[0]
+
+    def _find_latest_checkpoint_with_mtime(self) -> tuple[Path, float] | None:
+        latest: tuple[Path, float] | None = None
+        for path in self._workdir.glob(self._checkpoint_glob_pattern):
+            try:
+                stat_result = path.stat()
+            except OSError:
+                continue
+            if not S_ISREG(stat_result.st_mode):
+                continue
+
+            path_mtime = stat_result.st_mtime
+            if latest is None or path_mtime > latest[1]:
+                latest = (path, path_mtime)
+        return latest
 
     def _require_process(self) -> subprocess.Popen[Any]:
         if self._process is None:
