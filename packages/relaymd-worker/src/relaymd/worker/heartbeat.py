@@ -4,6 +4,7 @@ import threading
 from uuid import UUID
 
 import httpx
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from relaymd.worker.logging import get_logger
 
@@ -36,8 +37,7 @@ class HeartbeatThread(threading.Thread):
         ) as client:
             while not self._stop_event.is_set():
                 try:
-                    response = client.post(f"/workers/{self._worker_id}/heartbeat")
-                    response.raise_for_status()
+                    self._send(client)
                 except httpx.HTTPError:
                     LOG.warning(
                         "heartbeat_send_failed",
@@ -46,3 +46,13 @@ class HeartbeatThread(threading.Thread):
                     )
                 if self._stop_event.wait(self._interval_seconds):
                     break
+
+    @retry(
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type(httpx.HTTPError),
+        reraise=True,
+    )
+    def _send(self, client: httpx.Client) -> None:
+        response = client.post(f"/workers/{self._worker_id}/heartbeat")
+        response.raise_for_status()

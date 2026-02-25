@@ -4,6 +4,8 @@ from pathlib import Path
 from unittest.mock import Mock, call
 from uuid import uuid4
 
+from tenacity import wait_none
+
 import httpx
 import pytest
 from relaymd.worker.heartbeat import HeartbeatThread
@@ -17,7 +19,14 @@ def _client_cm(client: Mock) -> Mock:
     return context_manager
 
 
+def _disable_send_retry_wait() -> None:
+    HeartbeatThread._send.retry.wait = wait_none()
+    HeartbeatThread._send.retry.sleep = lambda _: None
+
+
 def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
+    _disable_send_retry_wait()
+
     stop_event = Mock()
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
@@ -45,6 +54,8 @@ def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
 
 
 def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
+    _disable_send_retry_wait()
+
     stop_event = Mock()
     stop_event.is_set.return_value = False
     stop_event.wait.side_effect = [False, True]
@@ -67,6 +78,38 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
     thread.run()
 
     assert warning.call_count == 2
+    assert client.post.call_count == 6
+
+
+def test_heartbeat_retries_on_transient_failure_then_succeeds(monkeypatch) -> None:
+    _disable_send_retry_wait()
+
+    stop_event = Mock()
+    stop_event.is_set.return_value = False
+    stop_event.wait.side_effect = [True]
+
+    response = Mock()
+    response.raise_for_status.return_value = None
+
+    client = Mock()
+    client.post.side_effect = [httpx.HTTPError("temporary outage"), response]
+    monkeypatch.setattr(
+        "relaymd.worker.heartbeat.httpx.Client",
+        lambda *args, **kwargs: _client_cm(client),
+    )
+    warning = Mock()
+    monkeypatch.setattr("relaymd.worker.heartbeat.LOG.warning", warning)
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+        stop_event=stop_event,
+    )
+    thread.run()
+
+    assert client.post.call_count == 2
+    warning.assert_not_called()
 
 
 def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:

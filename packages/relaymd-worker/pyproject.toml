@@ -9,6 +9,7 @@ dependencies = [
     "pynvml",
     "orjson",
     "structlog",
+    "tenacity>=8.2",
 ]
 
 [project.scripts]
