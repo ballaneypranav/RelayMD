@@ -29,7 +29,7 @@ def _status_style(status: str) -> str:
 
 def _short_id(value: str | None) -> str:
     if not value:
-        return "—"
+        return "-"
     return str(value)[:8]
 
 

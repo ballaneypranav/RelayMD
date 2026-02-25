@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tarfile
 import tempfile
 import uuid
@@ -93,19 +94,23 @@ def submit(
         )
         raise typer.Exit(code=1)
 
-    ensure_worker_config(input_dir, command, checkpoint_glob)
-
     job_id = str(uuid.uuid4())
     b2_key = f"jobs/{job_id}/input/bundle.tar.gz"
 
     try:
         submit_service = SubmitService(create_cli_context())
         with tempfile.TemporaryDirectory() as tmpdir:
+            staged_input_dir = Path(tmpdir) / "input"
+            shutil.copytree(input_dir, staged_input_dir)
+            ensure_worker_config(staged_input_dir, command, checkpoint_glob)
+
             archive_path = Path(tmpdir) / "bundle.tar.gz"
-            create_bundle_archive(input_dir, archive_path)
+            create_bundle_archive(staged_input_dir, archive_path)
             upload_bundle(archive_path, b2_key, service=submit_service)
 
         created_job_id = register_job(title, b2_key, service=submit_service)
+    except typer.Exit:
+        raise
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to submit job:[/red] {exc}")
         raise typer.Exit(code=1) from exc

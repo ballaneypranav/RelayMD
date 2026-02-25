@@ -13,7 +13,7 @@ console = Console()
 
 def _short_id(value: str | None) -> str:
     if not value:
-        return "—"
+        return "-"
     return str(value)[:8]
 
 
@@ -40,13 +40,15 @@ def _render_workers_table(workers: list[dict[str, object]]) -> Table:
         style = _status_style(status)
         worker_id = worker.get("id")
         worker_id_str = worker_id if isinstance(worker_id, str) else None
+        vram_gb = worker.get("vram_gb")
+        jobs_completed = worker.get("jobs_completed")
         table.add_row(
             _short_id(worker_id_str),
             str(worker.get("platform") or "-"),
             str(worker.get("gpu_model") or "-"),
-            str(worker.get("vram_gb") or "-"),
+            "-" if vram_gb is None else str(vram_gb),
             str(worker.get("last_heartbeat") or "-"),
-            str(worker.get("jobs_completed") or "0"),
+            "0" if jobs_completed is None else str(jobs_completed),
             f"[{style}]{status}[/{style}]",
         )
 

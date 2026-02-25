@@ -88,14 +88,12 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     )
 
     worker_json = input_dir / "relaymd-worker.json"
-    assert worker_json.exists()
-    worker_payload = json.loads(worker_json.read_text(encoding="utf-8"))
-    assert worker_payload == {
+    assert not worker_json.exists()
+    assert uploaded["worker_config"] == {
         "command": "python run.py",
         "checkpoint_glob_pattern": "*.cpt",
     }
     assert "relaymd-worker.json" in uploaded["tar_names"]
-    assert uploaded["worker_config"] == worker_payload
     assert uploaded["key"].startswith("jobs/")
     assert uploaded["key"].endswith("/input/bundle.tar.gz")
     create_context.assert_called_once_with()

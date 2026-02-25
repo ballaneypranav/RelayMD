@@ -52,3 +52,40 @@ def test_render_workers_table_row_count() -> None:
     table = _render_workers_table(workers)
 
     assert len(table.rows) == 2
+
+
+def test_render_workers_table_preserves_zero_values() -> None:
+    workers = [
+        {
+            "id": None,
+            "platform": "hpc",
+            "gpu_model": "A10",
+            "vram_gb": 0,
+            "last_heartbeat": None,
+            "jobs_completed": 0,
+            "status": "idle",
+        }
+    ]
+
+    table = _render_workers_table(workers)
+
+    assert table.columns[0]._cells[0] == "-"
+    assert table.columns[3]._cells[0] == "0"
+    assert table.columns[5]._cells[0] == "0"
+
+
+def test_render_jobs_table_uses_hyphen_for_missing_ids() -> None:
+    jobs = [
+        {
+            "id": None,
+            "title": "job-one",
+            "status": "queued",
+            "created_at": "2026-01-01T00:00:00Z",
+            "assigned_worker_id": None,
+        }
+    ]
+
+    table = _render_jobs_table(jobs)
+
+    assert table.columns[0]._cells[0] == "-"
+    assert table.columns[4]._cells[0] == "-"
