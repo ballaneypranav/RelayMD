@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
+import pytest
 import respx
-from httpx import Response
+from botocore.exceptions import ClientError
+from httpx import HTTPStatusError, Response
 from moto import mock_aws
 from relaymd.storage import StorageClient
 
@@ -59,3 +62,65 @@ def test_download_file_uses_cloudflare_worker_with_bearer_token(tmp_path: Path) 
     assert destination.read_bytes() == b"checkpoint-bytes"
     assert route.called
     assert route.calls.last.request.headers["Authorization"] == "Bearer download-token"
+
+
+def test_upload_file_retries_on_transient_s3_error_then_succeeds(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    local_path = tmp_path / "payload.bin"
+    local_path.write_bytes(b"payload")
+    client = _build_client()
+    attempts = {"count": 0}
+
+    def flaky_upload(*_args, **_kwargs):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise ClientError(
+                error_response={"Error": {"Code": "SlowDown", "Message": "try again"}},
+                operation_name="PutObject",
+            )
+        return None
+
+    monkeypatch.setattr(StorageClient.upload_file.retry, "sleep", lambda _: None)
+    client._s3.upload_file = Mock(side_effect=flaky_upload)
+
+    client.upload_file(local_path=local_path, b2_key="jobs/1/input/payload.bin")
+
+    assert attempts["count"] == 3
+
+
+def test_upload_file_raises_after_five_attempts(tmp_path: Path, monkeypatch) -> None:
+    local_path = tmp_path / "payload.bin"
+    local_path.write_bytes(b"payload")
+    client = _build_client()
+    error = ClientError(
+        error_response={"Error": {"Code": "RequestTimeout", "Message": "timeout"}},
+        operation_name="PutObject",
+    )
+
+    monkeypatch.setattr(StorageClient.upload_file.retry, "sleep", lambda _: None)
+    client._s3.upload_file = Mock(side_effect=error)
+
+    with pytest.raises(ClientError):
+        client.upload_file(local_path=local_path, b2_key="jobs/1/input/payload.bin")
+
+    assert client._s3.upload_file.call_count == 5
+
+
+def test_download_file_404_does_not_retry(tmp_path: Path, monkeypatch) -> None:
+    client = _build_client()
+    destination = tmp_path / "downloads" / "missing.chk"
+    key = "jobs/abc/checkpoints/missing"
+    expected_url = (
+        "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev/files/"
+        "jobs/abc/checkpoints/missing"
+    )
+
+    monkeypatch.setattr(StorageClient.download_file.retry, "sleep", lambda _: None)
+    with respx.mock(assert_all_called=True) as router:
+        route = router.get(expected_url).mock(return_value=Response(404, text="not found"))
+        with pytest.raises(HTTPStatusError):
+            client.download_file(b2_key=key, local_path=destination)
+
+    assert len(route.calls) == 1
