@@ -18,6 +18,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_ORPHANED_JOB_REQUEUE_INTERVAL_SECONDS,
     DEFAULT_SALAD_API_TIMEOUT_SECONDS,
     DEFAULT_SBATCH_SUBMISSION_INTERVAL_SECONDS,
+    DEFAULT_SBATCH_SUBMIT_TIMEOUT_SECONDS,
     DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
     DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
     DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
@@ -52,6 +53,7 @@ class OrchestratorSettings(BaseSettings):
     stale_worker_reaper_interval_seconds: int = DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS
     orphaned_job_requeue_interval_seconds: int = DEFAULT_ORPHANED_JOB_REQUEUE_INTERVAL_SECONDS
     sbatch_submission_interval_seconds: int = DEFAULT_SBATCH_SUBMISSION_INTERVAL_SECONDS
+    sbatch_submit_timeout_seconds: float = DEFAULT_SBATCH_SUBMIT_TIMEOUT_SECONDS
     slurm_sigterm_margin_seconds: int = DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS
     worker_heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS
     worker_checkpoint_poll_interval_seconds: int = DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS
@@ -107,6 +109,7 @@ class OrchestratorSettings(BaseSettings):
                 "salad_container_group": ("SALAD_CONTAINER_GROUP",),
                 "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
                 "salad_api_timeout_seconds": ("SALAD_API_TIMEOUT_SECONDS",),
+                "sbatch_submit_timeout_seconds": ("SBATCH_SUBMIT_TIMEOUT_SECONDS",),
             },
             config_paths=cls.config_paths(),
         )

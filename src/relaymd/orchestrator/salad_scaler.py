@@ -30,7 +30,7 @@ class SaladScaler:
     @property
     def _headers(self) -> dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Salad-Api-Key": self.api_key,
             "Content-Type": "application/json",
         }
 

@@ -72,6 +72,7 @@ class SlurmProvisioningService:
             cluster,
             self._settings,
         )
+        now = datetime.now(UTC).replace(tzinfo=None)
         placeholder_worker = Worker(
             id=uuid4(),
             platform=Platform.hpc,
@@ -79,8 +80,8 @@ class SlurmProvisioningService:
             gpu_count=cluster.gpu_count,
             vram_gb=0,
             slurm_job_id=pending_slurm_job_marker(cluster.name, slurm_job_id),
-            last_heartbeat=datetime(1970, 1, 1),
-            registered_at=datetime(1970, 1, 1),
+            last_heartbeat=now,
+            registered_at=now,
         )
         self._session.add(placeholder_worker)
         await self._session.commit()

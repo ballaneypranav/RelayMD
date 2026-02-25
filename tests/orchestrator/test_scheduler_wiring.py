@@ -186,6 +186,23 @@ async def test_stale_worker_reaper_job_invokes_both_steps(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_worker_reaper_job_ignores_autoscaling_exceptions(monkeypatch) -> None:
+    settings = _settings()
+    reap = AsyncMock(return_value=0)
+    autoscale = AsyncMock(side_effect=RuntimeError("salad API down"))
+    warning = Mock()
+    monkeypatch.setattr(scheduler, "reap_stale_workers", reap)
+    monkeypatch.setattr(scheduler, "apply_salad_autoscaling_policy", autoscale)
+    monkeypatch.setattr(scheduler.LOG, "warning", warning)
+
+    await scheduler.stale_worker_reaper_job(settings)
+
+    reap.assert_awaited_once_with(settings)
+    autoscale.assert_awaited_once_with(settings)
+    warning.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_apply_salad_autoscaling_policy_uses_service(monkeypatch) -> None:
     apply = AsyncMock(return_value=None)
 

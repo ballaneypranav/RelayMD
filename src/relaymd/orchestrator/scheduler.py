@@ -8,6 +8,7 @@ from relaymd.models import Job, Worker
 from relaymd.orchestrator import scheduling
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
+from relaymd.orchestrator.logging import get_logger
 from relaymd.orchestrator.services import WorkerLifecycleService
 from relaymd.orchestrator.services.salad_autoscaling_service import SaladAutoscalingService
 from relaymd.orchestrator.services.slurm_provisioning_service import (
@@ -17,6 +18,8 @@ from relaymd.orchestrator.services.slurm_provisioning_service import (
     submit_pending_slurm_jobs as _submit_pending_slurm_jobs,
 )
 from relaymd.orchestrator.slurm import submit_slurm_job
+
+LOG = get_logger(__name__)
 
 
 async def assign_job(
@@ -42,7 +45,10 @@ async def reap_stale_workers(settings: OrchestratorSettings) -> int:
 
 async def stale_worker_reaper_job(settings: OrchestratorSettings) -> None:
     await reap_stale_workers(settings)
-    await apply_salad_autoscaling_policy(settings)
+    try:
+        await apply_salad_autoscaling_policy(settings)
+    except Exception:  # noqa: BLE001
+        LOG.warning("salad_autoscaling_failed", exc_info=True)
 
 
 async def apply_salad_autoscaling_policy(settings: OrchestratorSettings) -> None:

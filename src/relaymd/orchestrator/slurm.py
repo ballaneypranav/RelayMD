@@ -4,17 +4,15 @@ import asyncio
 import os
 import tempfile
 from contextlib import suppress
-from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, PackageLoader
 
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 
 
 def _template_environment() -> Environment:
-    repo_root = Path(__file__).resolve().parents[3]
     return Environment(
-        loader=FileSystemLoader(str(repo_root)),
+        loader=PackageLoader("relaymd.orchestrator", "templates"),
         autoescape=False,
     )
 
@@ -24,7 +22,7 @@ def _render_sbatch_script(
     *,
     settings: OrchestratorSettings,
 ) -> str:
-    template = _template_environment().get_template("deploy/slurm/job.sbatch.j2")
+    template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
         partition=cluster.partition,
@@ -70,7 +68,20 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await process.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=settings.sbatch_submit_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            with suppress(ProcessLookupError):
+                process.kill()
+            with suppress(Exception):  # noqa: BLE001
+                await asyncio.wait_for(process.communicate(), timeout=1.0)
+            raise RuntimeError(
+                "sbatch submission timed out after "
+                f"{settings.sbatch_submit_timeout_seconds:.1f}s"
+            ) from exc
         if process.returncode != 0:
             stderr_text = stderr.decode("utf-8", errors="replace").strip()
             raise RuntimeError(

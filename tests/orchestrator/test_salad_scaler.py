@@ -70,6 +70,8 @@ async def test_scale_up_when_jobs_queued_and_no_idle_hpc_workers() -> None:
 
     client.get.assert_awaited_once()
     client.patch.assert_awaited_once()
+    assert client.get.await_args.kwargs["headers"]["Salad-Api-Key"] == "salad-key"
+    assert client.patch.await_args.kwargs["headers"]["Salad-Api-Key"] == "salad-key"
     assert client.patch.await_args.kwargs["json"] == {"replicas": 1}
 
 
@@ -84,6 +86,8 @@ async def test_scale_down_to_zero_when_queue_is_empty() -> None:
 
     client.get.assert_awaited_once()
     client.patch.assert_awaited_once()
+    assert client.get.await_args.kwargs["headers"]["Salad-Api-Key"] == "salad-key"
+    assert client.patch.await_args.kwargs["headers"]["Salad-Api-Key"] == "salad-key"
     assert client.patch.await_args.kwargs["json"] == {"replicas": 0}
 
 
