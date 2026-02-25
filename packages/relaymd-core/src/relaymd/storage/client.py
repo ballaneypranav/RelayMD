@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 import boto3
 import httpx
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import BotoCoreError, ClientError, EndpointResolutionError
 from tenacity import (
     retry,
@@ -38,6 +39,12 @@ class StorageClient:
         self._b2_bucket_name = b2_bucket_name
         self._cf_worker_url = cf_worker_url.rstrip("/")
         self._cf_bearer_token = cf_bearer_token
+        self._transfer_config = TransferConfig(
+            multipart_threshold=16 * 1024 * 1024,
+            multipart_chunksize=16 * 1024 * 1024,
+            max_concurrency=4,
+            use_threads=True,
+        )
         self._s3 = boto3.client(
             "s3",
             endpoint_url=b2_endpoint_url,
@@ -52,7 +59,12 @@ class StorageClient:
         reraise=True,
     )
     def upload_file(self, local_path: Path, b2_key: str) -> None:
-        self._s3.upload_file(str(local_path), self._b2_bucket_name, b2_key)
+        self._s3.upload_file(
+            str(local_path),
+            self._b2_bucket_name,
+            b2_key,
+            Config=self._transfer_config,
+        )
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=60),
