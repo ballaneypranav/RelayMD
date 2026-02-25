@@ -28,3 +28,6 @@ env/
 
 # Local databases
 relaymd.db
+
+# Infisical
+.infisical.json
