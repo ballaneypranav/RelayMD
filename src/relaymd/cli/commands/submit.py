@@ -12,6 +12,10 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from relaymd_api_client.api.default import create_job_jobs_post
+from relaymd_api_client.client import Client as RelaymdApiClient
+from relaymd_api_client.models.job_create import JobCreate
+from relaymd_api_client.models.job_read import JobRead
 
 from relaymd.cli.config import load_settings
 from relaymd.storage import StorageClient
@@ -72,16 +76,19 @@ def upload_bundle(local_archive: Path, b2_key: str) -> None:
 
 def register_job(title: str, b2_key: str) -> str:
     settings = load_settings()
-    headers = {"X-API-Token": settings.api_token}
-    payload = {"title": title, "input_bundle_path": b2_key}
-    with httpx.Client(timeout=30.0) as client:
-        response = client.post(
-            f"{settings.orchestrator_url.rstrip('/')}/jobs",
-            json=payload,
-            headers=headers,
+    with RelaymdApiClient(
+        base_url=settings.orchestrator_url.rstrip("/"),
+        timeout=httpx.Timeout(30.0),
+        raise_on_unexpected_status=True,
+    ) as client:
+        response = create_job_jobs_post.sync(
+            client=client,
+            body=JobCreate(title=title, input_bundle_path=b2_key),
+            x_api_token=settings.api_token,
         )
-        response.raise_for_status()
-        return str(response.json()["id"])
+    if response is None or not isinstance(response, JobRead):
+        raise RuntimeError("Failed to parse create job response")
+    return str(response.id)
 
 
 def submit(

@@ -4,11 +4,23 @@ import httpx
 import typer
 from rich.console import Console
 from rich.table import Table
+from relaymd_api_client.api.default import list_workers_workers_get
+from relaymd_api_client.client import Client as RelaymdApiClient
+from relaymd_api_client.models.worker_read import WorkerRead
 
 from relaymd.cli.config import load_settings
 
 app = typer.Typer(help="List workers.")
 console = Console()
+
+
+def _api_client() -> RelaymdApiClient:
+    settings = load_settings()
+    return RelaymdApiClient(
+        base_url=settings.orchestrator_url.rstrip("/"),
+        timeout=httpx.Timeout(30.0),
+        raise_on_unexpected_status=True,
+    )
 
 
 def _short_id(value: str | None) -> str:
@@ -56,18 +68,19 @@ def _render_workers_table(workers: list[dict[str, object]]) -> Table:
 @app.command("list")
 def list_workers() -> None:
     settings = load_settings()
-    headers = {"X-API-Token": settings.api_token}
 
     try:
-        with httpx.Client(timeout=30.0) as client:
-            response = client.get(
-                f"{settings.orchestrator_url.rstrip('/')}/workers",
-                headers=headers,
+        with _api_client() as client:
+            workers = list_workers_workers_get.sync(
+                client=client,
+                x_api_token=settings.api_token,
             )
-            response.raise_for_status()
-            workers = response.json()
+        if workers is None or not isinstance(workers, list):
+            raise RuntimeError("Failed to parse list workers response")
+        if workers and not isinstance(workers[0], WorkerRead):
+            raise RuntimeError("Unexpected response model for list workers")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to list workers:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(_render_workers_table(workers))
+    console.print(_render_workers_table([worker.to_dict() for worker in workers]))

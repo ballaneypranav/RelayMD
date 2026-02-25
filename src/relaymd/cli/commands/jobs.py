@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 import httpx
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from relaymd_api_client.api.default import (
+    cancel_job_jobs_job_id_delete,
+    get_job_jobs_job_id_get,
+    list_jobs_jobs_get,
+    requeue_job_jobs_job_id_requeue_post,
+)
+from relaymd_api_client.client import Client as RelaymdApiClient
+from relaymd_api_client.models.http_validation_error import HTTPValidationError
+from relaymd_api_client.models.job_read import JobRead
 
 from relaymd.cli.config import load_settings
 
@@ -22,6 +32,18 @@ def _orchestrator_base() -> str:
     return load_settings().orchestrator_url.rstrip("/")
 
 
+def _token() -> str:
+    return load_settings().api_token
+
+
+def _api_client() -> RelaymdApiClient:
+    return RelaymdApiClient(
+        base_url=_orchestrator_base(),
+        timeout=httpx.Timeout(30.0),
+        raise_on_unexpected_status=True,
+    )
+
+
 def _status_style(status: str) -> str:
     styles = {
         "queued": "blue",
@@ -32,18 +54,6 @@ def _status_style(status: str) -> str:
         "cancelled": "red",
     }
     return styles.get(status, "white")
-
-
-def _request(method: str, path: str, **kwargs: Any) -> httpx.Response:
-    with httpx.Client(timeout=30.0) as client:
-        response = client.request(
-            method,
-            f"{_orchestrator_base()}{path}",
-            headers=_headers(),
-            **kwargs,
-        )
-        response.raise_for_status()
-        return response
 
 
 def _short_id(value: str | None) -> str:
@@ -100,23 +110,35 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
 @app.command("list")
 def list_jobs() -> None:
     try:
-        jobs = _request("GET", "/jobs").json()
+        with _api_client() as client:
+            jobs = list_jobs_jobs_get.sync(client=client, x_api_token=_token())
+        if jobs is None or not isinstance(jobs, list):
+            raise RuntimeError("Failed to parse list jobs response")
+        if jobs and not isinstance(jobs[0], JobRead):
+            raise RuntimeError("Unexpected response model for list jobs")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to list jobs:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(_render_jobs_table(jobs))
+    console.print(_render_jobs_table([job.to_dict() for job in jobs]))
 
 
 @app.command("status")
 def job_status(job_id: str) -> None:
     try:
-        job = _request("GET", f"/jobs/{job_id}").json()
+        with _api_client() as client:
+            job = get_job_jobs_job_id_get.sync(
+                job_id=UUID(job_id),
+                client=client,
+                x_api_token=_token(),
+            )
+        if job is None or not isinstance(job, JobRead):
+            raise RuntimeError("Failed to parse get job response")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to get job status:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(_render_job_status_panel(job_id, job))
+    console.print(_render_job_status_panel(job_id, job.to_dict()))
 
 
 @app.command("cancel")
@@ -125,10 +147,15 @@ def cancel_job(
     force: bool = typer.Option(False, "--force", help="Cancel running job."),
 ) -> None:
     try:
-        path = f"/jobs/{job_id}"
-        if force:
-            path = f"{path}?force=true"
-        _request("DELETE", path)
+        with _api_client() as client:
+            response = cancel_job_jobs_job_id_delete.sync(
+                job_id=UUID(job_id),
+                client=client,
+                force=force,
+                x_api_token=_token(),
+            )
+        if isinstance(response, HTTPValidationError):
+            raise RuntimeError(response.to_dict())
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to cancel job:[/red] {exc}")
         raise typer.Exit(code=1) from exc
@@ -139,9 +166,16 @@ def cancel_job(
 @app.command("requeue")
 def requeue_job(job_id: str) -> None:
     try:
-        _request("POST", f"/jobs/{job_id}/requeue")
+        with _api_client() as client:
+            response = requeue_job_jobs_job_id_requeue_post.sync(
+                job_id=UUID(job_id),
+                client=client,
+                x_api_token=_token(),
+            )
+        if response is None or not isinstance(response, JobRead):
+            raise RuntimeError("Failed to parse requeue response")
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to requeue job:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(f"[green]Requeued job[/green] {job_id}")
+    console.print(f"[green]Requeued job[/green] {response.id}")

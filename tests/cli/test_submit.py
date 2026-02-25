@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import tarfile
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 import typer
+from relaymd_api_client.models.job_read import JobRead
 
 from relaymd.cli.commands import submit as submit_cmd
 
@@ -78,17 +80,39 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
                 assert worker_json is not None
                 uploaded["worker_config"] = json.loads(worker_json.read().decode("utf-8"))
 
-    fake_http_client = Mock()
-    fake_response = Mock()
-    fake_response.json.return_value = {"id": str(uuid.uuid4())}
-    fake_response.raise_for_status.return_value = None
-    fake_http_client.post.return_value = fake_response
-    fake_http_cm = Mock()
-    fake_http_cm.__enter__ = Mock(return_value=fake_http_client)
-    fake_http_cm.__exit__ = Mock(return_value=False)
+    class _FakeApiClient:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = (exc_type, exc, tb)
+            return False
+
+    created_at = datetime.now(UTC)
+    created_job = JobRead.from_dict(
+        {
+            "id": str(uuid.uuid4()),
+            "title": "test-job",
+            "status": "queued",
+            "input_bundle_path": "jobs/x/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+            "last_checkpoint_at": None,
+            "assigned_worker_id": None,
+            "created_at": created_at.isoformat(),
+            "updated_at": created_at.isoformat(),
+        }
+    )
+
+    def _fake_create_job_sync(*, client: object, body: object, x_api_token: str) -> JobRead:
+        _ = client
+        assert x_api_token == "token"
+        assert getattr(body, "title", None) == "test-job"
+        assert str(getattr(body, "input_bundle_path", "")).startswith("jobs/")
+        return created_job
 
     monkeypatch.setattr(submit_cmd, "StorageClient", FakeStorageClient)
-    monkeypatch.setattr(submit_cmd.httpx, "Client", Mock(return_value=fake_http_cm))
+    monkeypatch.setattr(submit_cmd, "RelaymdApiClient", lambda **_: _FakeApiClient())
+    monkeypatch.setattr(submit_cmd.create_job_jobs_post, "sync", _fake_create_job_sync)
     monkeypatch.setattr(submit_cmd, "load_settings", lambda: _FakeSettings())
 
     submit_cmd.submit(
