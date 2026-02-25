@@ -10,6 +10,9 @@ import pytest
 from relaymd.worker.heartbeat import HeartbeatThread
 from relaymd.worker.main import _handle_sigterm
 from relaymd_api_client import errors as api_errors
+from relaymd_api_client.models.http_validation_error import (
+    HTTPValidationError as ApiHTTPValidationError,
+)
 from tenacity import wait_none
 
 HEARTBEAT_SYNC_TARGET = (
@@ -149,6 +152,22 @@ def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
     thread.run()
 
     send.assert_not_called()
+
+
+def test_heartbeat_send_raises_on_validation_error_response(monkeypatch) -> None:
+    send = Mock(return_value=ApiHTTPValidationError.from_dict({"detail": []}))
+    monkeypatch.setattr(HEARTBEAT_SYNC_TARGET, send)
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    with pytest.raises(RuntimeError):
+        thread._send(client=object())
+
+    send.assert_called_once()
 
 
 def test_sigterm_triggers_checkpoint_upload_deregister_and_exit(
