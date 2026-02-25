@@ -158,6 +158,7 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
                   ├── every 5min (poll): new checkpoint found?
                   │       → upload to B2
                   │       → POST /jobs/{id}/checkpoint
+                  │       → if job already terminal: typed 409 conflict (safe to ignore)
                   │
                   ├── on wall-time margin (SIGTERM from SLURM):
                   │       → send SIGTERM to subprocess
@@ -167,7 +168,8 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
                   │       → exit  (orchestrator re-queues automatically)
                   │
                   └── on clean subprocess exit:
-                          → POST /jobs/{id}/complete
+                          → POST /jobs/{id}/complete (or /fail)
+                          → late callback against terminal state may return typed 409
                           → loop back to POST /jobs/request
 ```
 
@@ -246,6 +248,9 @@ The orchestrator runs on the clusterA login node and calls `sbatch` as a direct 
 | `relaymd-worker`   | Bootstrap, main loop, heartbeat thread; runs inside container        |
 | `relaymd-storage`  | Shared dual-endpoint boto3 wrapper; used by all three above          |
 | `relaymd-models`   | Shared Pydantic/SQLModel types; used by all packages                 |
+| `orchestrator/services` | Transition/state authority plus assignment, lifecycle, autoscaling, and provisioning services |
+| `worker/context-gateway-execution` | `WorkerContext`, `OrchestratorGateway`, and `JobExecution` seams for procedural worker loop |
+| `cli/context-services` | Shared CLI context plus jobs/workers/submit service adapters |
 | `deploy/slurm/`    | SLURM job templates and cluster config                               |
 | `deploy/salad/`    | Salad Cloud container group configuration                            |
 | `ui/`              | Streamlit monitoring dashboard                                       |
@@ -257,6 +262,8 @@ The orchestrator runs on the clusterA login node and calls `sbatch` as a direct 
 **The orchestrator must run on a persistent machine.** A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On clusterA, use `deploy/tmux/start-orchestrator.sh`.
 
 **Workers are cattle, not pets.** Never attempt to rescue a worker that has gone silent. The orchestrator will re-queue its job automatically when the heartbeat times out. Just let it time out.
+
+**Typed transition conflicts are expected under races.** Late worker callbacks (`checkpoint`, `complete`, `fail`) can receive a typed `409 job_transition_conflict`; this is expected safety behavior, not an incident.
 
 **Input bundles are immutable.** Once uploaded and registered, the files in `jobs/{job_id}/input/` should never be modified. If the input needs to change, create a new job.
 

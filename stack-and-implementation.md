@@ -295,6 +295,17 @@ Worker control flow is implemented as one procedural loop with two explicit seam
 - `OrchestratorGateway` for API transport and conflict normalization
 - `JobExecution` for non-blocking subprocess lifecycle and checkpoint polling
 
+### Refactor Module Layout
+
+The refactor introduces three explicit module clusters:
+- `src/relaymd/orchestrator/services/`:
+  `job_transitions.py`, `assignment_service.py`, `worker_lifecycle_service.py`,
+  `slurm_provisioning_service.py`, `salad_autoscaling_service.py`
+- `packages/relaymd-worker/src/relaymd/worker/`:
+  `context.py`, `gateway.py`, `job_execution.py` as the primary seams for `main.py`
+- `src/relaymd/cli/`:
+  `context.py` plus `services/{jobs_service,workers_service,submit_service}.py`
+
 ---
 
 ## Checkpoint Strategy
