@@ -57,11 +57,11 @@ class CliSettings(BaseSettings):
             "b2_access_key_id": ("B2_ACCESS_KEY_ID",),
             "b2_secret_access_key": ("B2_SECRET_ACCESS_KEY",),
         }
-        init_kwargs = yaml_source.init_kwargs
-        if isinstance(init_kwargs, dict):
-            config_dicts = [init_kwargs]
-        elif isinstance(init_kwargs, list):
-            config_dicts = [item for item in init_kwargs if isinstance(item, dict)]
+        raw_init_kwargs: object = getattr(yaml_source, "init_kwargs", None)
+        if isinstance(raw_init_kwargs, dict):
+            config_dicts = [raw_init_kwargs]
+        elif isinstance(raw_init_kwargs, list):
+            config_dicts = [item for item in raw_init_kwargs if isinstance(item, dict)]
         else:
             config_dicts = []
 

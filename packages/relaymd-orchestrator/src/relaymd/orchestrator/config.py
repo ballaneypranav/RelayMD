@@ -76,11 +76,11 @@ class OrchestratorSettings(BaseSettings):
             "salad_container_group": ("SALAD_CONTAINER_GROUP",),
             "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
         }
-        init_kwargs = yaml_source.init_kwargs
-        if isinstance(init_kwargs, dict):
-            config_dicts = [init_kwargs]
-        elif isinstance(init_kwargs, list):
-            config_dicts = [item for item in init_kwargs if isinstance(item, dict)]
+        raw_init_kwargs: object = getattr(yaml_source, "init_kwargs", None)
+        if isinstance(raw_init_kwargs, dict):
+            config_dicts = [raw_init_kwargs]
+        elif isinstance(raw_init_kwargs, list):
+            config_dicts = [item for item in raw_init_kwargs if isinstance(item, dict)]
         else:
             config_dicts = []
 
