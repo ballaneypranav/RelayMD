@@ -1,4 +1,4 @@
-from .api import JobAssigned, JobRequestResponse, NoJobAvailable
+from .api import JobAssigned, JobConflict, JobRequestResponse, NoJobAvailable
 from .enums import JobStatus, Platform
 from .job import CheckpointReport, Job, JobCreate, JobRead
 from .worker import Worker, WorkerRead, WorkerRegister
@@ -10,6 +10,7 @@ __all__ = [
     "CheckpointReport",
     "Job",
     "JobAssigned",
+    "JobConflict",
     "JobCreate",
     "JobRead",
     "JobRequestResponse",

@@ -127,6 +127,18 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
     headers = {"X-API-Token": "test-token"}
 
     async with app_client(make_settings()) as (_app, client):
+        register_response = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "hpc",
+                "gpu_model": "NVIDIA A100",
+                "gpu_count": 1,
+                "vram_gb": 80,
+            },
+        )
+        worker_id = register_response.json()["worker_id"]
+
         create_response = await client.post(
             "/jobs",
             headers=headers,
@@ -135,6 +147,15 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
         assert create_response.status_code == 200
         original_job = create_response.json()
         original_job_id = original_job["id"]
+
+        request_response = await client.post(
+            "/jobs/request",
+            headers=headers,
+            params={"worker_id": worker_id},
+        )
+        assert request_response.status_code == 200
+        assert request_response.json()["status"] == "assigned"
+        assert request_response.json()["job_id"] == original_job_id
 
         checkpoint_response = await client.post(
             f"/jobs/{original_job_id}/checkpoint",

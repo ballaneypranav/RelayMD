@@ -278,3 +278,32 @@ async def test_list_workers_requires_api_token() -> None:
     async with app_client(settings) as (_app, client):
         response = await client.get("/workers")
         assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_late_worker_callbacks_return_typed_conflicts() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        async with get_sessionmaker()() as session:
+            job = Job(
+                title="already-done",
+                input_bundle_path="jobs/done/input/bundle.tar.gz",
+                status=JobStatus.completed,
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+
+        checkpoint_response = await client.post(
+            f"/jobs/{job.id}/checkpoint",
+            headers=headers,
+            json={"checkpoint_path": "jobs/done/checkpoints/latest"},
+        )
+        assert checkpoint_response.status_code == 409
+        assert checkpoint_response.json()["error"] == "job_transition_conflict"
+
+        complete_response = await client.post(f"/jobs/{job.id}/complete", headers=headers)
+        assert complete_response.status_code == 409
+        assert complete_response.json()["error"] == "job_transition_conflict"
