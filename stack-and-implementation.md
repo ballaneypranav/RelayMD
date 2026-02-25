@@ -238,7 +238,7 @@ The operator CLI now lives in the root `relaymd` package (`src/relaymd/cli`). It
 
 ### Distribution
 
-PyInstaller compiles the CLI and all its dependencies (including the embedded CPython interpreter) into a single self-contained ELF binary. The binary is built on `ubuntu-22.04` (glibc 2.35) in CI for broad HPC compatibility and attached to GitHub Releases automatically on version tags.
+PyInstaller compiles the CLI and all its dependencies (including the embedded CPython interpreter) into a single self-contained ELF binary. The binary is built on `ubuntu-22.04` (glibc 2.35) in CI for broad HPC compatibility and attached to the rolling GitHub Release tag `latest` automatically on every push to `main`.
 
 One-line install on any cluster:
 

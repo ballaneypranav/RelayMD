@@ -1,0 +1,26 @@
+name: Build CLI
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-binary:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --dev
+      - run: uv run pyinstaller relaymd-cli.spec
+      - name: Rename binary
+        run: mv dist/relaymd dist/relaymd-linux-x86_64
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest
+          prerelease: false
+          make_latest: true
+          files: dist/relaymd-linux-x86_64
