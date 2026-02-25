@@ -1171,7 +1171,7 @@ requires-dist = [
 [[package]]
 name = "relaymd-orchestrator"
 version = "0.1.0"
-source = { virtual = "packages/relaymd-orchestrator" }
+source = { editable = "packages/relaymd-orchestrator" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },

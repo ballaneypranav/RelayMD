@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+import uvicorn
 from relaymd.orchestrator import __version__
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
@@ -73,3 +75,13 @@ def create_app(
 
 
 app = create_app()
+
+
+def start() -> None:
+    if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
+        uvicorn.main(
+            args=["relaymd.orchestrator.main:app", *sys.argv[1:]],
+            prog_name="relaymd-orchestrator",
+        )
+        return
+    uvicorn.run("relaymd.orchestrator.main:app", host="0.0.0.0", port=8000)

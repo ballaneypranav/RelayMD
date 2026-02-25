@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "relaymd-orchestrator"
 version = "0.1.0"
@@ -17,9 +21,15 @@ dependencies = [
     "httpx",
 ]
 
+[project.scripts]
+relaymd-orchestrator = "relaymd.orchestrator.main:start"
+
 [tool.uv.sources]
 relaymd-models = { workspace = true }
 relaymd-storage = { workspace = true }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/relaymd"]
