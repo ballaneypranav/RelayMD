@@ -20,7 +20,12 @@ cp deploy/config.example.yaml ~/.config/relaymd/config.yaml
 
 SQLite recommendation: keep the database in a stable persistent directory (for example `/srv/relaymd/orchestrator/relaymd.db`), not `/tmp`.
 
-By default the orchestrator reads `~/.config/relaymd/config.yaml`. To use a different path, set:
+Config lookup order (highest precedence first):
+- `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
+- `./relaymd-config.yaml` (project-local override, gitignored)
+- `~/.config/relaymd/config.yaml` (user-global default)
+
+To force a specific path, set:
 
 ```bash
 export RELAYMD_CONFIG=/absolute/path/to/config.yaml

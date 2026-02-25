@@ -54,8 +54,13 @@ class OrchestratorSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     @classmethod
-    def config_path(cls) -> Path:
-        return Path(os.getenv(RELAYMD_CONFIG_ENV_VAR, DEFAULT_RELAYMD_CONFIG_PATH)).expanduser()
+    def config_paths(cls) -> list[Path]:
+        if explicit := os.getenv(RELAYMD_CONFIG_ENV_VAR):
+            return [Path(explicit).expanduser()]
+        return [
+            Path(DEFAULT_RELAYMD_CONFIG_PATH).expanduser(),
+            Path.cwd() / "relaymd-config.yaml",
+        ]
 
     @classmethod
     def _drop_yaml_keys_with_env_overrides(
@@ -71,9 +76,18 @@ class OrchestratorSettings(BaseSettings):
             "salad_container_group": ("SALAD_CONTAINER_GROUP",),
             "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
         }
+        init_kwargs = yaml_source.init_kwargs
+        if isinstance(init_kwargs, dict):
+            config_dicts = [init_kwargs]
+        elif isinstance(init_kwargs, list):
+            config_dicts = [item for item in init_kwargs if isinstance(item, dict)]
+        else:
+            config_dicts = []
+
         for field_name, env_keys in env_override_map.items():
             if any(os.getenv(env_key) is not None for env_key in env_keys):
-                yaml_source.init_kwargs.pop(field_name, None)
+                for config_dict in config_dicts:
+                    config_dict.pop(field_name, None)
 
     @classmethod
     def settings_customise_sources(
@@ -84,7 +98,7 @@ class OrchestratorSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        yaml_source = YamlConfigSettingsSource(settings_cls, yaml_file=cls.config_path())
+        yaml_source = YamlConfigSettingsSource(settings_cls, yaml_file=cls.config_paths())
         cls._drop_yaml_keys_with_env_overrides(yaml_source)
         return (
             init_settings,

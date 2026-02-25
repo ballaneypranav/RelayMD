@@ -8,9 +8,10 @@ curl -L https://github.com/<org>/relaymd/releases/latest/download/relaymd-linux-
 
 ## Config
 
-The CLI reads the same YAML config file as the orchestrator:
-- default: `~/.config/relaymd/config.yaml`
-- override path: `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
+The CLI reads the same YAML config chain as the orchestrator (highest precedence first):
+- `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
+- `./relaymd-config.yaml` (project-local override, gitignored)
+- `~/.config/relaymd/config.yaml` (user-global default)
 
 Start from [deploy/config.example.yaml](../deploy/config.example.yaml) and set:
 - `orchestrator_url`
