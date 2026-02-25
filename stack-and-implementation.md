@@ -268,13 +268,20 @@ relaymd workers list
 
 CLI and worker control-plane calls use a generated typed client package (`relaymd-api-client`) instead of handwritten HTTP request code.
 
-Generation source and command:
+Bootstrap command (recommended):
+
+```bash
+./scripts/sync_workspace.sh
+```
+
+Generation-only command:
 
 ```bash
 ./scripts/generate_api_client.sh
 ```
 
-The script exports OpenAPI from `relaymd.orchestrator.main:create_app` and regenerates `packages/relaymd-api-client/src/relaymd_api_client`.
+The generator exports OpenAPI from `relaymd.orchestrator.main:create_app` and regenerates `packages/relaymd-api-client/src/relaymd_api_client`.
+Generated client artifacts are intentionally produced at build/CI/bootstrap time and are not committed.
 
 ---
 

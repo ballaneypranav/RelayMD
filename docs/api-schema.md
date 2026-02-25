@@ -13,7 +13,15 @@ Typed client code for CLI/worker is generated into:
 
 - `packages/relaymd-api-client/src/relaymd_api_client/`
 
-Regenerate schema + client:
+The generated package source is not committed; CI/build regenerates it.
+
+Bootstrap workspace (recommended):
+
+```bash
+./scripts/sync_workspace.sh
+```
+
+Regenerate schema + client only:
 
 ```bash
 ./scripts/generate_api_client.sh

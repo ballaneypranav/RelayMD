@@ -1,10 +1,17 @@
 # RelayMD API Client
 
 This package contains typed client code generated from the orchestrator OpenAPI schema.
+Generated artifacts are intentionally not committed; they are produced in CI/build and local bootstrap.
 
 ## Regenerate
 
 From repository root:
+
+```bash
+./scripts/sync_workspace.sh
+```
+
+Or generate just the schema + client:
 
 ```bash
 ./scripts/generate_api_client.sh

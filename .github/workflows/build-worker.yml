@@ -10,6 +10,8 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: ./scripts/sync_workspace.sh
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io

@@ -38,6 +38,7 @@ COPY packages ./packages
 
 RUN python -m pip install --no-cache-dir \
     ./packages/relaymd-core \
+    ./packages/relaymd-api-client \
     ./packages/relaymd-worker
 
 ENTRYPOINT ["python", "-m", "relaymd.worker"]

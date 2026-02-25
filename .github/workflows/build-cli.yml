@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --dev
+      - run: ./scripts/sync_workspace.sh
       - run: uv run pyinstaller relaymd-cli.spec
       - name: Rename binary
         run: mv dist/relaymd dist/relaymd-linux-x86_64

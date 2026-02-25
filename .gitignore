@@ -31,5 +31,9 @@ env/
 relaymd.db
 relaymd-config.yaml
 
+# Generated API client artifacts
+packages/relaymd-api-client/openapi.json
+packages/relaymd-api-client/src/relaymd_api_client/
+
 # Infisical
 .infisical.json
