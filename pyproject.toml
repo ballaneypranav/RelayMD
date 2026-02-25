@@ -28,6 +28,7 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]
 pythonpath = [
     "packages/relaymd-models/src",
     "packages/relaymd-storage/src",
