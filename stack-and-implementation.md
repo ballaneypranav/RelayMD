@@ -281,7 +281,19 @@ Generation-only command:
 ```
 
 The generator exports OpenAPI from `relaymd.orchestrator.main:create_app` and regenerates `packages/relaymd-api-client/src/relaymd_api_client`.
-Generated client artifacts are intentionally produced at build/CI/bootstrap time and are not committed.
+Generated client artifacts are intentionally not committed and must be regenerated after API changes.
+
+### Transition Service & Conflict Semantics
+
+Job state mutations are centralized in `relaymd.orchestrator.services.job_transitions.JobTransitionService`.
+Invalid transitions return typed `409` responses (`JobConflict`) instead of ad-hoc strings.
+Checkpoint updates are accepted only for jobs in `assigned` or `running` states.
+
+### Worker Runtime Seams
+
+Worker control flow is implemented as one procedural loop with two explicit seams:
+- `OrchestratorGateway` for API transport and conflict normalization
+- `JobExecution` for non-blocking subprocess lifecycle and checkpoint polling
 
 ---
 

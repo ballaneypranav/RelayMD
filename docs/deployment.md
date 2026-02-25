@@ -52,3 +52,10 @@ tmux kill-session -t relaymd
 ```
 
 Logs are visible in the tmux session output.
+
+## Rollout Order
+
+Use this upgrade sequence for compatibility:
+1. deploy orchestrator first
+2. deploy worker image second
+3. upgrade CLI binaries last

@@ -49,6 +49,10 @@ relaymd jobs cancel <job-id> --force
 relaymd jobs requeue <job-id>
 ```
 
+Strict transition rules apply:
+- cancelling a running job without `--force` returns a conflict
+- requeue is allowed only for terminal jobs (`completed`, `failed`, `cancelled`)
+
 Workers:
 
 ```bash

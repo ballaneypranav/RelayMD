@@ -13,7 +13,10 @@ Typed client code for CLI/worker is generated into:
 
 - `packages/relaymd-api-client/src/relaymd_api_client/`
 
-The generated package source is not committed; CI/build regenerates it.
+The generated package source is not committed. Regenerate it whenever API contracts change.
+
+Transition-sensitive endpoints now also expose a typed `409` payload (`JobConflict`) for invalid
+or stale state transitions.
 
 Bootstrap workspace (recommended):
 

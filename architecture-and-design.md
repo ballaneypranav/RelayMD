@@ -63,6 +63,7 @@ The CLI is not present inside the worker container. It is strictly an operator t
 The orchestrator is the only stateful component. It runs as a FastAPI application on a persistent machine — in practice, a cluster login node — backed by a SQLite database. Its responsibilities are:
 
 - Maintaining the canonical state of every job (queued, assigned, running, completed, failed, cancelled) and every worker (registered, idle, running, stale)
+- Validating all in-place job transitions through a central transition service and returning typed `409` conflicts for invalid transitions
 - Assigning jobs to workers based on GPU availability and a preference policy
 - Detecting stale workers via heartbeat timeouts and re-queuing their jobs
 - Proactively submitting new SLURM jobs to HPC clusters via `sbatch` (direct subprocess call — the orchestrator runs on the login node where `sbatch` is in `PATH`) when the queue is idle and work is waiting
@@ -89,6 +90,10 @@ On startup, a worker:
 9. On clean subprocess exit: reports job completion and loops back to poll for another job
 
 The worker has no persistent state. If it dies mid-run, the orchestrator detects the missed heartbeat, marks the job as re-queued, and assigns it to the next available worker. That worker picks up from the last checkpoint as if nothing happened.
+
+Internally, the runtime is split into two seams:
+- `OrchestratorGateway` (API transport + conflict normalization)
+- `JobExecution` (non-blocking subprocess + checkpoint polling)
 
 ### Storage
 
