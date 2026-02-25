@@ -10,6 +10,7 @@ dependencies = [
     "relaymd-core",
     "fastapi>=0.111",
     "uvicorn[standard]",
+    "apscheduler",
     "sqlmodel>=0.0.18",
     "aiosqlite",
     "alembic",
@@ -36,6 +37,7 @@ relaymd-worker = { workspace = true }
 members = [
     "packages/relaymd-core",
     "packages/relaymd-worker",
+    "packages/relaymd-api-client",
 ]
 
 [dependency-groups]
@@ -51,6 +53,7 @@ dev = [
     "ruff",
     "pyright",
     "pyinstaller",
+    "openapi-python-client",
 ]
 
 [tool.ruff]
