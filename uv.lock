@@ -594,6 +594,24 @@ wheels = [
 ]
 
 [[package]]
+name = "infisical-python"
+version = "2.1.9"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/86/82/ddb69014f3c77c6b6c8b9ab017ab25917d9d542d98ae7e597093a036887b/infisical_python-2.1.9.tar.gz", hash = "sha256:25294f6d05d3480a192bae192c0c5d2e2527a84173694c5394fda20278bf1d29", size = 39508, upload-time = "2024-04-15T12:05:14.168Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/10/15/3afc0389578938f71cb74b49df91135e2e5299dad5b90ff702bdc719e1f4/infisical_python-2.1.9-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:0577e4756fcf255ca0831ca4e2184b49545d86fa68deac3522e738e4bf05d6c4", size = 2523777, upload-time = "2024-04-15T12:04:11.866Z" },
+    { url = "https://files.pythonhosted.org/packages/de/ab/9f20b11cfe9afb576832f37d62412f5f28691dae3ab5d89715fa92242a58/infisical_python-2.1.9-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:3cad4fe9aa5702e59bab580125f48ff1dbfd4614e934c1594714841c28bcea6b", size = 2363249, upload-time = "2024-04-15T12:04:14.12Z" },
+    { url = "https://files.pythonhosted.org/packages/49/cf/1631811583cdebc6bade07582fff3fd1b25c1effc84ad6a272f5417ad637/infisical_python-2.1.9-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:2ef8e45b2c6a53c8d6dd8986d1b9c5b9f21c8cd9233e2dc061d85f77adbb1b2c", size = 3231255, upload-time = "2024-04-15T12:04:15.556Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/d2/fae4a6d4f49256cca004fbf868dc8cf7937c255e3c562e8fc3e429613091/infisical_python-2.1.9-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:c33a08028d617011442712eaf5bd1689acc8710e7f6ce125ae07d9865cb97413", size = 3707433, upload-time = "2024-04-15T12:04:17.716Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/b6/4ce6e732f803aae9045aad51177825a15a3bcb2b0c5cd1a26eb23759c7d6/infisical_python-2.1.9-cp311-none-win_amd64.whl", hash = "sha256:515bea978ca00700b2b3538c9c2ad605391427ff68eeec1512370aa74526247b", size = 2270538, upload-time = "2024-04-15T12:04:19.81Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/fa/737b991001b1b9c838ba77fea744d2261b68fffdf678e5c57a2634c79761/infisical_python-2.1.9-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:f4ae6af714a9a48bf0b94b44ed565c3e75c317f4d84b87b8d168cad3a31f6a03", size = 2523858, upload-time = "2024-04-15T12:04:21.808Z" },
+    { url = "https://files.pythonhosted.org/packages/89/ae/82d751c3fe3e897580479b4104ff5b4f970f2fe1128ba1c69ce09452b15e/infisical_python-2.1.9-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:6aa5e21772d373646de4595a3f50f8dc934e153c483a5bec06f9cfccceb95a12", size = 2363110, upload-time = "2024-04-15T12:04:23.428Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/37/984674e47e1c3636e988536ce27a1b4333b963404058c0b0b9bae81bfa02/infisical_python-2.1.9-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:fa3242d4787562c5ea98febf1ba122bb18a15289309546283513fcfd61089b7d", size = 3231270, upload-time = "2024-04-15T12:04:25.524Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/04/25a8a73b4ce786a5e61314ab04cb3462d6a1801b29ef5262dace01ce4efb/infisical_python-2.1.9-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:ecfd1acf8a40a63d45f38567ca5153567876ab482e2fe380ec9793faf50cb160", size = 3707497, upload-time = "2024-04-15T12:04:27.482Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/33/baec233138ee8996e0ee5b0411a47559246141ee98e6471dc8de698066e8/infisical_python-2.1.9-cp312-none-win_amd64.whl", hash = "sha256:c6c71101dd1f636458e32bfac568028bf6e23e1ba60989d4cb4742c80238f40c", size = 2270661, upload-time = "2024-04-15T12:04:29.682Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1331,6 +1349,7 @@ version = "0.1.0"
 source = { editable = "packages/relaymd-worker" }
 dependencies = [
     { name = "httpx" },
+    { name = "infisical-python" },
     { name = "orjson" },
     { name = "pydantic-settings" },
     { name = "pynvml" },
@@ -1342,6 +1361,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "httpx" },
+    { name = "infisical-python", specifier = ">=2.0,<2.2" },
     { name = "orjson" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pynvml" },

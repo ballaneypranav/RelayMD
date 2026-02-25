@@ -4,14 +4,34 @@ import subprocess
 from unittest.mock import Mock
 
 import pytest
-import respx
-from httpx import Response
 from relaymd.worker import bootstrap
 from relaymd.worker.bootstrap import WorkerConfig
 
 
-def _secret_response(value: str) -> Response:
-    return Response(200, json={"secret": {"secretValue": value}})
+class _FakeSecret:
+    def __init__(self, secret_value: str) -> None:
+        self.secret_value = secret_value
+
+
+class _FakeInfisicalClient:
+    def __init__(self, settings, values: dict[str, str], should_fail: bool = False) -> None:
+        self.settings = settings
+        self.values = values
+        self.should_fail = should_fail
+        self.calls: list[tuple[str, str, str, str]] = []
+
+    def getSecret(self, options) -> _FakeSecret:
+        if self.should_fail:
+            raise RuntimeError("unauthorized")
+        self.calls.append(
+            (
+                options.secret_name,
+                options.project_id,
+                options.environment,
+                options.path,
+            )
+        )
+        return _FakeSecret(self.values[options.secret_name])
 
 
 def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -21,34 +41,25 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
     joined = Mock()
     monkeypatch.setattr(bootstrap, "join_tailnet", joined)
 
-    with respx.mock(assert_all_called=True) as router:
-        router.post(
-            "https://app.infisical.com/api/v1/auth/universal-auth/login"
-        ).mock(return_value=Response(200, json={"accessToken": "access-token"}))
+    values = {
+        "B2_APPLICATION_KEY_ID": "key-id",
+        "B2_APPLICATION_KEY": "key-secret",
+        "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
+        "BUCKET_NAME": "relaymd-bucket",
+        "TAILSCALE_AUTH_KEY": "tskey-ephemeral",
+        "RELAYMD_API_TOKEN": "relay-token",
+        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:8000",
+    }
+    created_clients: list[_FakeInfisicalClient] = []
 
-        router.get(
-            "https://app.infisical.com/api/v3/secrets/raw/B2_APPLICATION_KEY_ID"
-        ).mock(return_value=_secret_response("key-id"))
-        router.get("https://app.infisical.com/api/v3/secrets/raw/B2_APPLICATION_KEY").mock(
-            return_value=_secret_response("key-secret")
-        )
-        router.get("https://app.infisical.com/api/v3/secrets/raw/B2_ENDPOINT").mock(
-            return_value=_secret_response("https://s3.us-east-005.backblazeb2.com")
-        )
-        router.get("https://app.infisical.com/api/v3/secrets/raw/BUCKET_NAME").mock(
-            return_value=_secret_response("relaymd-bucket")
-        )
-        router.get("https://app.infisical.com/api/v3/secrets/raw/TAILSCALE_AUTH_KEY").mock(
-            return_value=_secret_response("tskey-ephemeral")
-        )
-        router.get("https://app.infisical.com/api/v3/secrets/raw/RELAYMD_API_TOKEN").mock(
-            return_value=_secret_response("relay-token")
-        )
-        router.get(
-            "https://app.infisical.com/api/v3/secrets/raw/RELAYMD_ORCHESTRATOR_URL"
-        ).mock(return_value=_secret_response("http://orchestrator.tail.ts.net:8000"))
+    def _build_client(*, settings) -> _FakeInfisicalClient:
+        client = _FakeInfisicalClient(settings=settings, values=values)
+        created_clients.append(client)
+        return client
 
-        config = bootstrap.run_bootstrap()
+    monkeypatch.setattr(bootstrap, "InfisicalClient", _build_client)
+
+    config = bootstrap.run_bootstrap()
 
     assert config == WorkerConfig(
         b2_application_key_id="key-id",
@@ -59,25 +70,36 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         relaymd_api_token="relay-token",
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
     )
+    client = created_clients[0]
+    assert client.settings.client_id == "client-id"
+    assert client.settings.client_secret == "client-secret"
+    assert client.settings.site_url == "https://app.infisical.com"
+    assert [call[0] for call in client.calls] == [
+        "B2_APPLICATION_KEY_ID",
+        "B2_APPLICATION_KEY",
+        "B2_ENDPOINT",
+        "BUCKET_NAME",
+        "TAILSCALE_AUTH_KEY",
+        "RELAYMD_API_TOKEN",
+        "RELAYMD_ORCHESTRATOR_URL",
+    ]
     joined.assert_called_once_with("tskey-ephemeral", "worker-a")
 
 
 def test_run_bootstrap_missing_token_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
+    monkeypatch.setattr(bootstrap, "InfisicalClient", Mock(side_effect=AssertionError))
 
-    with respx.mock(assert_all_called=False) as router:
-        with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is required"):
-            bootstrap.run_bootstrap()
-        assert len(router.calls) == 0
+    with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is required"):
+        bootstrap.run_bootstrap()
 
 
 def test_run_bootstrap_malformed_token_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("INFISICAL_TOKEN", "missing-colon")
+    monkeypatch.setattr(bootstrap, "InfisicalClient", Mock(side_effect=AssertionError))
 
-    with respx.mock(assert_all_called=False) as router:
-        with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is malformed"):
-            bootstrap.run_bootstrap()
-        assert len(router.calls) == 0
+    with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is malformed"):
+        bootstrap.run_bootstrap()
 
 
 def test_run_bootstrap_infisical_error_raises_runtime_error(
@@ -86,13 +108,17 @@ def test_run_bootstrap_infisical_error_raises_runtime_error(
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.setattr(bootstrap, "join_tailnet", Mock())
 
-    with respx.mock(assert_all_called=True) as router:
-        router.post(
-            "https://app.infisical.com/api/v1/auth/universal-auth/login"
-        ).mock(return_value=Response(401, json={"message": "unauthorized"}))
+    def _build_failing_client(*, settings) -> _FakeInfisicalClient:
+        return _FakeInfisicalClient(
+            settings=settings,
+            values={},
+            should_fail=True,
+        )
 
-        with pytest.raises(RuntimeError, match="Failed to bootstrap worker from Infisical"):
-            bootstrap.run_bootstrap()
+    monkeypatch.setattr(bootstrap, "InfisicalClient", _build_failing_client)
+
+    with pytest.raises(RuntimeError, match="Failed to bootstrap worker from Infisical"):
+        bootstrap.run_bootstrap()
 
 
 def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch) -> None:

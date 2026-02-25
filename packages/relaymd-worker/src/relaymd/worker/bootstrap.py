@@ -5,7 +5,8 @@ import subprocess
 import time
 from pathlib import Path
 
-import httpx
+from infisical_client import ClientSettings, InfisicalClient
+from infisical_client.schemas import GetSecretOptions
 from pydantic import BaseModel
 
 INFISICAL_BASE_URL = "https://app.infisical.com"
@@ -14,7 +15,6 @@ INFISICAL_ENVIRONMENT = "production"
 INFISICAL_SECRET_PATH = "/RelayMD"
 TAILSCALE_SOCKET = "/tmp/tailscaled.sock"
 TAILSCALE_STATE_DIR = "/tmp/tailscale-state"
-REQUEST_TIMEOUT_SECONDS = 30.0
 
 
 class WorkerConfig(BaseModel):
@@ -47,25 +47,6 @@ def _parse_infisical_machine_token(raw_token: str | None) -> tuple[str, str]:
             "<client_id>:<client_secret>"
         )
     return client_id, client_secret
-
-
-def _fetch_secret(client: httpx.Client, access_token: str, secret_name: str) -> str:
-    response = client.get(
-        f"{INFISICAL_BASE_URL}/api/v3/secrets/raw/{secret_name}",
-        headers={"Authorization": f"Bearer {access_token}"},
-        params={
-            "workspaceId": INFISICAL_WORKSPACE_ID,
-            "environment": INFISICAL_ENVIRONMENT,
-            "secretPath": INFISICAL_SECRET_PATH,
-        },
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    try:
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise RuntimeError(f"Failed to fetch Infisical secret: {secret_name}") from exc
-
-    return response.json()["secret"]["secretValue"]
 
 
 def join_tailnet(auth_key: str, hostname: str) -> None:
@@ -111,27 +92,34 @@ def run_bootstrap() -> WorkerConfig:
     client_id, client_secret = _parse_infisical_machine_token(machine_token)
 
     try:
-        with httpx.Client() as client:
-            login_response = client.post(
-                f"{INFISICAL_BASE_URL}/api/v1/auth/universal-auth/login",
-                json={"clientId": client_id, "clientSecret": client_secret},
-                timeout=REQUEST_TIMEOUT_SECONDS,
+        client = InfisicalClient(
+            settings=ClientSettings(
+                client_id=client_id,
+                client_secret=client_secret,
+                site_url=INFISICAL_BASE_URL,
             )
-            login_response.raise_for_status()
-            access_token = login_response.json()["accessToken"]
+        )
 
-            config = WorkerConfig(
-                b2_application_key_id=_fetch_secret(client, access_token, "B2_APPLICATION_KEY_ID"),
-                b2_application_key=_fetch_secret(client, access_token, "B2_APPLICATION_KEY"),
-                b2_endpoint=_fetch_secret(client, access_token, "B2_ENDPOINT"),
-                bucket_name=_fetch_secret(client, access_token, "BUCKET_NAME"),
-                tailscale_auth_key=_fetch_secret(client, access_token, "TAILSCALE_AUTH_KEY"),
-                relaymd_api_token=_fetch_secret(client, access_token, "RELAYMD_API_TOKEN"),
-                relaymd_orchestrator_url=_fetch_secret(
-                    client, access_token, "RELAYMD_ORCHESTRATOR_URL"
-                ),
-            )
-    except httpx.HTTPError as exc:
+        def get(name: str) -> str:
+            return client.getSecret(
+                GetSecretOptions(
+                    secret_name=name,
+                    project_id=INFISICAL_WORKSPACE_ID,
+                    environment=INFISICAL_ENVIRONMENT,
+                    path=INFISICAL_SECRET_PATH,
+                )
+            ).secret_value
+
+        config = WorkerConfig(
+            b2_application_key_id=get("B2_APPLICATION_KEY_ID"),
+            b2_application_key=get("B2_APPLICATION_KEY"),
+            b2_endpoint=get("B2_ENDPOINT"),
+            bucket_name=get("BUCKET_NAME"),
+            tailscale_auth_key=get("TAILSCALE_AUTH_KEY"),
+            relaymd_api_token=get("RELAYMD_API_TOKEN"),
+            relaymd_orchestrator_url=get("RELAYMD_ORCHESTRATOR_URL"),
+        )
+    except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to bootstrap worker from Infisical") from exc
 
     hostname = os.getenv("HOSTNAME", "relaymd-worker")
