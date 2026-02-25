@@ -9,6 +9,9 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg \
     && add-apt-repository -y ppa:deadsnakes/ppa \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.11 \
@@ -17,17 +20,11 @@ RUN apt-get update \
         git \
         wget \
         curl \
+        tailscale \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
     && python3.11 -m ensurepip --upgrade \
     && python -m pip install --no-cache-dir --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
-
-RUN curl -fsSL https://pkgs.tailscale.com/stable/tailscale_linux_amd64.tgz -o /tmp/tailscale.tgz \
-    && tar -xzf /tmp/tailscale.tgz -C /tmp \
-    && cp /tmp/tailscale_*/tailscale /usr/local/bin/tailscale \
-    && cp /tmp/tailscale_*/tailscaled /usr/local/bin/tailscaled \
-    && chmod +x /usr/local/bin/tailscale /usr/local/bin/tailscaled \
-    && rm -rf /tmp/tailscale*
 
 # AToM-OpenMM requires OpenMM plus configobj and numpy.
 RUN python -m pip install --no-cache-dir \
