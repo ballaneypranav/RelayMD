@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -99,18 +98,9 @@ async def reap_stale_workers(settings: OrchestratorSettings) -> int:
         return len(stale_workers)
 
 
-async def stale_worker_reaper_loop(
-    settings: OrchestratorSettings,
-    stop_event: asyncio.Event,
-    interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
-) -> None:
-    while not stop_event.is_set():
-        await reap_stale_workers(settings)
-        await apply_salad_autoscaling_policy(settings)
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
-        except TimeoutError:
-            continue
+async def stale_worker_reaper_job(settings: OrchestratorSettings) -> None:
+    await reap_stale_workers(settings)
+    await apply_salad_autoscaling_policy(settings)
 
 
 async def apply_salad_autoscaling_policy(settings: OrchestratorSettings) -> None:
@@ -172,42 +162,33 @@ async def apply_salad_autoscaling_policy(settings: OrchestratorSettings) -> None
         await scaler.scale(scale_target)
 
 
-async def orphaned_job_requeue_loop(
-    stop_event: asyncio.Event,
-    interval_seconds: float = HEARTBEAT_INTERVAL_SECONDS,
-) -> None:
+async def orphaned_job_requeue_once() -> None:
     sessionmaker = get_sessionmaker()
-    while not stop_event.is_set():
-        async with sessionmaker() as session:
-            worker_ids = set((await session.exec(select(Worker.id))).all())
-            assigned_jobs = (
-                await session.exec(
-                    select(Job).where(
-                        col(Job.assigned_worker_id).is_not(None),
-                        col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
-                    )
+    async with sessionmaker() as session:
+        worker_ids = set((await session.exec(select(Worker.id))).all())
+        assigned_jobs = (
+            await session.exec(
+                select(Job).where(
+                    col(Job.assigned_worker_id).is_not(None),
+                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
                 )
-            ).all()
+            )
+        ).all()
 
-            now = datetime.now(UTC).replace(tzinfo=None)
-            changed = False
-            for job in assigned_jobs:
-                if job.assigned_worker_id not in worker_ids:
-                    job.status = JobStatus.queued
-                    job.assigned_worker_id = None
-                    job.updated_at = now
-                    session.add(job)
-                    changed = True
+        now = datetime.now(UTC).replace(tzinfo=None)
+        changed = False
+        for job in assigned_jobs:
+            if job.assigned_worker_id not in worker_ids:
+                job.status = JobStatus.queued
+                job.assigned_worker_id = None
+                job.updated_at = now
+                session.add(job)
+                changed = True
 
-            if changed:
-                await session.commit()
-            else:
-                await session.rollback()
-
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
-        except TimeoutError:
-            continue
+        if changed:
+            await session.commit()
+        else:
+            await session.rollback()
 
 
 def _pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
@@ -297,14 +278,5 @@ async def submit_pending_slurm_jobs(settings: OrchestratorSettings) -> int:
     return submissions
 
 
-async def sbatch_submission_loop(
-    settings: OrchestratorSettings,
-    stop_event: asyncio.Event,
-    interval_seconds: float = SBATCH_INTERVAL_SECONDS,
-) -> None:
-    while not stop_event.is_set():
-        await submit_pending_slurm_jobs(settings)
-        try:
-            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
-        except TimeoutError:
-            continue
+async def sbatch_submission_job(settings: OrchestratorSettings) -> None:
+    await submit_pending_slurm_jobs(settings)

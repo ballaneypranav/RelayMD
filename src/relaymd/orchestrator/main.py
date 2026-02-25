@@ -1,25 +1,21 @@
 from __future__ import annotations
 
-import asyncio
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import uvicorn
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 
 from relaymd.orchestrator import __version__
+from relaymd.orchestrator.background_scheduler import build_background_scheduler
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
 from relaymd.orchestrator.logging import configure_logging, get_logger
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
-from relaymd.orchestrator.scheduler import (
-    orphaned_job_requeue_loop,
-    sbatch_submission_loop,
-    stale_worker_reaper_loop,
-)
 
 LOG = get_logger(__name__)
 
@@ -31,23 +27,19 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_engine(settings.database_url)
     await create_db_and_tables()
 
-    stop_event = asyncio.Event()
-    app.state.stop_event = stop_event
-    app.state.background_tasks = []
+    app.state.scheduler = None
     if app.state.start_background_tasks:
-        reaper_task = asyncio.create_task(stale_worker_reaper_loop(settings, stop_event))
-        orphaned_task = asyncio.create_task(orphaned_job_requeue_loop(stop_event))
-        sbatch_task = asyncio.create_task(sbatch_submission_loop(settings, stop_event))
-        app.state.background_tasks = [reaper_task, orphaned_task, sbatch_task]
+        scheduler = build_background_scheduler(settings)
+        scheduler.start()
+        app.state.scheduler = scheduler
 
     try:
         yield
     finally:
         LOG.info("orchestrator_stopping")
-        stop_event.set()
-        for task in app.state.background_tasks:
-            task.cancel()
-        await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
+        scheduler: AsyncIOScheduler | None = app.state.scheduler
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
         await dispose_engine()
 
 
