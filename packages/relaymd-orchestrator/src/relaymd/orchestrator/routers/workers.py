@@ -5,13 +5,21 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from relaymd.models import Job, JobStatus, Worker, WorkerRegister
+from relaymd.models import Job, JobStatus, Worker, WorkerRead, WorkerRegister
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/workers", dependencies=[Depends(require_worker_api_token)])
+
+
+@router.get("", response_model=list[WorkerRead])
+async def list_workers(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[WorkerRead]:
+    workers = (await session.exec(select(Worker).order_by(col(Worker.registered_at).desc()))).all()
+    return [WorkerRead.model_validate(worker) for worker in workers]
 
 
 @router.post("/register")

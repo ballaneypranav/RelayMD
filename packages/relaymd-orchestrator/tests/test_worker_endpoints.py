@@ -233,3 +233,47 @@ async def test_request_only_assigns_to_highest_scoring_idle_worker() -> None:
         )
         assert higher_response.status_code == 200
         assert higher_response.json()["status"] == "assigned"
+
+
+@pytest.mark.asyncio
+async def test_list_workers_returns_registered_workers() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        first_register = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "hpc",
+                "gpu_model": "NVIDIA A100",
+                "gpu_count": 4,
+                "vram_gb": 80,
+            },
+        )
+        second_register = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "salad",
+                "gpu_model": "NVIDIA A10",
+                "gpu_count": 1,
+                "vram_gb": 24,
+            },
+        )
+
+        listed = await client.get("/workers", headers=headers)
+        assert listed.status_code == 200
+        payload = listed.json()
+        assert len(payload) == 2
+        assert payload[0]["id"] == second_register.json()["worker_id"]
+        assert payload[1]["id"] == first_register.json()["worker_id"]
+
+
+@pytest.mark.asyncio
+async def test_list_workers_requires_api_token() -> None:
+    settings = make_settings()
+
+    async with app_client(settings) as (_app, client):
+        response = await client.get("/workers")
+        assert response.status_code == 401
