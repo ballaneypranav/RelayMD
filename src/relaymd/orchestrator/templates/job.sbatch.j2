@@ -10,10 +10,11 @@
 #SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds | default(300) }}
 #SBATCH --output=slurm-relaymd-%j.out
 #SBATCH --error=slurm-relaymd-%j.err
-#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}
+#SBATCH --export=ALL
 
 set -euo pipefail
 
+export INFISICAL_BOOTSTRAP_TOKEN="{{ infisical_token }}"
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \

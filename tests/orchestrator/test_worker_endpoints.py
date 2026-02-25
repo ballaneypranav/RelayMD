@@ -237,6 +237,53 @@ async def test_request_only_assigns_to_highest_scoring_idle_worker() -> None:
 
 
 @pytest.mark.asyncio
+async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        register = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "salad",
+                "gpu_model": "NVIDIA A10",
+                "gpu_count": 1,
+                "vram_gb": 24,
+            },
+        )
+        worker_id = register.json()["worker_id"]
+
+        async with get_sessionmaker()() as session:
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="NVIDIA H100",
+                    gpu_count=8,
+                    vram_gb=0,
+                    slurm_job_id="gilbreth:placeholder",
+                    last_heartbeat=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            session.add(
+                Job(
+                    title="train-with-placeholder",
+                    input_bundle_path="jobs/placeholder/input/bundle.tar.gz",
+                    status=JobStatus.queued,
+                )
+            )
+            await session.commit()
+
+        response = await client.post(
+            "/jobs/request",
+            headers=headers,
+            params={"worker_id": worker_id},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "assigned"
+
+
+@pytest.mark.asyncio
 async def test_list_workers_returns_registered_workers() -> None:
     settings = make_settings()
     headers = {"X-API-Token": "test-token"}

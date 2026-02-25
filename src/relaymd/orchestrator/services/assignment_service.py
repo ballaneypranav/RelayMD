@@ -89,7 +89,10 @@ class AssignmentService:
         busy_worker_ids = await self._busy_worker_ids()
         fresh_workers = (
             await self._session.exec(
-                select(Worker).where(col(Worker.last_heartbeat) >= stale_cutoff)
+                select(Worker).where(
+                    col(Worker.last_heartbeat) >= stale_cutoff,
+                    col(Worker.slurm_job_id).is_(None),
+                )
             )
         ).all()
         idle_workers = [
@@ -120,7 +123,9 @@ class AssignmentService:
             return None
 
         busy_worker_ids = await self._busy_worker_ids()
-        all_workers = (await self._session.exec(select(Worker))).all()
+        all_workers = (
+            await self._session.exec(select(Worker).where(col(Worker.slurm_job_id).is_(None)))
+        ).all()
         idle_workers = [worker for worker in all_workers if worker.id not in busy_worker_ids]
         if not idle_workers:
             return None

@@ -90,7 +90,9 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert command_args == ["sbatch", "--parsable"]
     rendered = captured["script"]
     assert "#SBATCH --gres=gpu:a100:2" in rendered
-    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" in rendered
+    assert "#SBATCH --export=ALL" in rendered
+    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
+    assert 'export INFISICAL_BOOTSTRAP_TOKEN="client-id:client-secret"' in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered

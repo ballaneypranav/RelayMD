@@ -78,6 +78,7 @@ def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("RELAYMD_API_TOKEN: yaml-token\n", encoding="utf-8")
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.setenv("API_TOKEN", "env-token")
 
     settings = OrchestratorSettings()
