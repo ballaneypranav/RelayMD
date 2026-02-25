@@ -38,8 +38,10 @@ def _render_workers_table(workers: list[dict[str, object]]) -> Table:
     for worker in workers:
         status = str(worker.get("status") or "unknown")
         style = _status_style(status)
+        worker_id = worker.get("id")
+        worker_id_str = worker_id if isinstance(worker_id, str) else None
         table.add_row(
-            _short_id(worker.get("id") if isinstance(worker.get("id"), str) else None),
+            _short_id(worker_id_str),
             str(worker.get("platform") or "-"),
             str(worker.get("gpu_model") or "-"),
             str(worker.get("vram_gb") or "-"),

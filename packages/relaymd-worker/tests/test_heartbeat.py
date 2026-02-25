@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import Mock, call
 from uuid import uuid4
-
-from tenacity import wait_none
 
 import httpx
 import pytest
 from relaymd.worker.heartbeat import HeartbeatThread
 from relaymd.worker.main import _handle_sigterm
+from tenacity import wait_none
 
 
 def _client_cm(client: Mock) -> Mock:
@@ -20,8 +20,10 @@ def _client_cm(client: Mock) -> Mock:
 
 
 def _disable_send_retry_wait() -> None:
-    HeartbeatThread._send.retry.wait = wait_none()
-    HeartbeatThread._send.retry.sleep = lambda _: None
+    # tenacity attaches retry metadata dynamically; cast for static type checking.
+    send_with_retry_any = cast(Any, HeartbeatThread._send)
+    send_with_retry_any.retry.wait = wait_none()
+    send_with_retry_any.retry.sleep = lambda _: None
 
 
 def test_heartbeat_fires_at_expected_interval(monkeypatch) -> None:
