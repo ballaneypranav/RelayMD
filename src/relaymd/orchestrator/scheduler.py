@@ -5,9 +5,10 @@ from datetime import UTC, datetime, timedelta
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, Worker
+from relaymd.orchestrator import scheduling
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
-from relaymd.orchestrator.services import AssignmentService, WorkerLifecycleService
+from relaymd.orchestrator.services import WorkerLifecycleService
 from relaymd.orchestrator.services.salad_autoscaling_service import SaladAutoscalingService
 from relaymd.orchestrator.services.slurm_provisioning_service import (
     pending_slurm_job_marker,
@@ -22,12 +23,11 @@ async def assign_job(
     session: AsyncSession,
     settings: OrchestratorSettings,
 ) -> tuple[Job, Worker] | None:
-    service = AssignmentService(
+    return await scheduling.assign_job(
         session,
         heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
         heartbeat_timeout_multiplier=settings.heartbeat_timeout_multiplier,
     )
-    return await service.assign_next_job()
 
 
 async def reap_stale_workers(settings: OrchestratorSettings) -> int:

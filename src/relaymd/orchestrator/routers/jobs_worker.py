@@ -4,7 +4,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import (
@@ -23,18 +22,13 @@ from relaymd.orchestrator.services import (
     JobTransitionService,
 )
 
+from ._responses import job_transition_conflict_response
+
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 
 
 def _get_settings(request: Request) -> OrchestratorSettings:
     return request.app.state.settings
-
-
-def _conflict_response(exc: JobTransitionConflictError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=exc.to_response_model().model_dump(mode="json"),
-    )
 
 
 @router.post("/request", response_model=JobAssigned | NoJobAvailable)
@@ -83,7 +77,7 @@ async def report_checkpoint(
     try:
         transitions.report_checkpoint(job, checkpoint_path=payload.checkpoint_path)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     session.add(job)
     await session.commit()
@@ -112,7 +106,7 @@ async def complete_job(
     try:
         transitions.mark_job_completed(job)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     session.add(job)
     await session.commit()
@@ -141,7 +135,7 @@ async def fail_job(
     try:
         transitions.mark_job_failed(job)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     session.add(job)
     await session.commit()

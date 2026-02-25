@@ -115,14 +115,7 @@ class AssignmentService:
         return queued_job
 
     async def assign_next_job(self) -> tuple[Job, Worker] | None:
-        queued_job = (
-            await self._session.exec(
-                select(Job)
-                .where(Job.status == JobStatus.queued)
-                .order_by(col(Job.created_at).asc())
-                .limit(1)
-            )
-        ).first()
+        queued_job = await self._claim_next_queued_job()
         if queued_job is None:
             return None
 

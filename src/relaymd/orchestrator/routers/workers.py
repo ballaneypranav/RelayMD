@@ -4,7 +4,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.responses import JSONResponse
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -13,14 +12,9 @@ from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, WorkerLifecycleService
 
+from ._responses import job_transition_conflict_response
+
 router = APIRouter(prefix="/workers", dependencies=[Depends(require_worker_api_token)])
-
-
-def _conflict_response(exc: JobTransitionConflictError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=exc.to_response_model().model_dump(mode="json"),
-    )
 
 
 @router.get("", response_model=list[WorkerRead])
@@ -68,7 +62,7 @@ async def deregister_worker(
     try:
         removed = await WorkerLifecycleService(session).deregister(worker_id)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     if not removed:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")

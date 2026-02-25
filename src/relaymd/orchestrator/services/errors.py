@@ -17,6 +17,9 @@ class JobTransitionConflictError(OrchestratorDomainError):
     requested_status: JobStatus | None = None
     job_id: UUID | None = None
 
+    def __post_init__(self) -> None:
+        OrchestratorDomainError.__init__(self, self.message)
+
     def to_response_model(self) -> JobConflict:
         return JobConflict(
             message=self.message,

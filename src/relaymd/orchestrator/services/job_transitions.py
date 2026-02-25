@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from relaymd.models import Job, JobStatus
+from relaymd.models.job import utcnow_naive
 
 from .errors import JobTransitionConflictError
 
@@ -37,12 +37,6 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.failed: set(),
     JobStatus.cancelled: set(),
 }
-
-
-def utcnow_naive() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
-
-
 class JobTransitionService:
     """State authority for all in-place job status mutations."""
 

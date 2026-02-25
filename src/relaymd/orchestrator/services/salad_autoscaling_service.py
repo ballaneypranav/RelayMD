@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlmodel import col, select
+from sqlmodel import col, func, select
 
 from relaymd.models import Job, JobStatus, Platform, Worker
 from relaymd.orchestrator.config import OrchestratorSettings
@@ -31,10 +31,11 @@ class SaladAutoscalingService:
 
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
-            queued_job_ids = (
-                await session.exec(select(Job.id).where(Job.status == JobStatus.queued))
-            ).all()
-            queued_jobs_count = len(queued_job_ids)
+            queued_jobs_count = (
+                await session.exec(
+                    select(func.count()).select_from(Job).where(Job.status == JobStatus.queued)
+                )
+            ).one()
             busy_worker_ids = (
                 await session.exec(
                     select(Job.assigned_worker_id).where(

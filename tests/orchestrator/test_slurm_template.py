@@ -55,3 +55,4 @@ def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" in rendered
     assert "#SBATCH --time=4:00:00" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
+    assert '--env WORKER_PLATFORM="hpc"' in rendered

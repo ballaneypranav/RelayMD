@@ -5,7 +5,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import JSONResponse
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -14,14 +13,9 @@ from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
 
+from ._responses import job_transition_conflict_response
+
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
-
-
-def _conflict_response(exc: JobTransitionConflictError) -> JSONResponse:
-    return JSONResponse(
-        status_code=status.HTTP_409_CONFLICT,
-        content=exc.to_response_model().model_dump(mode="json"),
-    )
 
 
 @router.post("", response_model=JobRead)
@@ -82,7 +76,7 @@ async def cancel_job(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
     if job.status == JobStatus.running and not force:
-        return _conflict_response(
+        return job_transition_conflict_response(
             JobTransitionConflictError(
                 message="Running job requires force=true for cancellation",
                 job_id=job.id,
@@ -95,7 +89,7 @@ async def cancel_job(
     try:
         transitions.cancel_job(job)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     session.add(job)
     await session.commit()
@@ -124,7 +118,7 @@ async def requeue_job(
     try:
         requeued_job = transitions.build_requeue_clone(existing_job)
     except JobTransitionConflictError as exc:
-        return _conflict_response(exc)
+        return job_transition_conflict_response(exc)
 
     session.add(requeued_job)
     await session.commit()

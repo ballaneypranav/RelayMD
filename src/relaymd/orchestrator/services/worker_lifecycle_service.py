@@ -94,16 +94,16 @@ class WorkerLifecycleService:
             )
         ).all()
 
-        changed = False
+        requeued_count = 0
         for job in assigned_jobs:
             if job.assigned_worker_id not in worker_ids:
                 self._transitions.requeue_in_place(job)
                 self._session.add(job)
-                changed = True
+                requeued_count += 1
 
-        if changed:
+        if requeued_count > 0:
             await self._session.commit()
-            return len([job for job in assigned_jobs if job.assigned_worker_id not in worker_ids])
+            return requeued_count
 
         await self._session.rollback()
         return 0

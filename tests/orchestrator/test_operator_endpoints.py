@@ -137,6 +137,7 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
                 "vram_gb": 80,
             },
         )
+        assert register_response.status_code == 200
         worker_id = register_response.json()["worker_id"]
 
         create_response = await client.post(
