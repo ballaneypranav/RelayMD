@@ -5,7 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=uvicorn relaymd.orchestrator.main:app --host 0.0.0.0 --port 8000
+# Edit this path to your relaymd repo root.
+WorkingDirectory=/home/USER/relaymd
+ExecStart=uv run relaymd-orchestrator
 Restart=on-failure
 Environment=RELAYMD_CONFIG=%h/.config/relaymd/config.yaml
 # Environment=RELAYMD_API_TOKEN=change-me

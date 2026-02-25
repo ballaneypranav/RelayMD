@@ -33,6 +33,7 @@ Secrets can stay out of the YAML file by overriding them via environment variabl
 ## systemd User Service (Preferred)
 
 Unit file is at `deploy/systemd/relaymd-orchestrator.service`.
+It launches the orchestrator with `uv run relaymd-orchestrator`.
 
 Install and start:
 
@@ -62,6 +63,7 @@ Expected result: HTTP `200 OK`.
 ## tmux Fallback
 
 Launcher script is at `deploy/tmux/start-orchestrator.sh`.
+It launches the same command: `uv run relaymd-orchestrator`.
 
 Start:
 

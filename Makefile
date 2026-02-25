@@ -18,6 +18,7 @@ deploy-orchestrator:
 	systemctl --user daemon-reload
 	systemctl --user enable relaymd-orchestrator
 	systemctl --user start relaymd-orchestrator
+	loginctl enable-linger $$USER # no-op if lingering is already enabled
 
 release-cli:
 	@test -n "$(VERSION)" || (echo "Usage: make release-cli VERSION=X.Y.Z [PUSH=1]"; exit 1)
