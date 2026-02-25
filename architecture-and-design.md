@@ -70,6 +70,8 @@ The orchestrator is the only stateful component. It runs as a FastAPI applicatio
 
 The orchestrator never touches the simulation directly. It does not know about lambda windows, replica exchange, force fields, or any other scientific detail. A job is just a bundle of files in object storage and a status.
 
+Background maintenance work (stale worker reap, orphaned requeue, sbatch submission) runs in-process via APScheduler interval jobs.
+
 ### Workers
 
 A worker is an ephemeral process that runs inside a container — either an Apptainer `.sif` file on HPC or a Docker container on Salad Cloud. The worker client is a small Python package (`relaymd-worker`) that is pip-installed into the container image alongside the MD engine.
@@ -190,7 +192,7 @@ The requesting worker is only assigned the job if it is the highest-scoring idle
 
 Salad Cloud workers are eligible for any job but are assigned only when no HPC workers are available or idle. This ensures cheapest, most capable resources are used first.
 
-The orchestrator's sbatch submission loop runs every 60 seconds. For each configured cluster, if there are queued jobs and no registered (or pending-registration) HPC workers for that cluster, it renders and submits a new SLURM job. It stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions during the SLURM pending window.
+The orchestrator schedules a 60-second sbatch submission job. For each configured cluster, if there are queued jobs and no registered (or pending-registration) HPC workers for that cluster, it renders and submits a new SLURM job. It stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions during the SLURM pending window.
 
 ---
 

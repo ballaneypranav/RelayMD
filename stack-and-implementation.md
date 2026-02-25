@@ -162,13 +162,13 @@ b2_secret_access_key: ""      # or set B2_SECRET_ACCESS_KEY env var
 
 ### Scheduling Loops
 
-Three asyncio background tasks launched from the FastAPI `lifespan`:
+Three APScheduler interval jobs are registered from FastAPI `lifespan` using an in-memory `AsyncIOScheduler`:
 
-1. **`stale_worker_reaper_loop`** — every 30s; marks workers stale if `last_heartbeat > heartbeat_interval × timeout_multiplier`; re-queues their jobs; calls Salad autoscaling.
-2. **`orphaned_job_requeue_loop`** — handles jobs that reached `assigned` state but whose worker never registered (e.g. SLURM job failed to boot).
-3. **`sbatch_submission_loop`** — every 60s; for each `ClusterConfig`, if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions.
+1. **`stale_worker_reaper_job`** — every 30s; marks workers stale if `last_heartbeat > heartbeat_interval × timeout_multiplier`; re-queues their jobs; calls Salad autoscaling.
+2. **`orphaned_job_requeue_once`** — every 30s; handles jobs that reached `assigned` state but whose worker never registered (e.g. SLURM job failed to boot).
+3. **`sbatch_submission_job`** — every 60s; for each `ClusterConfig`, if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions.
 
-No APScheduler. No separate process. No cron.
+Scheduler settings: `coalesce=True`, `max_instances=1`, no persistent job store.
 
 ### sbatch Submission
 
@@ -263,6 +263,18 @@ relaymd workers list
 ```
 
 `submit` packs the directory into a `.tar.gz`, uploads to B2, and registers the job in one step. If `--command` is provided, it writes `relaymd-worker.json` into the directory before packing. If `--command` is absent, the directory must already contain a `relaymd-worker.json` or `relaymd-worker.toml`.
+
+### Typed API Client
+
+CLI and worker control-plane calls use a generated typed client package (`relaymd-api-client`) instead of handwritten HTTP request code.
+
+Generation source and command:
+
+```bash
+./scripts/generate_api_client.sh
+```
+
+The script exports OpenAPI from `relaymd.orchestrator.main:create_app` and regenerates `packages/relaymd-api-client/src/relaymd_api_client`.
 
 ---
 
