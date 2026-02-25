@@ -55,6 +55,20 @@ Workers:
 relaymd workers list
 ```
 
+## Orchestrator
+
+Start orchestrator (defaults: `0.0.0.0:8000`):
+
+```bash
+relaymd orchestrator up
+```
+
+Override bind host and port:
+
+```bash
+relaymd orchestrator up --host 127.0.0.1 --port 9000
+```
+
 ## relaymd-worker.json
 
 `relaymd submit` requires a worker config in the input directory (`relaymd-worker.json` or `relaymd-worker.toml`) unless you pass `--command`.

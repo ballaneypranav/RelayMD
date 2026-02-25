@@ -1,4 +1,4 @@
-.PHONY: ui docker-build docker-push deploy-orchestrator release-cli
+.PHONY: ui docker-build docker-push release-cli
 
 ORG ?= your-org
 IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest
@@ -11,14 +11,6 @@ docker-build:
 
 docker-push:
 	docker push $(IMAGE)
-
-deploy-orchestrator:
-	mkdir -p ~/.config/systemd/user
-	cp deploy/systemd/relaymd-orchestrator.service ~/.config/systemd/user/relaymd-orchestrator.service
-	systemctl --user daemon-reload
-	systemctl --user enable relaymd-orchestrator
-	systemctl --user start relaymd-orchestrator
-	loginctl enable-linger $$USER # no-op if lingering is already enabled
 
 release-cli:
 	@test -n "$(VERSION)" || (echo "Usage: make release-cli VERSION=X.Y.Z [PUSH=1]"; exit 1)
