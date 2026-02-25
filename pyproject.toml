@@ -69,6 +69,8 @@ pythonpath = [
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 extraPaths = [
     "src",
     "packages/relaymd-core/src",

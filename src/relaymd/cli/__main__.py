@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 import typer
+
 from relaymd.cli.commands.jobs import app as jobs_app
 from relaymd.cli.commands.submit import submit
 from relaymd.cli.commands.workers import app as workers_app

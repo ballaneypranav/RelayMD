@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+
 from relaymd.models import JobAssigned, Platform, WorkerRegister
 from relaymd.storage import StorageClient
 from relaymd.worker.bootstrap import WorkerConfig

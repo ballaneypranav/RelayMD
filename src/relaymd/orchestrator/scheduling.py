@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from relaymd.models import Job, JobStatus, Platform, Worker
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from relaymd.models import Job, JobStatus, Platform, Worker
 
 HEARTBEAT_INTERVAL_SECONDS = 30
 

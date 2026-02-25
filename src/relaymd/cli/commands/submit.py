@@ -10,10 +10,11 @@ from typing import Annotated, Any
 import boto3
 import httpx
 import typer
-from relaymd.cli.config import load_settings
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+from relaymd.cli.config import load_settings
 
 console = Console()
 

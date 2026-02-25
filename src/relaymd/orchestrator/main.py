@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+
 from relaymd.orchestrator import __version__
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine

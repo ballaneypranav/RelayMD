@@ -5,12 +5,13 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 from relaymd.models import CheckpointReport, Job, JobAssigned, JobStatus, NoJobAvailable
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.scheduling import assign_job_for_requesting_worker
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 

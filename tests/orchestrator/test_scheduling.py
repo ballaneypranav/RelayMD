@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from relaymd.models import Platform, Worker
+
 from relaymd.orchestrator.scheduling import score_worker
 
 

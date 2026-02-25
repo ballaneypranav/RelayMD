@@ -5,9 +5,10 @@ from typing import Any
 
 import httpx
 import typer
-from relaymd.cli.config import load_settings
 from rich.console import Console
 from rich.table import Table
+
+from relaymd.cli.config import load_settings
 
 app = typer.Typer(help="Manage jobs.")
 console = Console()

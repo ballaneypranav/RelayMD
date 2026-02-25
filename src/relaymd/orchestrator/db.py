@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
-from relaymd.models import Job, Worker
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from relaymd.models import Job, Worker
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None

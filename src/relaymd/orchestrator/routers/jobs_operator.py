@@ -5,11 +5,12 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlmodel import col, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 from relaymd.models import Job, JobCreate, JobRead, JobStatus
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
-from sqlmodel import col, select
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 

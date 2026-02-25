@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 import typer
+
 from relaymd.cli.commands import submit as submit_cmd
 
 

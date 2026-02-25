@@ -4,9 +4,10 @@ from datetime import UTC, datetime
 
 import httpx
 import typer
-from relaymd.cli.config import load_settings
 from rich.console import Console
 from rich.table import Table
+
+from relaymd.cli.config import load_settings
 
 app = typer.Typer(help="List workers.")
 console = Console()
