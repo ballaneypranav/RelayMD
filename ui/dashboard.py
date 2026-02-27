@@ -14,12 +14,12 @@ DEFAULT_REFRESH_INTERVAL_SECONDS = 30
 STALE_WORKER_SECONDS = 120
 REQUEST_TIMEOUT_SECONDS = 15.0
 
-JOB_STATUS_COLORS = {
-    "completed": "#d4edda",
-    "running": "#fff3cd",
-    "failed": "#f8d7da",
-    "queued": "#e9ecef",
-    "assigned": "#e9ecef",
+JOB_STATUS_STYLES = {
+    "completed": ("#d4edda", "#0f5132"),
+    "running": ("#fff3cd", "#664d03"),
+    "failed": ("#f8d7da", "#842029"),
+    "queued": ("#e9ecef", "#1f2937"),
+    "assigned": ("#e9ecef", "#1f2937"),
 }
 
 
@@ -73,6 +73,43 @@ def _api_headers(token: str) -> dict[str, str]:
     }
 
 
+def _load_cli_config_values() -> tuple[str, str]:
+    try:
+        from relaymd.cli.config import CliSettings
+    except Exception:  # pragma: no cover - defensive fallback when CLI package import fails
+        return DEFAULT_ORCHESTRATOR_URL, ""
+
+    try:
+        # Read local env/YAML config only; UI should not block on external secret hydration.
+        settings = CliSettings()
+    except Exception:  # pragma: no cover - defensive fallback on config loading failures
+        return DEFAULT_ORCHESTRATOR_URL, ""
+
+    api_token = "" if settings.api_token == "change-me" else settings.api_token
+    return settings.orchestrator_url.rstrip("/"), api_token
+
+
+def _resolve_runtime_settings() -> tuple[str, str, int]:
+    orchestrator_url_env = os.getenv("RELAYMD_ORCHESTRATOR_URL")
+    api_token_env = os.getenv("RELAYMD_API_TOKEN") or os.getenv("API_TOKEN")
+
+    orchestrator_url = DEFAULT_ORCHESTRATOR_URL
+    api_token = ""
+    if orchestrator_url_env is None or not api_token_env:
+        orchestrator_url, api_token = _load_cli_config_values()
+
+    if orchestrator_url_env:
+        orchestrator_url = orchestrator_url_env
+    if api_token_env:
+        api_token = api_token_env
+
+    refresh_interval_seconds = int(
+        os.getenv("RELAYMD_REFRESH_INTERVAL_SECONDS", str(DEFAULT_REFRESH_INTERVAL_SECONDS))
+    )
+    refresh_interval_seconds = max(refresh_interval_seconds, 1)
+    return orchestrator_url.rstrip("/"), api_token, refresh_interval_seconds
+
+
 def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, str]:
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.delete(
@@ -106,8 +143,8 @@ def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tupl
 
 
 def _job_row_style(status: str, row_length: int) -> list[str]:
-    color = JOB_STATUS_COLORS.get(status, "#ffffff")
-    return [f"background-color: {color}"] * row_length
+    background, text = JOB_STATUS_STYLES.get(status, ("#ffffff", "#111827"))
+    return [f"background-color: {background}; color: {text}"] * row_length
 
 
 def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.DataFrame:
@@ -189,12 +226,7 @@ def main() -> None:
     st.set_page_config(page_title="RelayMD Operator Dashboard", layout="wide")
     st.title("RelayMD Operator Dashboard")
 
-    orchestrator_url = os.getenv("RELAYMD_ORCHESTRATOR_URL", DEFAULT_ORCHESTRATOR_URL).rstrip("/")
-    api_token = os.getenv("RELAYMD_API_TOKEN", "")
-    refresh_interval_seconds = int(
-        os.getenv("RELAYMD_REFRESH_INTERVAL_SECONDS", str(DEFAULT_REFRESH_INTERVAL_SECONDS))
-    )
-    refresh_interval_seconds = max(refresh_interval_seconds, 1)
+    orchestrator_url, api_token, refresh_interval_seconds = _resolve_runtime_settings()
 
     st.caption(f"Orchestrator: {orchestrator_url}")
     st.caption(f"Refresh interval: {refresh_interval_seconds}s")
@@ -227,7 +259,7 @@ def main() -> None:
             lambda row: _job_row_style(str(row["status"]), len(row)),
             axis=1,
         )
-        st.dataframe(styled_jobs, use_container_width=True, hide_index=True)
+        st.dataframe(styled_jobs, width="stretch", hide_index=True)
 
     with workers_placeholder.container():
         st.subheader("Workers")
@@ -235,7 +267,7 @@ def main() -> None:
             lambda row: _worker_row_style(str(row["status"]), len(row)),
             axis=1,
         )
-        st.dataframe(styled_workers, use_container_width=True, hide_index=True)
+        st.dataframe(styled_workers, width="stretch", hide_index=True)
 
     st.divider()
     st.subheader("Manual Controls")

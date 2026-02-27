@@ -5,17 +5,17 @@ from datetime import UTC, datetime
 import pytest
 
 
-def _import_dashboard_helpers():
+def _import_dashboard_module():
     pytest.importorskip("pandas")
     pytest.importorskip("streamlit")
     pytest.importorskip("streamlit_autorefresh")
-    from ui.dashboard import _build_jobs_dataframe, _build_workers_dataframe
+    import ui.dashboard as dashboard
 
-    return _build_jobs_dataframe, _build_workers_dataframe
+    return dashboard
 
 
 def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() -> None:
-    build_jobs_dataframe, _ = _import_dashboard_helpers()
+    dashboard = _import_dashboard_module()
     now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
     jobs = [
         {
@@ -26,7 +26,7 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
         }
     ]
 
-    df = build_jobs_dataframe(jobs, now)
+    df = dashboard._build_jobs_dataframe(jobs, now)
 
     assert list(df.columns) == [
         "title",
@@ -41,7 +41,7 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
 
 
 def test_build_workers_dataframe_marks_stale_workers() -> None:
-    _, build_workers_dataframe = _import_dashboard_helpers()
+    dashboard = _import_dashboard_module()
     now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
     workers = [
         {
@@ -60,7 +60,7 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
         },
     ]
 
-    df = build_workers_dataframe(workers, now)
+    df = dashboard._build_workers_dataframe(workers, now)
 
     assert list(df.columns) == [
         "platform",
@@ -73,3 +73,42 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
     assert len(df) == 2
     assert df.loc[0, "status"] == "stale"
     assert df.loc[1, "status"] == "active"
+
+
+def test_resolve_runtime_settings_uses_cli_config_when_env_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dashboard = _import_dashboard_module()
+    monkeypatch.delenv("RELAYMD_ORCHESTRATOR_URL", raising=False)
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("RELAYMD_REFRESH_INTERVAL_SECONDS", raising=False)
+    monkeypatch.setattr(
+        dashboard,
+        "_load_cli_config_values",
+        lambda: ("http://config-orchestrator:8000", "config-api-token"),
+    )
+
+    orchestrator_url, api_token, refresh_interval_seconds = dashboard._resolve_runtime_settings()
+
+    assert orchestrator_url == "http://config-orchestrator:8000"
+    assert api_token == "config-api-token"
+    assert refresh_interval_seconds == 30
+
+
+def test_resolve_runtime_settings_env_overrides_cli_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    dashboard = _import_dashboard_module()
+    monkeypatch.setenv("RELAYMD_ORCHESTRATOR_URL", "http://env-orchestrator:9000/")
+    monkeypatch.setenv("RELAYMD_API_TOKEN", "env-api-token")
+    monkeypatch.setenv("RELAYMD_REFRESH_INTERVAL_SECONDS", "5")
+    monkeypatch.setattr(
+        dashboard,
+        "_load_cli_config_values",
+        lambda: (_ for _ in ()).throw(AssertionError("should not load CLI settings")),
+    )
+
+    orchestrator_url, api_token, refresh_interval_seconds = dashboard._resolve_runtime_settings()
+
+    assert orchestrator_url == "http://env-orchestrator:9000"
+    assert api_token == "env-api-token"
+    assert refresh_interval_seconds == 5
