@@ -55,6 +55,23 @@ def _render_jobs_table(jobs: list[dict[str, Any]]) -> Table:
     return table
 
 
+def _render_jobs_plain_lines(jobs: list[dict[str, Any]]) -> list[str]:
+    lines = ["id\ttitle\tstatus\tcreated_at\tassigned_worker_id"]
+    for job in jobs:
+        lines.append(
+            "\t".join(
+                [
+                    str(job.get("id") or "-"),
+                    str(job.get("title") or "-"),
+                    str(job.get("status") or "-"),
+                    str(job.get("created_at") or "-"),
+                    str(job.get("assigned_worker_id") or "-"),
+                ]
+            )
+        )
+    return lines
+
+
 def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
     status = str(job.get("status", "unknown"))
     rows = [
@@ -79,14 +96,26 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
 
 
 @app.command("list")
-def list_jobs() -> None:
+def list_jobs(
+    pretty: bool = typer.Option(
+        False,
+        "--pretty",
+        help="Print a rich table instead of default tab-separated text.",
+    ),
+) -> None:
     try:
         jobs = JobsService(create_cli_context()).list_jobs()
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to list jobs:[/red] {exc}")
         raise typer.Exit(code=1) from exc
 
-    console.print(_render_jobs_table([job.to_dict() for job in jobs]))
+    jobs_payload = [job.to_dict() for job in jobs]
+    if pretty:
+        console.print(_render_jobs_table(jobs_payload))
+        return
+
+    for line in _render_jobs_plain_lines(jobs_payload):
+        typer.echo(line)
 
 
 @app.command("status")

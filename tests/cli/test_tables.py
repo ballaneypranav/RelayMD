@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from relaymd.cli.commands.jobs import _render_jobs_table
+from relaymd.cli.commands.jobs import _render_jobs_plain_lines, _render_jobs_table
 from relaymd.cli.commands.workers import _render_workers_table
 
 
@@ -89,3 +89,23 @@ def test_render_jobs_table_uses_hyphen_for_missing_ids() -> None:
 
     assert table.columns[0]._cells[0] == "-"
     assert table.columns[4]._cells[0] == "-"
+
+
+def test_render_jobs_plain_lines_tsv_output() -> None:
+    jobs = [
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "title": "job-one",
+            "status": "queued",
+            "created_at": "2026-01-01T00:00:00Z",
+            "assigned_worker_id": None,
+        }
+    ]
+
+    lines = _render_jobs_plain_lines(jobs)
+
+    assert lines[0] == "id\ttitle\tstatus\tcreated_at\tassigned_worker_id"
+    assert (
+        lines[1]
+        == "11111111-1111-1111-1111-111111111111\tjob-one\tqueued\t2026-01-01T00:00:00Z\t-"
+    )

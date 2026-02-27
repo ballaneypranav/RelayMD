@@ -46,6 +46,7 @@ Jobs:
 
 ```bash
 relaymd jobs list
+relaymd jobs list --pretty
 relaymd jobs status <job-id>
 relaymd jobs cancel <job-id>
 relaymd jobs cancel <job-id> --force
