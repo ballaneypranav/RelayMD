@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import typer
 from rich.console import Console
-from rich.table import Table
+from rich.markup import escape
 
 from relaymd.cli.context import create_cli_context
 from relaymd.cli.services.workers_service import WorkersService
@@ -11,48 +11,26 @@ app = typer.Typer(help="List workers.")
 console = Console()
 
 
-def _short_id(value: str | None) -> str:
-    if not value:
-        return "-"
-    return str(value)[:8]
-
-
-def _status_style(status: str) -> str:
-    styles = {
-        "idle": "green",
-        "busy": "yellow",
-    }
-    return styles.get(status, "white")
-
-
-def _render_workers_table(workers: list[dict[str, object]]) -> Table:
-    table = Table(title="Workers")
-    table.add_column("ID", justify="right")
-    table.add_column("Platform")
-    table.add_column("GPU")
-    table.add_column("VRAM")
-    table.add_column("Last Heartbeat")
-    table.add_column("Jobs Completed")
-    table.add_column("Status")
-
+def _render_workers_plain_lines(workers: list[dict[str, object]]) -> list[str]:
+    lines = ["id\tplatform\tgpu_model\tvram_gb\tlast_heartbeat\tjobs_completed\tstatus"]
     for worker in workers:
-        status = str(worker.get("status") or "unknown")
-        style = _status_style(status)
-        worker_id = worker.get("id")
-        worker_id_str = worker_id if isinstance(worker_id, str) else None
         vram_gb = worker.get("vram_gb")
         jobs_completed = worker.get("jobs_completed")
-        table.add_row(
-            _short_id(worker_id_str),
-            str(worker.get("platform") or "-"),
-            str(worker.get("gpu_model") or "-"),
-            "-" if vram_gb is None else str(vram_gb),
-            str(worker.get("last_heartbeat") or "-"),
-            "0" if jobs_completed is None else str(jobs_completed),
-            f"[{style}]{status}[/{style}]",
+        lines.append(
+            "\t".join(
+                [
+                    str(worker.get("id") or "-"),
+                    str(worker.get("platform") or "-"),
+                    str(worker.get("gpu_model") or "-"),
+                    "-" if vram_gb is None else str(vram_gb),
+                    str(worker.get("last_heartbeat") or "-"),
+                    "0" if jobs_completed is None else str(jobs_completed),
+                    str(worker.get("status") or "unknown"),
+                ]
+            )
         )
 
-    return table
+    return lines
 
 
 @app.command("list")
@@ -60,7 +38,8 @@ def list_workers() -> None:
     try:
         workers = WorkersService(create_cli_context()).list_workers()
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to list workers:[/red] {exc}")
+        console.print(f"[red]Failed to list workers:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
-    console.print(_render_workers_table([worker.to_dict() for worker in workers]))
+    for line in _render_workers_plain_lines([worker.to_dict() for worker in workers]):
+        typer.echo(line)

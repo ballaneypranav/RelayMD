@@ -5,6 +5,7 @@ import sys
 import typer
 
 from relaymd.cli.commands.jobs import app as jobs_app
+from relaymd.cli.commands.monitor import monitor
 from relaymd.cli.commands.submit import submit
 from relaymd.cli.commands.workers import app as workers_app
 
@@ -40,6 +41,7 @@ def up(
 
 
 app.command()(submit)
+app.command()(monitor)
 app.add_typer(jobs_app, name="jobs")
 app.add_typer(workers_app, name="workers")
 app.add_typer(orchestrator_app, name="orchestrator")
