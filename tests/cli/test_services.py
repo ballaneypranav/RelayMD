@@ -33,7 +33,13 @@ class _ClientContextManager:
 
 class _FakeContext:
     def __init__(self) -> None:
-        self.settings = CliSettings(api_token="test-token")
+        self.settings = CliSettings(
+            api_token="test-token",
+            b2_endpoint_url="https://b2.example",
+            b2_bucket_name="relaymd-bucket",
+            b2_access_key_id="access",
+            b2_secret_access_key="secret",
+        )
         self.client = object()
         self.storage = Mock()
 
@@ -185,6 +191,19 @@ def test_submit_service_upload_bundle_delegates_to_storage() -> None:
     )
 
     context.storage.upload_file.assert_called_once_with(archive, "jobs/a/input/bundle.tar.gz")
+
+
+def test_submit_service_upload_bundle_requires_b2_settings() -> None:
+    context = _FakeContext()
+    context.settings = CliSettings(api_token="test-token")
+
+    with pytest.raises(RuntimeError, match="Missing required B2 storage settings for submit"):
+        SubmitService(_as_cli_context(context)).upload_bundle(
+            local_archive=Path("/tmp/bundle.tar.gz"),
+            b2_key="jobs/a/input/bundle.tar.gz",
+        )
+
+    context.storage.upload_file.assert_not_called()
 
 
 def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:

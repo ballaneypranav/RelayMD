@@ -10,6 +10,7 @@ from typing import Annotated, Any
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
@@ -112,7 +113,7 @@ def submit(
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to submit job:[/red] {exc}")
+        console.print(f"[red]Failed to submit job:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     console.print(

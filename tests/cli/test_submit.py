@@ -108,3 +108,29 @@ def test_submit_aborts_when_worker_config_missing_and_no_command(tmp_path: Path)
         submit_cmd.ensure_worker_config(input_dir, command=None, checkpoint_glob=None)
 
     assert exc.value.exit_code == 1
+
+
+def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "relaymd-worker.json").write_text('{"command": "run"}\n', encoding="utf-8")
+
+    class FailingSubmitService:
+        def __init__(self, context) -> None:
+            _ = context
+
+        def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+            _ = (local_archive, b2_key)
+            raise RuntimeError("bad markup token [/:] from upstream")
+
+        def register_job(self, *, title: str, b2_key: str) -> str:
+            _ = (title, b2_key)
+            raise AssertionError("register_job should not be called after upload failure")
+
+    monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
+    monkeypatch.setattr(submit_cmd, "create_cli_context", Mock(return_value=object()))
+
+    with pytest.raises(typer.Exit) as exc:
+        submit_cmd.submit(input_dir=input_dir, title="failing-job")
+
+    assert exc.value.exit_code == 1

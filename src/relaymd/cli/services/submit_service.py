@@ -13,7 +13,29 @@ class SubmitService:
     def __init__(self, context: CliContext) -> None:
         self._context = context
 
+    def _validate_storage_settings(self) -> None:
+        settings = self._context.settings
+        missing: list[tuple[str, str]] = []
+        if not settings.b2_endpoint_url.strip():
+            missing.append(("b2_endpoint_url", "B2_ENDPOINT_URL or B2_ENDPOINT"))
+        if not settings.b2_bucket_name.strip():
+            missing.append(("b2_bucket_name", "B2_BUCKET_NAME or BUCKET_NAME"))
+        if not settings.b2_access_key_id.strip():
+            missing.append(("b2_access_key_id", "B2_ACCESS_KEY_ID or B2_APPLICATION_KEY_ID"))
+        if not settings.b2_secret_access_key.strip():
+            missing.append(("b2_secret_access_key", "B2_SECRET_ACCESS_KEY or B2_APPLICATION_KEY"))
+
+        if not missing:
+            return
+
+        details = ", ".join(f"{field} ({env_vars})" for field, env_vars in missing)
+        raise RuntimeError(
+            "Missing required B2 storage settings for submit: "
+            f"{details}. Set env vars or update relaymd-config.yaml."
+        )
+
     def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+        self._validate_storage_settings()
         self._context.storage_client().upload_file(local_archive, b2_key)
 
     def register_job(self, *, title: str, b2_key: str) -> str:

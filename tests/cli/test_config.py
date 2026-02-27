@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from relaymd.cli import config as cli_config
 from relaymd.cli.config import CliSettings
 
@@ -48,6 +50,37 @@ def test_relaymd_cli_timeout_alias_env(monkeypatch) -> None:
     assert settings.orchestrator_timeout_seconds == 45
 
 
+def test_b2_env_aliases_override_yaml_values(monkeypatch, tmp_path) -> None:
+    cwd_dir = tmp_path / "project"
+    cwd_dir.mkdir()
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "\n".join(
+            [
+                "b2_endpoint_url: https://yaml.endpoint",
+                "b2_bucket_name: yaml-bucket",
+                "b2_access_key_id: yaml-access",
+                "b2_secret_access_key: yaml-secret",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.setenv("B2_ENDPOINT", "https://env.endpoint")
+    monkeypatch.setenv("BUCKET_NAME", "env-bucket")
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "env-access")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "env-secret")
+    monkeypatch.chdir(cwd_dir)
+
+    settings = CliSettings()
+
+    assert settings.b2_endpoint_url == "https://env.endpoint"
+    assert settings.b2_bucket_name == "env-bucket"
+    assert settings.b2_access_key_id == "env-access"
+    assert settings.b2_secret_access_key == "env-secret"
+
+
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     home_config = tmp_path / "home-config.yaml"
     home_config.write_text("api_token: home-token\n", encoding="utf-8")
@@ -83,3 +116,125 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     settings = CliSettings()
 
     assert settings.api_token == "explicit-token"
+
+
+def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("B2_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("B2_ENDPOINT", raising=False)
+    monkeypatch.delenv("B2_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("BUCKET_NAME", raising=False)
+    monkeypatch.delenv("B2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY_ID", raising=False)
+    monkeypatch.delenv("B2_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
+
+    values = {
+        "RELAYMD_API_TOKEN": "relaymd-token",
+        "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
+        "BUCKET_NAME": "relaymd-bucket",
+        "B2_APPLICATION_KEY_ID": "key-id",
+        "B2_APPLICATION_KEY": "key-secret",
+    }
+    secret_calls: list[str] = []
+
+    class _FakeClientSettings:
+        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.site_url = site_url
+
+    class _FakeGetSecretOptions:
+        def __init__(
+            self,
+            *,
+            secret_name: str,
+            project_id: str,
+            environment: str,
+            path: str,
+        ) -> None:
+            self.secret_name = secret_name
+            self.project_id = project_id
+            self.environment = environment
+            self.path = path
+
+    class _FakeSecret:
+        def __init__(self, secret_value: str) -> None:
+            self.secret_value = secret_value
+
+    class _FakeInfisicalClient:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+
+        def getSecret(self, options) -> _FakeSecret:
+            secret_calls.append(options.secret_name)
+            return _FakeSecret(values[options.secret_name])
+
+    monkeypatch.setattr(
+        cli_config,
+        "_get_infisical_client_dependencies",
+        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
+    )
+
+    settings = cli_config.load_settings()
+
+    assert settings.api_token == "relaymd-token"
+    assert settings.b2_endpoint_url == "https://s3.us-east-005.backblazeb2.com"
+    assert settings.b2_bucket_name == "relaymd-bucket"
+    assert settings.b2_access_key_id == "key-id"
+    assert settings.b2_secret_access_key == "key-secret"
+    assert secret_calls == [
+        "RELAYMD_API_TOKEN",
+        "B2_ENDPOINT",
+        "BUCKET_NAME",
+        "B2_APPLICATION_KEY_ID",
+        "B2_APPLICATION_KEY",
+    ]
+
+
+def test_load_settings_env_values_win_over_infisical(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+    monkeypatch.setenv("RELAYMD_API_TOKEN", "env-relay-token")
+    monkeypatch.setenv("B2_ENDPOINT_URL", "https://env.endpoint")
+    monkeypatch.setenv("B2_BUCKET_NAME", "env-bucket")
+    monkeypatch.setenv("B2_ACCESS_KEY_ID", "env-access")
+    monkeypatch.setenv("B2_SECRET_ACCESS_KEY", "env-secret")
+
+    def _should_not_be_called():
+        raise AssertionError("Infisical should not be called when all values are explicitly set")
+
+    monkeypatch.setattr(
+        cli_config,
+        "_get_infisical_client_dependencies",
+        _should_not_be_called,
+    )
+
+    settings = cli_config.load_settings()
+
+    assert settings.api_token == "env-relay-token"
+    assert settings.b2_endpoint_url == "https://env.endpoint"
+    assert settings.b2_bucket_name == "env-bucket"
+    assert settings.b2_access_key_id == "env-access"
+    assert settings.b2_secret_access_key == "env-secret"
+
+
+def test_load_settings_malformed_infisical_token_raises(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+    monkeypatch.setenv("INFISICAL_TOKEN", "malformed-token")
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("B2_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("B2_ENDPOINT", raising=False)
+    monkeypatch.delenv("B2_BUCKET_NAME", raising=False)
+    monkeypatch.delenv("BUCKET_NAME", raising=False)
+    monkeypatch.delenv("B2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY_ID", raising=False)
+    monkeypatch.delenv("B2_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is malformed"):
+        cli_config.load_settings()
