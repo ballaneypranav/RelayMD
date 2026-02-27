@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 INFISICAL_BASE_URL = "https://app.infisical.com"
 INFISICAL_WORKSPACE_ID = "dcf29082-7972-4bca-be58-363f6ad969c0"
-INFISICAL_ENVIRONMENT = "production"
+INFISICAL_ENVIRONMENT = "prod"
 INFISICAL_SECRET_PATH = "/RelayMD"
 TAILSCALE_SOCKET = "/tmp/tailscaled.sock"
 TAILSCALE_STATE_DIR = "/tmp/tailscale-state"
