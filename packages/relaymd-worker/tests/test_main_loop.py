@@ -421,7 +421,118 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
     _run_assigned_job(context=context, assignment=assignment)
 
     assert shutdown_event.wait.call_count == 1
-    assert shutdown_event.wait.call_args.kwargs == {"timeout": 7}
+    assert shutdown_event.wait.call_args.kwargs == {"timeout": 2.0}
+    gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.fail_job.assert_not_called()
+
+
+def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-fast-exit/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+            self._poll_calls = 0
+            self._running = True
+            self.iter_calls = 0
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            self.iter_calls += 1
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            self._poll_calls += 1
+            if self._poll_calls < 4:
+                return None
+            self._running = False
+            return 0
+
+        def latest_checkpoint(self) -> None:
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            raise AssertionError("request_terminate should not be called")
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    execution_holder: dict[str, _FakeExecution] = {}
+
+    def _fake_execution_factory(**kwargs) -> _FakeExecution:
+        execution = _FakeExecution(**kwargs)
+        execution_holder["execution"] = execution
+        return execution
+
+    current_time = 0.0
+
+    def _monotonic() -> float:
+        return current_time
+
+    def _wait(*, timeout: float) -> bool:
+        nonlocal current_time
+        current_time += timeout
+        return False
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _fake_execution_factory)
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", _monotonic)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_glob_pattern="*.chk",
+        ),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main.time.sleep",
+        lambda *_: (_ for _ in ()).throw(AssertionError("time.sleep should not be called")),
+    )
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.side_effect = _wait
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=300,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    execution = execution_holder["execution"]
+    assert execution.iter_calls == 1
+    assert shutdown_event.wait.call_count == 3
+    assert all(call.kwargs == {"timeout": 2.0} for call in shutdown_event.wait.call_args_list)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
 

@@ -29,6 +29,7 @@ from relaymd.worker.job_execution import JobExecution
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
+PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
 
 
 @dataclass
@@ -226,6 +227,8 @@ def _run_assigned_job(
         execution.start()
 
         last_uploaded_mtime: float | None = None
+        checkpoint_poll_interval_seconds = float(context.checkpoint_poll_interval_seconds)
+        next_checkpoint_poll_time = time.monotonic()
         try:
             while True:
                 if context.shutdown_event.is_set():
@@ -247,19 +250,33 @@ def _run_assigned_job(
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return
 
-                for checkpoint in execution.iter_new_checkpoints():
-                    last_uploaded_mtime = _upload_checkpoint(
-                        context,
-                        checkpoint=checkpoint,
-                        checkpoint_b2_key=checkpoint_b2_key,
-                        job_id=assignment.job_id,
-                    )
+                now = time.monotonic()
+                if now >= next_checkpoint_poll_time:
+                    for checkpoint in execution.iter_new_checkpoints():
+                        last_uploaded_mtime = _upload_checkpoint(
+                            context,
+                            checkpoint=checkpoint,
+                            checkpoint_b2_key=checkpoint_b2_key,
+                            job_id=assignment.job_id,
+                        )
+                    if checkpoint_poll_interval_seconds > 0:
+                        next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
+                    else:
+                        next_checkpoint_poll_time = now
 
                 process_exit = execution.poll_exit_code()
                 if process_exit is not None:
                     break
 
-                context.shutdown_event.wait(timeout=context.checkpoint_poll_interval_seconds)
+                if checkpoint_poll_interval_seconds <= 0:
+                    wait_timeout = 0.0
+                else:
+                    until_next_checkpoint_poll = max(0.0, next_checkpoint_poll_time - now)
+                    wait_timeout = min(
+                        PROCESS_EXIT_POLL_INTERVAL_SECONDS,
+                        until_next_checkpoint_poll,
+                    )
+                context.shutdown_event.wait(timeout=wait_timeout)
 
             final_checkpoint = execution.latest_checkpoint()
             if final_checkpoint is not None:
