@@ -11,6 +11,7 @@ from uuid import uuid4
 
 import pytest
 from relaymd.worker.bootstrap import WorkerConfig
+from relaymd.worker.config import WorkerRuntimeSettings
 from relaymd.worker.context import WorkerContext
 from relaymd.worker.main import (
     BundleExecutionConfig,
@@ -55,7 +56,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         relaymd_api_token="api-token",
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
     )
-    runtime_settings = SimpleNamespace(
+    runtime_settings = WorkerRuntimeSettings(
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
@@ -85,14 +86,14 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
     )
 
-    runtime_settings = SimpleNamespace(
+    runtime_settings = WorkerRuntimeSettings(
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
     _build_storage_client(config, runtime_settings)
     assert captured["cf_bearer_token"] == "runtime-token"
 
-    runtime_settings = SimpleNamespace(
+    runtime_settings = WorkerRuntimeSettings(
         cf_worker_url="https://cf.example",
         cf_bearer_token="",
     )
