@@ -13,6 +13,23 @@ def test_relaymd_orchestrator_url_env_override(monkeypatch) -> None:
     assert settings.orchestrator_url == "https://orchestrator.example"
 
 
+def test_yaml_orchestrator_url_overrides_env(monkeypatch, tmp_path) -> None:
+    cwd_dir = tmp_path / "project"
+    cwd_dir.mkdir()
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "orchestrator_url: http://127.0.0.1:8000\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.setenv("RELAYMD_ORCHESTRATOR_URL", "https://orchestrator.example")
+    monkeypatch.chdir(cwd_dir)
+
+    settings = CliSettings()
+
+    assert settings.orchestrator_url == "http://127.0.0.1:8000"
+
+
 def test_download_bearer_token_alias_env(monkeypatch) -> None:
     monkeypatch.setenv("DOWNLOAD_BEARER_TOKEN", "download-token")
     monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")

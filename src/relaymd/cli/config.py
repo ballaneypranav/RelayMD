@@ -77,7 +77,6 @@ class CliSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
-                "orchestrator_url": ("RELAYMD_ORCHESTRATOR_URL",),
                 "api_token": ("RELAYMD_API_TOKEN", "API_TOKEN"),
                 "b2_endpoint_url": ("B2_ENDPOINT_URL",),
                 "b2_bucket_name": ("B2_BUCKET_NAME",),
