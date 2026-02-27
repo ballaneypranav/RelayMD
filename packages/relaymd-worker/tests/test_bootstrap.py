@@ -158,6 +158,12 @@ def test_run_bootstrap_infisical_error_raises_runtime_error(
 
 
 def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime_dir = "/tmp/relaymd-tailscale-test-runtime"
+    monkeypatch.setenv("RELAYMD_TAILSCALE_RUNTIME_DIR", runtime_dir)
+    monkeypatch.setenv("RELAYMD_TAILSCALE_SOCKS5_PORT", "20555")
+    monkeypatch.delenv("RELAYMD_TAILSCALE_SOCKS5_LISTEN_ADDR", raising=False)
+    monkeypatch.delenv("RELAYMD_TAILSCALE_SOCKS5_PROXY_URL", raising=False)
+
     popen_mock = Mock()
     popen_process = Mock()
     popen_process.poll.return_value = None
@@ -173,9 +179,9 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
         [
             "tailscaled",
             "--tun=userspace-networking",
-            "--socks5-server=localhost:1055",
-            "--statedir=/tmp/tailscale-state",
-            "--socket=/tmp/tailscaled.sock",
+            "--socks5-server=localhost:20555",
+            f"--statedir={runtime_dir}/state",
+            f"--socket={runtime_dir}/tailscaled.sock",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -184,7 +190,7 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
     run_mock.assert_called_once_with(
         [
             "tailscale",
-            "--socket=/tmp/tailscaled.sock",
+            f"--socket={runtime_dir}/tailscaled.sock",
             "up",
             "--authkey=ts-auth-key",
             "--hostname=worker-host",
@@ -193,3 +199,5 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
         capture_output=True,
         text=True,
     )
+
+    bootstrap._cleanup_tailscale_runtime()

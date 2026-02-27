@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
+from relaymd.worker import bootstrap as worker_bootstrap
 from relaymd.worker.heartbeat import HeartbeatThread
 from relaymd_api_client import errors as api_errors
 from relaymd_api_client.models.http_validation_error import (
@@ -210,3 +211,75 @@ def test_heartbeat_send_does_not_retry_on_unexpected_status_401(monkeypatch) -> 
         thread._send(client=cast(Any, object()))
 
     send.assert_called_once()
+
+
+def test_heartbeat_uses_socks5_proxy_when_userspace_proxy_is_available(monkeypatch) -> None:
+    created_kwargs: dict[str, Any] = {}
+
+    class _FakeClientContext:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = (exc_type, exc, tb)
+            return False
+
+    def _build_client(**kwargs: Any) -> _FakeClientContext:
+        created_kwargs.update(kwargs)
+        return _FakeClientContext()
+
+    stop_event = Mock()
+    stop_event.is_set.return_value = True
+
+    monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", _build_client)
+    monkeypatch.setattr(
+        HeartbeatThread,
+        "_should_use_tailscale_userspace_proxy",
+        staticmethod(lambda: True),
+    )
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+        stop_event=stop_event,
+    )
+    thread.run()
+
+    assert created_kwargs["httpx_args"] == {"proxy": worker_bootstrap.tailscale_socks5_proxy_url()}
+
+
+def test_heartbeat_skips_proxy_when_userspace_proxy_is_unavailable(monkeypatch) -> None:
+    created_kwargs: dict[str, Any] = {}
+
+    class _FakeClientContext:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            _ = (exc_type, exc, tb)
+            return False
+
+    def _build_client(**kwargs: Any) -> _FakeClientContext:
+        created_kwargs.update(kwargs)
+        return _FakeClientContext()
+
+    stop_event = Mock()
+    stop_event.is_set.return_value = True
+
+    monkeypatch.setattr("relaymd.worker.heartbeat.RelaymdApiClient", _build_client)
+    monkeypatch.setattr(
+        HeartbeatThread,
+        "_should_use_tailscale_userspace_proxy",
+        staticmethod(lambda: False),
+    )
+
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+        stop_event=stop_event,
+    )
+    thread.run()
+
+    assert created_kwargs["httpx_args"] == {}

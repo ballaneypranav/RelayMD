@@ -36,7 +36,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
     DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
 )
-from relaymd.worker.bootstrap import TAILSCALE_SOCKET, TAILSCALE_SOCKS5_PROXY_URL
+from relaymd.worker import bootstrap as worker_bootstrap
 
 
 class OrchestratorGateway(Protocol):
@@ -80,21 +80,21 @@ class ApiOrchestratorGateway:
 
     @staticmethod
     def _should_use_tailscale_userspace_proxy() -> bool:
-        return Path(TAILSCALE_SOCKET).exists()
+        return Path(worker_bootstrap.tailscale_socket_path()).exists()
 
     def _build_httpx_args(self) -> dict[str, object]:
         if not self._should_use_tailscale_userspace_proxy():
             return {}
 
-        return {"proxy": TAILSCALE_SOCKS5_PROXY_URL}
+        return {"proxy": worker_bootstrap.tailscale_socks5_proxy_url()}
 
     def __enter__(self) -> ApiOrchestratorGateway:
         httpx_args = self._build_httpx_args()
         if httpx_args:
             self._logger.info(
                 "orchestrator_gateway_proxy_enabled",
-                proxy_url=TAILSCALE_SOCKS5_PROXY_URL,
-                tailscale_socket=TAILSCALE_SOCKET,
+                proxy_url=worker_bootstrap.tailscale_socks5_proxy_url(),
+                tailscale_socket=worker_bootstrap.tailscale_socket_path(),
             )
 
         self._client_context = RelaymdApiClient(

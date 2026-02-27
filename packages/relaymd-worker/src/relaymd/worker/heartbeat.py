@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from uuid import UUID
 
 import httpx
@@ -13,6 +14,7 @@ from relaymd_api_client.models.http_validation_error import (
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
+from relaymd.worker import bootstrap as worker_bootstrap
 from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
@@ -49,10 +51,29 @@ class HeartbeatThread(threading.Thread):
         self._timeout_seconds = timeout_seconds
         self._stop_event = stop_event or threading.Event()
 
+    @staticmethod
+    def _should_use_tailscale_userspace_proxy() -> bool:
+        return Path(worker_bootstrap.tailscale_socket_path()).exists()
+
+    def _build_httpx_args(self) -> dict[str, object]:
+        if not self._should_use_tailscale_userspace_proxy():
+            return {}
+
+        return {"proxy": worker_bootstrap.tailscale_socks5_proxy_url()}
+
     def run(self) -> None:
+        httpx_args = self._build_httpx_args()
+        if httpx_args:
+            LOG.info(
+                "heartbeat_proxy_enabled",
+                proxy_url=worker_bootstrap.tailscale_socks5_proxy_url(),
+                tailscale_socket=worker_bootstrap.tailscale_socket_path(),
+            )
+
         with RelaymdApiClient(
             base_url=self._orchestrator_url,
             timeout=httpx.Timeout(self._timeout_seconds),
+            httpx_args=httpx_args,
             raise_on_unexpected_status=True,
         ) as client:
             while not self._stop_event.is_set():

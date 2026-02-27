@@ -6,10 +6,8 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from relaymd.worker.gateway import (
-    TAILSCALE_SOCKS5_PROXY_URL,
-    ApiOrchestratorGateway,
-)
+from relaymd.worker import bootstrap as worker_bootstrap
+from relaymd.worker.gateway import ApiOrchestratorGateway
 from relaymd_api_client import errors as api_errors
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 
@@ -124,7 +122,7 @@ def test_gateway_uses_socks5_proxy_when_userspace_proxy_is_available(monkeypatch
     with gateway:
         pass
 
-    assert created_kwargs["httpx_args"] == {"proxy": TAILSCALE_SOCKS5_PROXY_URL}
+    assert created_kwargs["httpx_args"] == {"proxy": worker_bootstrap.tailscale_socks5_proxy_url()}
     logger.info.assert_called_once()
 
 
