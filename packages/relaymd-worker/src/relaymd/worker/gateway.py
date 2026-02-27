@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID
 
@@ -23,8 +24,19 @@ from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 from relaymd_api_client.models.worker_register import WorkerRegister as ApiWorkerRegister
+from tenacity import (
+    RetryCallState,
+    Retrying,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
-from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
+from relaymd.runtime_defaults import (
+    DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+    DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
+)
+from relaymd.worker.bootstrap import TAILSCALE_SOCKET, TAILSCALE_SOCKS5_PROXY_URL
 
 
 class OrchestratorGateway(Protocol):
@@ -56,18 +68,39 @@ class ApiOrchestratorGateway:
         api_token: str,
         logger: Any,
         timeout_seconds: float = DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
+        register_worker_max_attempts: int = DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
     ) -> None:
         self._orchestrator_url = orchestrator_url.rstrip("/")
         self._api_token = api_token
         self._logger = logger
         self._timeout_seconds = timeout_seconds
+        self._register_worker_max_attempts = max(1, int(register_worker_max_attempts))
         self._client_context: RelaymdApiClient | None = None
         self._client: RelaymdApiClient | None = None
 
+    @staticmethod
+    def _should_use_tailscale_userspace_proxy() -> bool:
+        return Path(TAILSCALE_SOCKET).exists()
+
+    def _build_httpx_args(self) -> dict[str, object]:
+        if not self._should_use_tailscale_userspace_proxy():
+            return {}
+
+        return {"proxy": TAILSCALE_SOCKS5_PROXY_URL}
+
     def __enter__(self) -> ApiOrchestratorGateway:
+        httpx_args = self._build_httpx_args()
+        if httpx_args:
+            self._logger.info(
+                "orchestrator_gateway_proxy_enabled",
+                proxy_url=TAILSCALE_SOCKS5_PROXY_URL,
+                tailscale_socket=TAILSCALE_SOCKET,
+            )
+
         self._client_context = RelaymdApiClient(
             base_url=self._orchestrator_url,
             timeout=httpx.Timeout(self._timeout_seconds),
+            httpx_args=httpx_args,
             raise_on_unexpected_status=True,
         )
         self._client = self._client_context.__enter__()
@@ -127,7 +160,35 @@ class ApiOrchestratorGateway:
         if self._is_conflict_response(response):
             self._logger.warning(log_event, job_id=str(job_id))
 
-    def register_worker(
+    def _log_register_worker_retry(self, retry_state: RetryCallState) -> None:
+        if retry_state.outcome is None:
+            return
+        exc = retry_state.outcome.exception()
+        next_action = retry_state.next_action
+        wait_seconds = 0.0 if next_action is None else next_action.sleep
+        self._logger.warning(
+            "register_worker_retrying",
+            attempt=retry_state.attempt_number,
+            max_attempts=self._register_worker_max_attempts,
+            wait_seconds=wait_seconds,
+            error_type=type(exc).__name__ if exc is not None else None,
+            error=str(exc) if exc is not None else None,
+        )
+
+    @staticmethod
+    def _is_retryable_register_error(exception: BaseException) -> bool:
+        if isinstance(exception, api_errors.UnexpectedStatus):
+            return exception.status_code >= 500
+
+        if not isinstance(exception, httpx.HTTPError):
+            return False
+
+        if isinstance(exception, httpx.HTTPStatusError):
+            return exception.response.status_code >= 500
+
+        return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
+
+    def _register_worker_once(
         self,
         *,
         platform: ApiPlatform,
@@ -152,6 +213,40 @@ class ApiOrchestratorGateway:
             return UUID(str(cast(Any, response)["worker_id"]))
         except Exception as exc:  # pragma: no cover - defensive guard for malformed payloads
             raise RuntimeError("Failed to parse worker registration response") from exc
+
+    def register_worker(
+        self,
+        *,
+        platform: ApiPlatform,
+        gpu_model: str,
+        gpu_count: int,
+        vram_gb: int,
+    ) -> UUID:
+        retrying = Retrying(
+            wait=wait_exponential(multiplier=1, min=1, max=30),
+            stop=stop_after_attempt(self._register_worker_max_attempts),
+            retry=retry_if_exception(self._is_retryable_register_error),
+            before_sleep=self._log_register_worker_retry,
+            reraise=True,
+        )
+
+        try:
+            return retrying(
+                self._register_worker_once,
+                platform=platform,
+                gpu_model=gpu_model,
+                gpu_count=gpu_count,
+                vram_gb=vram_gb,
+            )
+        except Exception as exc:  # noqa: BLE001
+            if not self._is_retryable_register_error(exc):
+                raise
+
+            raise RuntimeError(
+                "Failed to register worker with orchestrator "
+                f"{self._orchestrator_url} after {self._register_worker_max_attempts} attempts. "
+                "Verify orchestrator reachability and worker timeout/retry settings."
+            ) from exc
 
     def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable:
         response = request_job_jobs_request_post.sync(

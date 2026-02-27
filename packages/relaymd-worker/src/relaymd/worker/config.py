@@ -11,6 +11,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
     DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
     DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
+    DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
 )
 
 
@@ -41,6 +42,14 @@ class WorkerRuntimeSettings(BaseSettings):
             "orchestrator_timeout_seconds",
             "ORCHESTRATOR_TIMEOUT_SECONDS",
             "RELAYMD_WORKER_ORCHESTRATOR_TIMEOUT_SECONDS",
+        ),
+    )
+    orchestrator_register_max_attempts: int = Field(
+        default=DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
+        validation_alias=AliasChoices(
+            "orchestrator_register_max_attempts",
+            "ORCHESTRATOR_REGISTER_MAX_ATTEMPTS",
+            "RELAYMD_WORKER_ORCHESTRATOR_REGISTER_MAX_ATTEMPTS",
         ),
     )
     cf_worker_url: str = Field(

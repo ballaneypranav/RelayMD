@@ -46,6 +46,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "B2_APPLICATION_KEY": "key-secret",
         "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
         "BUCKET_NAME": "relaymd-bucket",
+        "DOWNLOAD_BEARER_TOKEN": "download-token",
         "TAILSCALE_AUTH_KEY": "tskey-ephemeral",
         "RELAYMD_API_TOKEN": "relay-token",
         "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:8000",
@@ -66,6 +67,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         b2_application_key="key-secret",
         b2_endpoint="https://s3.us-east-005.backblazeb2.com",
         bucket_name="relaymd-bucket",
+        download_bearer_token="download-token",
         tailscale_auth_key="tskey-ephemeral",
         relaymd_api_token="relay-token",
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
@@ -79,11 +81,45 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "B2_APPLICATION_KEY",
         "B2_ENDPOINT",
         "BUCKET_NAME",
+        "DOWNLOAD_BEARER_TOKEN",
         "TAILSCALE_AUTH_KEY",
         "RELAYMD_API_TOKEN",
         "RELAYMD_ORCHESTRATOR_URL",
     ]
     joined.assert_called_once_with("tskey-ephemeral", "worker-a")
+
+
+def test_run_bootstrap_missing_optional_download_bearer_token_uses_empty_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+    monkeypatch.setenv("HOSTNAME", "worker-a")
+    monkeypatch.setattr(bootstrap, "join_tailnet", Mock())
+
+    values = {
+        "B2_APPLICATION_KEY_ID": "key-id",
+        "B2_APPLICATION_KEY": "key-secret",
+        "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
+        "BUCKET_NAME": "relaymd-bucket",
+        "TAILSCALE_AUTH_KEY": "tskey-ephemeral",
+        "RELAYMD_API_TOKEN": "relay-token",
+        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:8000",
+    }
+
+    class _MissingOptionalClient(_FakeInfisicalClient):
+        def getSecret(self, options) -> _FakeSecret:
+            if options.secret_name == "DOWNLOAD_BEARER_TOKEN":
+                raise RuntimeError("secret not found")
+            return super().getSecret(options)
+
+    def _build_client(*, settings) -> _MissingOptionalClient:
+        return _MissingOptionalClient(settings=settings, values=values)
+
+    monkeypatch.setattr(bootstrap, "InfisicalClient", _build_client)
+
+    config = bootstrap.run_bootstrap()
+
+    assert config.download_bearer_token == ""
 
 
 def test_run_bootstrap_missing_token_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,6 +173,7 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
         [
             "tailscaled",
             "--tun=userspace-networking",
+            "--socks5-server=localhost:1055",
             "--statedir=/tmp/tailscale-state",
             "--socket=/tmp/tailscaled.sock",
         ],

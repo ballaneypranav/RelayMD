@@ -12,7 +12,12 @@ from uuid import uuid4
 import pytest
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.context import WorkerContext
-from relaymd.worker.main import BundleExecutionConfig, _run_assigned_job, run_worker
+from relaymd.worker.main import (
+    BundleExecutionConfig,
+    _build_storage_client,
+    _run_assigned_job,
+    run_worker,
+)
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 
@@ -29,6 +34,70 @@ def _write_bundle_tar(local_path: Path) -> None:
         checkpoint_info = tarfile.TarInfo("step_0001.chk")
         checkpoint_info.size = len(checkpoint_bytes)
         archive.addfile(checkpoint_info, io.BytesIO(checkpoint_bytes))
+
+
+def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_storage_client(**kwargs):
+        captured.update(kwargs)
+        return Mock()
+
+    monkeypatch.setattr("relaymd.worker.main.StorageClient", fake_storage_client)
+
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.us-east-005.backblazeb2.com",
+        bucket_name="relaymd-bucket",
+        download_bearer_token="download-token",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+    )
+    runtime_settings = SimpleNamespace(
+        cf_worker_url="https://cf.example",
+        cf_bearer_token="runtime-token",
+    )
+
+    _build_storage_client(config, runtime_settings)
+
+    assert captured["cf_bearer_token"] == "download-token"
+
+
+def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_storage_client(**kwargs):
+        captured.update(kwargs)
+        return Mock()
+
+    monkeypatch.setattr("relaymd.worker.main.StorageClient", fake_storage_client)
+
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.us-east-005.backblazeb2.com",
+        bucket_name="relaymd-bucket",
+        download_bearer_token="",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+    )
+
+    runtime_settings = SimpleNamespace(
+        cf_worker_url="https://cf.example",
+        cf_bearer_token="runtime-token",
+    )
+    _build_storage_client(config, runtime_settings)
+    assert captured["cf_bearer_token"] == "runtime-token"
+
+    runtime_settings = SimpleNamespace(
+        cf_worker_url="https://cf.example",
+        cf_bearer_token="",
+    )
+    _build_storage_client(config, runtime_settings)
+    assert captured["cf_bearer_token"] == "api-token"
 
 
 def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
@@ -61,6 +130,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
+            orchestrator_register_max_attempts=3,
             checkpoint_poll_interval_seconds=0,
             sigterm_checkpoint_wait_seconds=1,
             sigterm_checkpoint_poll_seconds=1,
@@ -192,6 +262,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
+            orchestrator_register_max_attempts=3,
             checkpoint_poll_interval_seconds=1,
             sigterm_checkpoint_wait_seconds=1,
             sigterm_checkpoint_poll_seconds=1,

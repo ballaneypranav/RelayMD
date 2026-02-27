@@ -149,7 +149,11 @@ def _build_storage_client(
     config: WorkerConfig,
     runtime_settings: WorkerRuntimeSettings,
 ) -> StorageClient:
-    cf_bearer_token = runtime_settings.cf_bearer_token or config.relaymd_api_token
+    cf_bearer_token = (
+        config.download_bearer_token
+        or runtime_settings.cf_bearer_token
+        or config.relaymd_api_token
+    )
     return StorageClient(
         b2_endpoint_url=config.b2_endpoint,
         b2_bucket_name=config.bucket_name,
@@ -286,6 +290,7 @@ def _run_assigned_job(
 def run_worker(config: WorkerConfig) -> None:
     runtime_settings = WorkerRuntimeSettings()
     storage = _build_storage_client(config, runtime_settings)
+    orchestrator_url = config.relaymd_orchestrator_url.rstrip("/")
 
     gpu_model, gpu_count, vram_gb = detect_gpu_info()
     platform_raw = runtime_settings.worker_platform
@@ -308,11 +313,19 @@ def run_worker(config: WorkerConfig) -> None:
     heartbeat_thread: HeartbeatThread | None = None
 
     try:
+        LOG.info(
+            "register_worker_target_resolved",
+            orchestrator_url=orchestrator_url,
+            register_endpoint=f"{orchestrator_url}/workers/register",
+            timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
+            max_attempts=runtime_settings.orchestrator_register_max_attempts,
+        )
         with ApiOrchestratorGateway(
-            orchestrator_url=config.relaymd_orchestrator_url,
+            orchestrator_url=orchestrator_url,
             api_token=config.relaymd_api_token,
             logger=LOG,
             timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
+            register_worker_max_attempts=runtime_settings.orchestrator_register_max_attempts,
         ) as gateway:
             worker_id = gateway.register_worker(
                 platform=ApiPlatform(platform.value),
@@ -323,7 +336,7 @@ def run_worker(config: WorkerConfig) -> None:
             worker_log = LOG.bind(worker_id=str(worker_id))
 
             heartbeat_thread = HeartbeatThread(
-                orchestrator_url=config.relaymd_orchestrator_url,
+                orchestrator_url=orchestrator_url,
                 worker_id=worker_id,
                 api_token=config.relaymd_api_token,
                 interval_seconds=runtime_settings.heartbeat_interval_seconds,
