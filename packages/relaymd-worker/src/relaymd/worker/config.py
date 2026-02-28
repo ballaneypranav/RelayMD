@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -86,6 +88,30 @@ class WorkerRuntimeSettings(BaseSettings):
             "sigterm_process_wait_seconds",
             "SIGTERM_PROCESS_WAIT_SECONDS",
             "RELAYMD_WORKER_SIGTERM_PROCESS_WAIT_SECONDS",
+        ),
+    )
+    idle_strategy: Literal["immediate_exit", "poll_then_exit"] = Field(
+        default="immediate_exit",
+        validation_alias=AliasChoices(
+            "idle_strategy",
+            "IDLE_STRATEGY",
+            "RELAYMD_WORKER_IDLE_STRATEGY",
+        ),
+    )
+    idle_poll_interval_seconds: int = Field(
+        default=30,
+        validation_alias=AliasChoices(
+            "idle_poll_interval_seconds",
+            "IDLE_POLL_INTERVAL_SECONDS",
+            "RELAYMD_WORKER_IDLE_POLL_INTERVAL_SECONDS",
+        ),
+    )
+    idle_poll_max_seconds: int = Field(
+        default=600,
+        validation_alias=AliasChoices(
+            "idle_poll_max_seconds",
+            "IDLE_POLL_MAX_SECONDS",
+            "RELAYMD_WORKER_IDLE_POLL_MAX_SECONDS",
         ),
     )
 

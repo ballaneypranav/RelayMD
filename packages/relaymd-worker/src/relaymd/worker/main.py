@@ -373,11 +373,29 @@ def run_worker(config: WorkerConfig) -> None:
                 logger=worker_log,
             )
 
+            idle_start_time: float | None = None
+
             while not shutdown_event.is_set():
                 request_response = gateway.request_job(worker_id=worker_id)
                 if isinstance(request_response, ApiNoJobAvailable):
-                    worker_log.info("no_job_available_worker_exit")
-                    break
+                    if runtime_settings.idle_strategy == "immediate_exit":
+                        worker_log.info("no_job_available_worker_exit")
+                        break
+                    
+                    if idle_start_time is None:
+                        idle_start_time = time.monotonic()
+                        worker_log.info("entering_idle_poll")
+                    
+                    if time.monotonic() - idle_start_time >= runtime_settings.idle_poll_max_seconds:
+                        worker_log.info("idle_timeout_reached")
+                        break
+                        
+                    shutdown_event.wait(timeout=runtime_settings.idle_poll_interval_seconds)
+                    continue
+
+                if idle_start_time is not None:
+                    worker_log.info("job_found_during_poll")
+                    idle_start_time = None
 
                 _run_assigned_job(context=context, assignment=request_response)
 

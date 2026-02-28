@@ -42,6 +42,10 @@ worker_orchestrator_timeout_seconds: 30.0
 worker_sigterm_checkpoint_wait_seconds: 60
 worker_sigterm_checkpoint_poll_seconds: 2
 worker_sigterm_process_wait_seconds: 10
+# When no jobs are available, workers can either exit immediately or poll for a set duration.
+worker_idle_strategy: "immediate_exit"  # options: "immediate_exit", "poll_then_exit"
+worker_idle_poll_interval_seconds: 30
+worker_idle_poll_max_seconds: 600
 
 # SLURM cluster definitions used for sbatch submission.
 slurm_cluster_configs:

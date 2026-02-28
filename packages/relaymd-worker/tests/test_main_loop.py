@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import signal
 import tarfile
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -136,6 +137,9 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             sigterm_checkpoint_wait_seconds=1,
             sigterm_checkpoint_poll_seconds=1,
             sigterm_process_wait_seconds=1,
+            idle_strategy="immediate_exit",
+            idle_poll_interval_seconds=1,
+            idle_poll_max_seconds=1,
         ),
     )
 
@@ -268,6 +272,9 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             sigterm_checkpoint_wait_seconds=1,
             sigterm_checkpoint_poll_seconds=1,
             sigterm_process_wait_seconds=1,
+            idle_strategy="immediate_exit",
+            idle_poll_interval_seconds=1,
+            idle_poll_max_seconds=1,
         ),
     )
 
@@ -633,3 +640,256 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
     assert execution.request_terminate_calls == 1
     assert execution.wait_calls == 1
     assert execution.kill_calls == 0
+
+
+def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.us-east-005.backblazeb2.com",
+        bucket_name="relaymd-bucket",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+    )
+
+    monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: Mock())
+    monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
+
+    runtime_settings = SimpleNamespace(
+        worker_platform="salad",
+        heartbeat_interval_seconds=1,
+        orchestrator_timeout_seconds=1.0,
+        orchestrator_register_max_attempts=3,
+        checkpoint_poll_interval_seconds=1,
+        sigterm_checkpoint_wait_seconds=1,
+        sigterm_checkpoint_poll_seconds=1,
+        sigterm_process_wait_seconds=1,
+        idle_strategy="poll_then_exit",
+        idle_poll_interval_seconds=10,
+        idle_poll_max_seconds=25,
+    )
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+
+    heartbeat_thread = Mock()
+    monkeypatch.setattr(
+        "relaymd.worker.main.HeartbeatThread", lambda *args, **kwargs: heartbeat_thread
+    )
+
+    monkeypatch.setattr("relaymd.worker.main.signal.getsignal", lambda *_: Mock())
+    monkeypatch.setattr("relaymd.worker.main.signal.signal", lambda *_: None)
+
+    # Mock time.monotonic to simulate passing time
+    current_time = 0.0
+
+    def _monotonic():
+        return current_time
+
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", _monotonic)
+
+    api_calls: list[str] = []
+
+    class _FakeGateway:
+        def register_worker(self, **kwargs):
+            _ = kwargs
+            api_calls.append("/workers/register")
+            return "0a05f971-0f5b-46cb-bd86-d13133f998aa"
+
+        def request_job(self, **kwargs):
+            _ = kwargs
+            api_calls.append("/jobs/request")
+            return ApiNoJobAvailable.from_dict({"status": "no_job_available"})
+
+        def report_checkpoint(self, **kwargs):
+            pass
+
+        def complete_job(self, **kwargs):
+            pass
+
+        def fail_job(self, **kwargs):
+            pass
+
+        def deregister_worker(self, **kwargs):
+            _ = kwargs
+            api_calls.append("/workers/0a05f971-0f5b-46cb-bd86-d13133f998aa/deregister")
+
+    class _FakeGatewayContext:
+        def __enter__(self):
+            return _FakeGateway()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        "relaymd.worker.main.ApiOrchestratorGateway", lambda **kwargs: _FakeGatewayContext()
+    )
+
+    # We need to simulate shutdown_event.wait taking time and advancing monotonic time
+    original_event = threading.Event
+
+    class _FakeEvent(original_event):
+        def wait(self, timeout=None):
+            nonlocal current_time
+            if timeout is not None:
+                current_time += timeout
+            return super().wait(timeout=0)  # Don't actually sleep
+
+    monkeypatch.setattr("relaymd.worker.main.threading.Event", _FakeEvent)
+
+    run_worker(config)
+
+    # We expect 3 requests:
+    # 1. t=0 (first request, starts poll)
+    # 2. t=10 (waited 10s)
+    # 3. t=20 (waited 10s)
+    # 4. t=30 (waited 10s, exceeds max 25s, so breaks)
+    assert api_calls == [
+        "/workers/register",
+        "/jobs/request",
+        "/jobs/request",
+        "/jobs/request",
+        "/jobs/request",
+        "/workers/0a05f971-0f5b-46cb-bd86-d13133f998aa/deregister",
+    ]
+
+
+def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.us-east-005.backblazeb2.com",
+        bucket_name="relaymd-bucket",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+    )
+
+    monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: Mock())
+    monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
+
+    runtime_settings = SimpleNamespace(
+        worker_platform="salad",
+        heartbeat_interval_seconds=1,
+        orchestrator_timeout_seconds=1.0,
+        orchestrator_register_max_attempts=3,
+        checkpoint_poll_interval_seconds=1,
+        sigterm_checkpoint_wait_seconds=1,
+        sigterm_checkpoint_poll_seconds=1,
+        sigterm_process_wait_seconds=1,
+        idle_strategy="poll_then_exit",
+        idle_poll_interval_seconds=10,
+        idle_poll_max_seconds=600,
+    )
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+
+    heartbeat_thread = Mock()
+    monkeypatch.setattr(
+        "relaymd.worker.main.HeartbeatThread", lambda *args, **kwargs: heartbeat_thread
+    )
+
+    monkeypatch.setattr("relaymd.worker.main.signal.getsignal", lambda *_: Mock())
+    monkeypatch.setattr("relaymd.worker.main.signal.signal", lambda *_: None)
+
+    current_time = 0.0
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", lambda: current_time)
+
+    # Mock _run_assigned_job to avoid setting up job config
+    job_run_calls = []
+
+    def _mock_run_job(*args, **kwargs):
+        job_run_calls.append(kwargs.get("assignment", args[1] if len(args) > 1 else None))
+
+    monkeypatch.setattr("relaymd.worker.main._run_assigned_job", _mock_run_job)
+
+    api_calls: list[str] = []
+    job_1_id = "6bd48968-0ecf-4205-9f59-091ec74e7f79"
+    job_2_id = "7bd48968-0ecf-4205-9f59-091ec74e7f80"
+
+    # 1: assign job 1
+    # 2: no job (idle starts)
+    # 3: no job (idle continues)
+    # 4: assign job 2
+    # 5: no job (idle starts again)
+    # 6: no job (idle continues)
+    responses = [
+        ApiJobAssigned.from_dict(
+            {
+                "status": "assigned",
+                "job_id": job_1_id,
+                "input_bundle_path": "a",
+                "latest_checkpoint_path": None,
+            }
+        ),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ApiJobAssigned.from_dict(
+            {
+                "status": "assigned",
+                "job_id": job_2_id,
+                "input_bundle_path": "a",
+                "latest_checkpoint_path": None,
+            }
+        ),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+        ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
+    ]
+    response_iter = iter(responses)
+
+    class _FakeGateway:
+        def register_worker(self, **kwargs):
+            return "0a05f971-0f5b-46cb-bd86-d13133f998aa"
+
+        def request_job(self, **kwargs):
+            api_calls.append("/jobs/request")
+            try:
+                return next(response_iter)
+            except StopIteration:
+                return ApiNoJobAvailable.from_dict({"status": "no_job_available"})
+
+        def report_checkpoint(self, **kwargs):
+            pass
+
+        def complete_job(self, **kwargs):
+            pass
+
+        def fail_job(self, **kwargs):
+            pass
+
+        def deregister_worker(self, **kwargs):
+            pass
+
+    class _FakeGatewayContext:
+        def __enter__(self):
+            return _FakeGateway()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(
+        "relaymd.worker.main.ApiOrchestratorGateway", lambda **kwargs: _FakeGatewayContext()
+    )
+
+    original_event = threading.Event
+
+    class _FakeEvent(original_event):
+        def wait(self, timeout=None):
+            nonlocal current_time
+            if timeout is not None:
+                current_time += timeout
+
+            # Artificial test termination after enough time to prove loop logic restores
+            if current_time > 100:
+                self.set()
+                return True
+
+            return super().wait(timeout=0)
+
+    monkeypatch.setattr("relaymd.worker.main.threading.Event", _FakeEvent)
+
+    run_worker(config)
+
+    assert len(job_run_calls) == 2
+    assert str(job_run_calls[0].job_id) == job_1_id
+    assert str(job_run_calls[1].job_id) == job_2_id
