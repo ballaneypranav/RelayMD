@@ -738,7 +738,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
 
     run_worker(config)
 
-    # We expect 3 requests:
+    # We expect 4 requests:
     # 1. t=0 (first request, starts poll)
     # 2. t=10 (waited 10s)
     # 3. t=20 (waited 10s)
