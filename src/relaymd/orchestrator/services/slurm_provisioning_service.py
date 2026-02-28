@@ -40,17 +40,18 @@ class SlurmProvisioningService:
         if queued_job is None:
             return False
 
-        active_hpc_workers = (
-            await self._session.exec(
-                select(Worker).where(
-                    Worker.platform == Platform.hpc,
-                    col(Worker.slurm_job_id).is_(None),
-                    col(Worker.last_heartbeat) >= self._stale_cutoff,
+        if cluster.strategy != "continuous":
+            active_hpc_workers = (
+                await self._session.exec(
+                    select(Worker).where(
+                        Worker.platform == Platform.hpc,
+                        col(Worker.slurm_job_id).is_(None),
+                        col(Worker.last_heartbeat) >= self._stale_cutoff,
+                    )
                 )
-            )
-        ).all()
-        if active_hpc_workers:
-            return False
+            ).all()
+            if active_hpc_workers:
+                return False
 
         pending_prefix = f"{cluster.name}:"
         pending_workers = (

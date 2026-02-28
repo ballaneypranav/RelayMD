@@ -54,6 +54,10 @@ slurm_cluster_configs:
     account: my-lab-account
     gpu_type: a30
     gpu_count: 1
+    # Provisioning strategy (reactive | continuous):
+    # - reactive: submits only if no workers are active
+    # - continuous: submits up to max_pending_jobs at all times if jobs are queued
+    strategy: "reactive"
     # Choose exactly one image source:
     # 1) shared Apptainer image path (best for offline/restricted compute nodes)
     sif_path: /depot/shared/containers/relaymd.sif
