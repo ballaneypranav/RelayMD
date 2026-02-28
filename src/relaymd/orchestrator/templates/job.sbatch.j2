@@ -47,4 +47,7 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
+  --env IDLE_STRATEGY="{{ worker_idle_strategy | default('immediate_exit') }}" \
+  --env IDLE_POLL_INTERVAL_SECONDS="{{ worker_idle_poll_interval_seconds | default(30) }}" \
+  --env IDLE_POLL_MAX_SECONDS="{{ worker_idle_poll_max_seconds | default(600) }}" \
   {{ apptainer_image | default(sif_path) }} python -m relaymd.worker
