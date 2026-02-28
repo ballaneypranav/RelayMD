@@ -6,7 +6,7 @@
 curl -L https://github.com/<org>/relaymd/releases/latest/download/relaymd-linux-x86_64 -o ~/bin/relaymd && chmod +x ~/bin/relaymd
 ```
 
-## Config
+## Config 
 
 The CLI reads the same YAML config chain as the orchestrator (highest precedence first):
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
