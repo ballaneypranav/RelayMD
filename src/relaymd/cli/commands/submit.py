@@ -90,8 +90,7 @@ def submit(
 ) -> None:
     if not input_dir.exists() or not input_dir.is_dir():
         console.print(
-            "[red]Input directory does not exist or is not a directory:[/red] "
-            f"{input_dir}"
+            f"[red]Input directory does not exist or is not a directory:[/red] {input_dir}"
         )
         raise typer.Exit(code=1)
 

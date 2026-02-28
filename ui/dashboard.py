@@ -276,12 +276,8 @@ def main() -> None:
         "workers stop naturally on their next poll cycle."
     )
 
-    cancelable_jobs = [
-        job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}
-    ]
-    requeue_jobs = [
-        job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}
-    ]
+    cancelable_jobs = [job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}]
+    requeue_jobs = [job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}]
 
     st.markdown("### Cancel Job")
     cancel_selected = st.selectbox(

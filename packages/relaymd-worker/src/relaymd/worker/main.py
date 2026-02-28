@@ -151,9 +151,7 @@ def _build_storage_client(
     runtime_settings: WorkerRuntimeSettings,
 ) -> StorageClient:
     cf_bearer_token = (
-        config.download_bearer_token
-        or runtime_settings.cf_bearer_token
-        or config.relaymd_api_token
+        config.download_bearer_token or runtime_settings.cf_bearer_token or config.relaymd_api_token
     )
     return StorageClient(
         b2_endpoint_url=config.b2_endpoint,
@@ -179,6 +177,7 @@ def _wait_for_final_checkpoint(
         if time.monotonic() >= deadline:
             return None
         time.sleep(poll_interval_seconds)
+
 
 def _upload_checkpoint(
     context: WorkerContext,
@@ -381,15 +380,15 @@ def run_worker(config: WorkerConfig) -> None:
                     if runtime_settings.idle_strategy == "immediate_exit":
                         worker_log.info("no_job_available_worker_exit")
                         break
-                    
+
                     if idle_start_time is None:
                         idle_start_time = time.monotonic()
                         worker_log.info("entering_idle_poll")
-                    
+
                     if time.monotonic() - idle_start_time >= runtime_settings.idle_poll_max_seconds:
                         worker_log.info("idle_timeout_reached")
                         break
-                        
+
                     shutdown_event.wait(timeout=runtime_settings.idle_poll_interval_seconds)
                     continue
 

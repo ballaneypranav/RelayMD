@@ -15,8 +15,7 @@ from relaymd_api_client.models.http_validation_error import (
 from tenacity import wait_none
 
 HEARTBEAT_SYNC_TARGET = (
-    "relaymd.worker.heartbeat."
-    "heartbeat_worker_workers_worker_id_heartbeat_post.sync"
+    "relaymd.worker.heartbeat.heartbeat_worker_workers_worker_id_heartbeat_post.sync"
 )
 
 

@@ -236,7 +236,7 @@ async def test_orphaned_job_requeue_once_uses_worker_lifecycle_service(monkeypat
     monkeypatch.setattr(
         scheduler,
         "get_sessionmaker",
-        lambda: (lambda: _SessionContextManager(fake_session)),
+        lambda: lambda: _SessionContextManager(fake_session),
     )
     monkeypatch.setattr(scheduler, "WorkerLifecycleService", FakeWorkerLifecycleService)
 

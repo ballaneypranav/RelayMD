@@ -253,21 +253,18 @@ def _register_cleanup_handler() -> None:
 def _parse_infisical_machine_token(raw_token: str | None) -> tuple[str, str]:
     if not raw_token:
         raise RuntimeError(
-            "INFISICAL_TOKEN is required and must be in the format "
-            "<client_id>:<client_secret>"
+            "INFISICAL_TOKEN is required and must be in the format <client_id>:<client_secret>"
         )
 
     if ":" not in raw_token:
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected format "
-            "<client_id>:<client_secret>"
+            "INFISICAL_TOKEN is malformed; expected format <client_id>:<client_secret>"
         )
 
     client_id, client_secret = raw_token.split(":", 1)
     if not client_id or not client_secret:
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected non-empty "
-            "<client_id>:<client_secret>"
+            "INFISICAL_TOKEN is malformed; expected non-empty <client_id>:<client_secret>"
         )
     return client_id, client_secret
 
