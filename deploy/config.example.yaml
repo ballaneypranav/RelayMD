@@ -13,6 +13,13 @@ api_token: change-me
 # Prefer setting this via INFISICAL_TOKEN env var.
 infisical_token: ""
 
+# Optional registry auth for Apptainer docker:// pulls (e.g. private GHCR).
+# Can also be sourced from Infisical path /RelayMD as:
+# - APPTAINER_DOCKER_USERNAME
+# - APPTAINER_DOCKER_PASSWORD
+apptainer_docker_username: ""
+apptainer_docker_password: ""
+
 # Worker heartbeats are expected at this cadence.
 heartbeat_interval_seconds: 60
 
@@ -43,7 +50,19 @@ slurm_cluster_configs:
     account: my-lab-account
     gpu_type: a30
     gpu_count: 1
+    # Choose exactly one image source:
+    # 1) shared Apptainer image path (best for offline/restricted compute nodes)
     sif_path: /depot/shared/containers/relaymd.sif
+    # 2) OR direct registry image (Apptainer uses docker://<image>)
+    # image_uri: ghcr.io/<org>/relaymd-worker:latest
+    # Optional scheduler directives:
+    # nodes: 1
+    # ntasks: 8
+    # qos: standby
+    # gres: gpu:1      # override default gpu:<gpu_type>:<gpu_count>
+    # Optional SLURM memory directives (set at most one):
+    # memory: 60G          # renders: #SBATCH --mem=60G
+    # memory_per_gpu: 60G  # renders: #SBATCH --mem-per-gpu=60G
     wall_time: "4:00:00"
     max_pending_jobs: 1
 

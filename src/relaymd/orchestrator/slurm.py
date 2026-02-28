@@ -32,11 +32,23 @@ def _render_sbatch_script(
         cluster_name=cluster.name,
         partition=cluster.partition,
         account=cluster.account,
-        gpu_type=cluster.gpu_type,
-        gpu_count=cluster.gpu_count,
+        gres=cluster.slurm_gres,
+        nodes=cluster.nodes,
+        ntasks=cluster.ntasks,
+        qos=cluster.qos,
+        memory=cluster.memory,
+        memory_per_gpu=cluster.memory_per_gpu,
         wall_time=cluster.wall_time,
-        sif_path=cluster.sif_path,
+        apptainer_image=cluster.apptainer_image,
         infisical_token_shell_quoted=_shell_single_quote(settings.infisical_token),
+        apptainer_docker_username=settings.apptainer_docker_username,
+        apptainer_docker_password=settings.apptainer_docker_password,
+        apptainer_docker_username_shell_quoted=_shell_single_quote(
+            settings.apptainer_docker_username
+        ),
+        apptainer_docker_password_shell_quoted=_shell_single_quote(
+            settings.apptainer_docker_password
+        ),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
         worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,

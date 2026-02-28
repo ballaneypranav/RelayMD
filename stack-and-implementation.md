@@ -143,7 +143,17 @@ slurm_cluster_configs:
     account: my-lab-account
     gpu_type: gpuTypeA
     gpu_count: 1
+    # Choose exactly one of sif_path or image_uri
     sif_path: /depot/mygroup/containers/relaymd.sif
+    # image_uri: ghcr.io/<org>/relaymd-worker:latest
+    # Optional scheduler directives:
+    # nodes: 1
+    # ntasks: 8
+    # qos: standby
+    # gres: gpu:1      # override default gpu:<gpu_type>:<gpu_count>
+    # Optional SLURM memory directives (set at most one):
+    # memory: 60G          # renders: #SBATCH --mem=60G
+    # memory_per_gpu: 60G  # renders: #SBATCH --mem-per-gpu=60G
     wall_time: "4:00:00"
     max_pending_jobs: 1
 
@@ -152,7 +162,9 @@ slurm_cluster_configs:
     account: my-lab-account
     gpu_type: gpuTypeB
     gpu_count: 1
+    # Choose exactly one of sif_path or image_uri
     sif_path: /depot/mygroup/containers/relaymd.sif
+    # image_uri: ghcr.io/<org>/relaymd-worker:latest
     wall_time: "4:00:00"
 
 relaymd_env: production
@@ -416,7 +428,7 @@ apptainer pull /depot/mygroup/containers/relaymd.sif \
   docker://ghcr.io/<org>/relaymd-worker:latest
 ```
 
-The `.sif` path goes into `sif_path` in the YAML config. The orchestrator references it in every rendered sbatch script.
+Set either `sif_path` (shared filesystem `.sif`) or `image_uri` (registry image) in each cluster config. The orchestrator resolves either form into the Apptainer image argument in the rendered sbatch script.
 
 ---
 

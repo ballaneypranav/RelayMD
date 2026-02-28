@@ -77,6 +77,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         gpu_type="a100",
         gpu_count=2,
         sif_path="/shared/relaymd.sif",
+        memory_per_gpu="60G",
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -90,12 +91,72 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert command_args == ["sbatch", "--parsable"]
     rendered = captured["script"]
     assert "#SBATCH --gres=gpu:a100:2" in rendered
+    assert "#SBATCH --mem-per-gpu=60G" in rendered
     assert "#SBATCH --export=ALL" in rendered
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
     assert "export INFISICAL_BOOTSTRAP_TOKEN='client-id:client-secret'" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = kwargs
+        script_path = str(args[2])
+        captured["script"] = Path(script_path).read_text(encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        gpu_type="a100",
+        gpu_count=1,
+        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        nodes=1,
+        ntasks=8,
+        qos="standby",
+        gres="gpu:1",
+        memory="120G",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        apptainer_docker_username="gh-user",
+        apptainer_docker_password="gh-pass",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "export APPTAINER_DOCKER_USERNAME='gh-user'" in rendered
+    assert "export APPTAINER_DOCKER_PASSWORD='gh-pass'" in rendered
+    assert 'export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"' in rendered
+    assert 'export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"' in rendered
+    assert "docker://ghcr.io/acme/relaymd-worker:latest python -m relaymd.worker" in rendered
+    assert "#SBATCH --gres=gpu:1" in rendered
+    assert "#SBATCH --nodes=1" in rendered
+    assert "#SBATCH --ntasks=8" in rendered
+    assert "#SBATCH --qos=standby" in rendered
+    assert "#SBATCH --mem=120G" in rendered
+    assert "--mem-per-gpu" not in rendered
 
 
 @pytest.mark.asyncio
@@ -177,12 +238,16 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="tok$HOME`date`'abc\\def",
+        apptainer_docker_username="gh$USER'name",
+        apptainer_docker_password="gh'pa$$",
     )
 
     await submit_slurm_job(cluster, settings)
 
     rendered = captured["script"]
     assert "export INFISICAL_BOOTSTRAP_TOKEN='tok$HOME`date`'\"'\"'abc\\def'" in rendered
+    assert "export APPTAINER_DOCKER_USERNAME='gh$USER'\"'\"'name'" in rendered
+    assert "export APPTAINER_DOCKER_PASSWORD='gh'\"'\"'pa$$'" in rendered
 
 
 @pytest.mark.asyncio

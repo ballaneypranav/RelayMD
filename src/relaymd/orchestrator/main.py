@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from relaymd.orchestrator import __version__
 from relaymd.orchestrator.background_scheduler import build_background_scheduler
-from relaymd.orchestrator.config import OrchestratorSettings
+from relaymd.orchestrator.config import OrchestratorSettings, load_settings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
 from relaymd.orchestrator.logging import configure_logging, get_logger
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
@@ -48,7 +48,7 @@ def create_app(
     *,
     start_background_tasks: bool = True,
 ) -> FastAPI:
-    active_settings = settings or OrchestratorSettings()
+    active_settings = settings or load_settings()
     configure_logging(active_settings)
     config_paths = OrchestratorSettings.config_paths()
     LOG.info(

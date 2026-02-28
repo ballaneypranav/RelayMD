@@ -11,6 +11,8 @@ The application securely provisions credentials and configuration variables dyna
 - `RELAYMD_ORCHESTRATOR_URL`
 - `TAILSCALE_AUTH_KEY`
 - `DOWNLOAD_BEARER_TOKEN` (optional; defaults to `RELAYMD_API_TOKEN` if unset)
+- `APPTAINER_DOCKER_USERNAME` (optional; needed for private `docker://` image pulls)
+- `APPTAINER_DOCKER_PASSWORD` (optional; needed for private `docker://` image pulls)
 
 ## Tailscale Networking Provisioning (W-165)
 

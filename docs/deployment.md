@@ -28,6 +28,12 @@ export RELAYMD_CONFIG=/absolute/path/to/config.yaml
 Secrets can stay out of the YAML file by overriding them via environment variables:
 - `RELAYMD_API_TOKEN`
 - `INFISICAL_TOKEN`
+- `APPTAINER_DOCKER_USERNAME` / `APPTAINER_DOCKER_PASSWORD` (optional; for private `docker://` pulls)
+
+When `INFISICAL_TOKEN` is configured and any `slurm_cluster_configs` entry uses
+`image_uri`, orchestrator also hydrates missing values for:
+- `APPTAINER_DOCKER_USERNAME`
+- `APPTAINER_DOCKER_PASSWORD`
 
 ## tmux
 

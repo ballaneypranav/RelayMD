@@ -233,7 +233,7 @@ The `--command` flag on `relaymd submit` can write this file automatically so it
 | clusterB | partitionC | 14d | Long-running preferred |
 | clusterB | partitionD | 14d |                        |
 
-Each partition is a separate `ClusterConfig` entry in the YAML config. The orchestrator submits to all configured clusters independently. Each cluster requires its own `.sif` path on its own shared filesystem.
+Each partition is a separate `ClusterConfig` entry in the YAML config. The orchestrator submits to all configured clusters independently. Each cluster uses either a shared-filesystem `.sif` path (`sif_path`) or a registry image reference (`image_uri`) for Apptainer.
 
 The orchestrator runs on the clusterA login node and calls `sbatch` as a direct subprocess (no SSH). clusterB support requires cross-cluster SSH submission, which is not yet implemented.
 

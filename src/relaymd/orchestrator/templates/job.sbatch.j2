@@ -5,7 +5,22 @@
 #SBATCH --job-name=relaymd-worker-{{ cluster_name }}
 #SBATCH --partition={{ partition }}
 #SBATCH --account={{ account }}
-#SBATCH --gres=gpu:{{ gpu_type }}:{{ gpu_count }}
+#SBATCH --gres={{ gres }}
+{% if nodes %}
+#SBATCH --nodes={{ nodes }}
+{% endif %}
+{% if ntasks %}
+#SBATCH --ntasks={{ ntasks }}
+{% endif %}
+{% if qos %}
+#SBATCH --qos={{ qos }}
+{% endif %}
+{% if memory %}
+#SBATCH --mem={{ memory }}
+{% endif %}
+{% if memory_per_gpu %}
+#SBATCH --mem-per-gpu={{ memory_per_gpu }}
+{% endif %}
 #SBATCH --time={{ wall_time | default("4:00:00") }}
 #SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds | default(300) }}
 #SBATCH --output=slurm-relaymd-%j.out
@@ -16,6 +31,12 @@ set -euo pipefail
 
 export INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token_shell_quoted }}
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
+{% if apptainer_docker_username and apptainer_docker_password %}
+export APPTAINER_DOCKER_USERNAME={{ apptainer_docker_username_shell_quoted }}
+export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
+export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"
+export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"
+{% endif %}
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
@@ -26,4 +47,4 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
-  {{ sif_path }} python -m relaymd.worker
+  {{ apptainer_image | default(sif_path) }} python -m relaymd.worker
