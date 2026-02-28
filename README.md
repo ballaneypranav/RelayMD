@@ -3,9 +3,18 @@
 RelayMD is a distributed orchestration system for long-running molecular dynamics workloads across HPC and cloud GPU capacity; project design and implementation decisions are split across several focused documents in the `docs/` directory.
 
 Start reading with:
-- [Core Architecture](docs/architecture.md)
-- [Job Lifecycle](docs/job-lifecycle.md)
-- [Tech Stack & Development Guidelines](docs/tech-stack.md)
+- [Core Architecture](architecture.md)
+- [Job Lifecycle](job-lifecycle.md)
+- [Tech Stack & Development Guidelines](tech-stack.md)
+
+### Local Documentation Served
+
+To view the full documentation site locally with live reload:
+```bash
+uv run mkdocs serve
+```
+Then visit `http://127.0.0.1:8000`.
+
 ## Container
 
 RelayMD worker containers are published to GitHub Container Registry (GHCR) as

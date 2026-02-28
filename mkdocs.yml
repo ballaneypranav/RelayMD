@@ -1,0 +1,62 @@
+site_name: RelayMD
+site_description: Distributed orchestration for long-running molecular dynamics workloads across HPC and cloud GPU capacity.
+site_url: https://github.com/ballaneypranav/RelayMD
+repo_url: https://github.com/ballaneypranav/RelayMD
+repo_name: ballaneypranav/RelayMD
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: light blue
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Architecture & Design:
+    - Core Architecture: architecture.md
+    - Job Lifecycle: job-lifecycle.md
+    - Scheduling: scheduling.md
+    - API Schema: api-schema.md
+  - Implementation Internals:
+    - Tech Stack: tech-stack.md
+    - Orchestrator: orchestrator-internals.md
+    - Worker: worker-internals.md
+    - CLI: cli-internals.md
+    - Storage: storage-internals.md
+    - Storage Layout: storage-layout.md
+  - Operations:
+    - CLI Reference: cli.md
+    - Infrastructure: infra.md
+    - Deployment: deployment.md
+    - HPC Notes: hpc-notes.md
+  - Testing:
+    - E2E Test Report: e2e-test-report.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - tables

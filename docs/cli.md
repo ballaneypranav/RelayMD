@@ -13,7 +13,7 @@ The CLI reads the same YAML config chain as the orchestrator (highest precedence
 - `./relaymd-config.yaml` (project-local override, gitignored)
 - `~/.config/relaymd/config.yaml` (user-global default)
 
-Start from [deploy/config.example.yaml](../deploy/config.example.yaml) and set:
+Start from the reference config file (`deploy/config.example.yaml` in the repo) and set:
 - `orchestrator_url` (Note: YAML configuration takes precedence over the `RELAYMD_ORCHESTRATOR_URL` environment variable)
 - `api_token`
 - `b2_endpoint_url`

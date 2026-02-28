@@ -22,7 +22,7 @@ Expected output:
 
 ## 2) Submit Tailscale Userspace Validation Job
 
-Use [test_tailscale.sbatch](../deploy/slurm/test_tailscale.sbatch):
+Use the `test_tailscale.sbatch` template available in the repo under `deploy/slurm/`:
 
 ```bash
 export TAILSCALE_AUTH_KEY=<ephemeral_auth_key>
