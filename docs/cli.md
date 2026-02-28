@@ -14,18 +14,25 @@ The CLI reads the same YAML config chain as the orchestrator (highest precedence
 - `~/.config/relaymd/config.yaml` (user-global default)
 
 Start from [deploy/config.example.yaml](../deploy/config.example.yaml) and set:
-- `orchestrator_url`
+- `orchestrator_url` (Note: YAML configuration takes precedence over the `RELAYMD_ORCHESTRATOR_URL` environment variable)
 - `api_token`
 - `b2_endpoint_url`
 - `b2_bucket_name`
 - `b2_access_key_id`
 - `b2_secret_access_key`
+- `infisical_token` (optional; if set, CLI automatically hydrates missing API and B2 credentials from Infisical)
 - `cf_worker_url` (if using Cloudflare proxy for downloads)
 - `orchestrator_timeout_seconds` (optional)
 
-Environment overrides:
-- `RELAYMD_ORCHESTRATOR_URL`
+Environment overrides (take precedence over YAML):
 - `RELAYMD_API_TOKEN` or `API_TOKEN`
+- `INFISICAL_TOKEN` or `RELAYMD_INFISICAL_TOKEN`
+- `B2_ENDPOINT_URL` or `B2_ENDPOINT`
+- `B2_BUCKET_NAME` or `BUCKET_NAME`
+- `B2_ACCESS_KEY_ID` or `B2_APPLICATION_KEY_ID`
+- `B2_SECRET_ACCESS_KEY` or `B2_APPLICATION_KEY`
+- `CF_WORKER_URL`
+- `CF_BEARER_TOKEN` or `DOWNLOAD_BEARER_TOKEN`
 - `RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS` (optional)
 
 ## Commands
@@ -56,6 +63,13 @@ relaymd jobs requeue <job-id>
 Strict transition rules apply:
 - cancelling a running job without `--force` returns a conflict
 - requeue is allowed only for terminal jobs (`completed`, `failed`, `cancelled`)
+
+Monitor all jobs and workers concurrently (auto-refreshes every 3 seconds by default):
+
+```bash
+relaymd monitor
+relaymd monitor --interval-seconds 5.0
+```
 
 Workers:
 

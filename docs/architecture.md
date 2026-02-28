@@ -1,4 +1,4 @@
-# RelayMD: Architecture & Design
+# RelayMD: Core Architecture
 
 **A distributed orchestration system for long-running molecular dynamics simulations across heterogeneous compute resources.**
 
@@ -118,127 +118,6 @@ The orchestrator API is not reachable from the public internet. A node must be o
 
 ---
 
-## Job Lifecycle
-
-```
-Operator prepares simulation input directory
-         │
-         ▼
-relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
-         │
-         ├── packs directory into bundle.tar.gz
-         ├── uploads to B2 at jobs/{uuid}/input/bundle.tar.gz
-         └── POST /jobs → job enters "queued" state in orchestrator DB
-                  │
-                  ▼
-         Orchestrator sbatch loop fires (every 60s)
-         Sees queued job, no active HPC workers for cluster
-                  │
-                  ▼
-         sbatch renders job.sbatch.j2 and calls sbatch directly
-                  │
-                  ▼
-         Worker boots on compute node
-         → fetches secrets from Infisical
-         → joins Tailnet
-         → registers with orchestrator (POST /workers/register)
-                  │
-                  ▼
-         Worker polls POST /jobs/request
-         → receives job_id + input_bundle_path + latest_checkpoint_path
-                  │
-                  ▼
-         Worker downloads input bundle (+ checkpoint if resuming) from B2
-                  │
-                  ▼
-         Worker launches MD subprocess; heartbeat thread starts
-                  │
-                  ├── every 60s: POST /workers/{id}/heartbeat
-                  │
-                  ├── every 5min (poll): new checkpoint found?
-                  │       → upload to B2
-                  │       → POST /jobs/{id}/checkpoint
-                  │       → if job already terminal: typed 409 conflict (safe to ignore)
-                  │
-                  ├── on wall-time margin (SIGTERM from SLURM):
-                  │       → send SIGTERM to subprocess
-                  │       → wait up to 60s for final checkpoint write
-                  │       → upload checkpoint to B2
-                  │       → POST /jobs/{id}/checkpoint
-                  │       → exit  (orchestrator re-queues automatically)
-                  │
-                  └── on clean subprocess exit:
-                          → POST /jobs/{id}/complete (or /fail)
-                          → late callback against terminal state may return typed 409
-                          → loop back to POST /jobs/request
-```
-
-If the worker dies without reporting:
-
-```
-Orchestrator detects stale heartbeat (`last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`, default `60 × 2 = 120s`)
-         │
-         ▼
-Job re-enters "queued" state with latest_checkpoint_path preserved
-         │
-         ▼
-Next available worker resumes from that checkpoint
-```
-
----
-
-## Scheduling Policy
-
-The orchestrator scores all idle workers and assigns the highest-scoring one to each queued job. The scoring policy, in priority order:
-
-1. **GPU count** — more GPUs score higher (multiplied by 1000)
-2. **Platform** — HPC scores above Salad Cloud at equal GPU count (bonus of 1000)
-3. **GPU VRAM** — among workers with equal GPU count and platform, higher VRAM scores higher (H100 > A100 > A6000 > RTX 4090 > A10 > A30)
-
-The requesting worker is only assigned the job if it is the highest-scoring idle worker. This means every worker participates in a fair competition on each poll — no worker gets preferential treatment by polling faster.
-
-Salad Cloud workers are eligible for any job but are assigned only when no HPC workers are available or idle. This ensures cheapest, most capable resources are used first.
-
-The orchestrator schedules a 60-second sbatch submission job. For each configured cluster, if there are queued jobs and no registered (or pending-registration) HPC workers for that cluster, it renders and submits a new SLURM job. It stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions during the SLURM pending window.
-
----
-
-## First Use Case: AToM-OpenMM
-
-The first concrete workload RelayMD is designed to run is [AToM-OpenMM](https://github.com/Gallicchio-Lab/AToM-OpenMM), an alchemical free-energy engine that runs replica exchange across multiple lambda windows on a single multi-GPU node.
-
-From RelayMD's perspective, AToM-OpenMM is an opaque subprocess. The worker launches it via a command specified in the input bundle's `relaymd-worker.json` config file, waits for it to run, and handles checkpointing at the boundaries of each chunk. Replica exchange between lambda windows is entirely internal to the subprocess — the orchestrator never sees individual replicas, only the job as a whole.
-
-AToM-OpenMM supports restart from a checkpoint file, which is the prerequisite for RelayMD's resume-on-any-worker model. A typical job runs for several days of wall time. At a 4-hour SLURM limit per job, this means roughly 15–20 worker handoffs per ligand. RelayMD makes this transparent: each handoff picks up exactly where the last one left off.
-
-The input bundle for an AToM job contains all simulation input files plus a `relaymd-worker.json`:
-
-```json
-{
-  "command": "python run_atom.py --config simulation.json",
-  "checkpoint_glob_pattern": "*.chk"
-}
-```
-
-The `--command` flag on `relaymd submit` can write this file automatically so it does not need to be included in the source directory.
-
----
-
-## Target HPC Clusters
-
-| Cluster  | Partition   | Wall time limit | Notes                  |
-|----------|-------------|-----------------|------------------------|
-| clusterA | partitionA | 4h  | Primary dev cluster    |
-| clusterA | partitionB | 4h  |                        |
-| clusterB | partitionC | 14d | Long-running preferred |
-| clusterB | partitionD | 14d |                        |
-
-Each partition is a separate `ClusterConfig` entry in the YAML config. The orchestrator submits to all configured clusters independently. Each cluster uses either a shared-filesystem `.sif` path (`sif_path`) or a registry image reference (`image_uri`) for Apptainer.
-
-The orchestrator runs on the clusterA login node and calls `sbatch` as a direct subprocess (no SSH). clusterB support requires cross-cluster SSH submission, which is not yet implemented.
-
----
-
 ## Components
 
 | Component          | Description                                                          |
@@ -271,12 +150,3 @@ The orchestrator runs on the clusterA login node and calls `sbatch` as a direct 
 
 **The CLI binary is not the worker.** The `relaymd` binary lives on the login node and is used by the operator to submit and manage jobs. The Apptainer `.sif` container is a completely separate artifact that runs on compute nodes. They share library code (`relaymd-models`, `relaymd-storage`) but are independently built and deployed.
 
----
-
-## Open Items
-
-- **AToM-OpenMM checkpoint glob pattern** — what files does AToM actually write? Finalize during end-to-end testing.
-- **Salad GPU model strings** — the VRAM tier lookup table needs to be populated with exact `nvidia-smi` model name strings from real Salad nodes.
-- **clusterB cross-cluster sbatch** — the orchestrator currently calls `sbatch` as a direct subprocess and must run on the same login node as the target cluster. Submitting to clusterB from a clusterA-hosted orchestrator requires SSH-based submission, which is not yet implemented.
-
----

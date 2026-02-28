@@ -1,7 +1,11 @@
 # RelayMD
 
-RelayMD is a distributed orchestration system for long-running molecular dynamics workloads across HPC and cloud GPU capacity; project design and implementation decisions are documented in [Architecture & Design](./architecture-and-design.md) and [Implementation Decisions & Stack Reference](./stack-and-implementation.md).
+RelayMD is a distributed orchestration system for long-running molecular dynamics workloads across HPC and cloud GPU capacity; project design and implementation decisions are split across several focused documents in the `docs/` directory.
 
+Start reading with:
+- [Core Architecture](docs/architecture.md)
+- [Job Lifecycle](docs/job-lifecycle.md)
+- [Tech Stack & Development Guidelines](docs/tech-stack.md)
 ## Container
 
 RelayMD worker containers are published to GitHub Container Registry (GHCR) as

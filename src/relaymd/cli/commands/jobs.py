@@ -69,7 +69,13 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
 
 
 @app.command("list")
-def list_jobs() -> None:
+def list_jobs(
+    pretty: str = typer.Option(
+        False,
+        "--pretty",
+        help="Format output as a rich table instead of parsed text.",
+    ),
+) -> None:
     try:
         jobs = JobsService(create_cli_context()).list_jobs()
     except Exception as exc:  # noqa: BLE001
@@ -77,8 +83,27 @@ def list_jobs() -> None:
         raise typer.Exit(code=1) from exc
 
     jobs_payload = [job.to_dict() for job in jobs]
-    for line in _render_jobs_plain_lines(jobs_payload):
-        typer.echo(line)
+    if pretty:
+        table = Table(title="Jobs")
+        table.add_column("ID", style="cyan")
+        table.add_column("Title")
+        table.add_column("Status")
+        table.add_column("Created At")
+        table.add_column("Worker ID")
+        for job in jobs_payload:
+            status = str(job.get("status", "-"))
+            status_formatted = f"[{_status_style(status)}]{status}[/{_status_style(status)}]"
+            table.add_row(
+                str(job.get("id") or "-"),
+                str(job.get("title") or "-"),
+                status_formatted,
+                str(job.get("created_at") or "-"),
+                str(job.get("assigned_worker_id") or "-"),
+            )
+        console.print(table)
+    else:
+        for line in _render_jobs_plain_lines(jobs_payload):
+            typer.echo(line)
 
 
 @app.command("status")
