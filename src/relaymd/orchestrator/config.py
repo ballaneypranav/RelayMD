@@ -49,6 +49,9 @@ class ClusterConfig(BaseModel):
     gres: str | None = None
     memory: str | None = None
     memory_per_gpu: str | None = None
+    idle_strategy: Literal["immediate_exit", "poll_then_exit"] | None = None
+    idle_poll_interval_seconds: int | None = None
+    idle_poll_max_seconds: int | None = None
     max_pending_jobs: int = 1
     wall_time: str = "4:00:00"
 
@@ -109,6 +112,9 @@ class OrchestratorSettings(BaseSettings):
     worker_sigterm_checkpoint_wait_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS
     worker_sigterm_checkpoint_poll_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS
     worker_sigterm_process_wait_seconds: int = DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS
+    worker_idle_strategy: Literal["immediate_exit", "poll_then_exit"] = "immediate_exit"
+    worker_idle_poll_interval_seconds: int = 30
+    worker_idle_poll_max_seconds: int = 600
     infisical_token: str = Field(
         default="",
         validation_alias=AliasChoices(
