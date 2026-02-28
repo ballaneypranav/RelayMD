@@ -39,7 +39,7 @@ class SlurmProvisioningService:
     async def submit_cluster_if_needed(self, *, cluster: ClusterConfig) -> bool:
         queued_job = (
             await self._session.exec(
-                select(Job).where(Job.status == JobStatus.queued).order_by(Job.created_at).limit(1)
+                select(Job).where(Job.status == JobStatus.queued).order_by(col(Job.created_at)).limit(1)
             )
         ).first()
         if queued_job is None:
