@@ -57,10 +57,16 @@ def _render_sbatch_script(
         worker_sigterm_checkpoint_poll_seconds=settings.worker_sigterm_checkpoint_poll_seconds,
         worker_sigterm_process_wait_seconds=settings.worker_sigterm_process_wait_seconds,
         worker_idle_strategy=cluster.idle_strategy or settings.worker_idle_strategy,
-        worker_idle_poll_interval_seconds=cluster.idle_poll_interval_seconds
-        or settings.worker_idle_poll_interval_seconds,
-        worker_idle_poll_max_seconds=cluster.idle_poll_max_seconds
-        or settings.worker_idle_poll_max_seconds,
+        worker_idle_poll_interval_seconds=(
+            cluster.idle_poll_interval_seconds
+            if cluster.idle_poll_interval_seconds is not None
+            else settings.worker_idle_poll_interval_seconds
+        ),
+        worker_idle_poll_max_seconds=(
+            cluster.idle_poll_max_seconds
+            if cluster.idle_poll_max_seconds is not None
+            else settings.worker_idle_poll_max_seconds
+        ),
         worker_platform="hpc",
     )
 

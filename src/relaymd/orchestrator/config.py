@@ -50,8 +50,8 @@ class ClusterConfig(BaseModel):
     memory: str | None = None
     memory_per_gpu: str | None = None
     idle_strategy: Literal["immediate_exit", "poll_then_exit"] | None = None
-    idle_poll_interval_seconds: int | None = None
-    idle_poll_max_seconds: int | None = None
+    idle_poll_interval_seconds: int | None = Field(default=None, ge=1)
+    idle_poll_max_seconds: int | None = Field(default=None, ge=1)
     max_pending_jobs: int = 1
     wall_time: str = "4:00:00"
 
