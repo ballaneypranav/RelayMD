@@ -82,7 +82,9 @@ On startup, a worker:
 1. Fetches secrets from Infisical using a bootstrap token injected at job submission time
 2. Joins the private Tailscale network in userspace mode (no root required)
 3. Registers with the orchestrator, reporting its hardware (GPU model, count, VRAM, platform)
-4. Polls for a job assignment
+4. Polls for a job assignment. If none is available, handles idle state based on `worker_idle_strategy`:
+   - `immediate_exit`: Exits cleanly (default).
+   - `poll_then_exit`: Sleeps `worker_idle_poll_interval_seconds` and retries, up to `worker_idle_poll_max_seconds` before exiting cleanly.
 5. Downloads the input bundle and the latest checkpoint (if one exists) from object storage
 6. Launches the MD engine as a subprocess
 7. Sends heartbeats to the orchestrator every `worker_heartbeat_interval_seconds` (default 60s) while the worker process is alive (polling + running)
