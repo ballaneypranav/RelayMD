@@ -37,12 +37,9 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
 
     active_settings = settings or LoggingSettings()
     renderer: structlog.types.Processor
-    if (
-        active_settings.relaymd_log_format == "console"
-        or (
-            active_settings.relaymd_log_format == "auto"
-            and active_settings.relaymd_env == "development"
-        )
+    if active_settings.relaymd_log_format == "console" or (
+        active_settings.relaymd_log_format == "auto"
+        and active_settings.relaymd_env == "development"
     ):
         renderer = structlog.dev.ConsoleRenderer()
     else:

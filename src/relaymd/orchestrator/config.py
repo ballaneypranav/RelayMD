@@ -41,7 +41,8 @@ class ClusterConfig(BaseModel):
     account: str
     gpu_type: str
     gpu_count: int
-    strategy: Literal["reactive", "continuous"] = "reactive"
+    strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
+    jit_threshold_hours: float = Field(default=6.0, gt=0)
     sif_path: str | None = None
     image_uri: str | None = None
     nodes: int | None = Field(default=None, ge=1)

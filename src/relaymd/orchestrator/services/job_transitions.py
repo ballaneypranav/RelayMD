@@ -37,6 +37,8 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.failed: set(),
     JobStatus.cancelled: set(),
 }
+
+
 class JobTransitionService:
     """State authority for all in-place job status mutations."""
 
@@ -108,8 +110,7 @@ class JobTransitionService:
         if job.status not in TERMINAL_JOB_STATUSES:
             raise JobTransitionConflictError(
                 message=(
-                    "Requeue clone is allowed only for terminal jobs "
-                    "(completed, failed, cancelled)"
+                    "Requeue clone is allowed only for terminal jobs (completed, failed, cancelled)"
                 ),
                 job_id=job.id,
                 current_status=job.status,

@@ -204,6 +204,9 @@ def test_storage_client_normalizes_host_only_urls(monkeypatch) -> None:
         cf_bearer_token="download-token",
     )
 
-    assert client._cf_worker_url == "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
+    assert (
+        client._cf_worker_url
+        == "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
+    )
     _, kwargs = boto_client.call_args
     assert kwargs["endpoint_url"] == "https://s3.us-east-005.backblazeb2.com"

@@ -54,10 +54,12 @@ slurm_cluster_configs:
     account: my-lab-account
     gpu_type: a30
     gpu_count: 1
-    # Provisioning strategy (reactive | continuous):
+    # Provisioning strategy (reactive | continuous | jit_threshold):
     # - reactive: submits only if no workers are active
     # - continuous: submits up to max_pending_jobs at all times if jobs are queued
+    # - jit_threshold: submits like reactive but ONLY if the oldest queued job has waited > jit_threshold_hours
     strategy: "reactive"
+    # jit_threshold_hours: 6.0
     # Choose exactly one image source:
     # 1) shared Apptainer image path (best for offline/restricted compute nodes)
     sif_path: /depot/shared/containers/relaymd.sif

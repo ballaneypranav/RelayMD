@@ -195,9 +195,7 @@ def test_cluster_config_rejects_multiple_memory_directives() -> None:
         )
 
 
-def test_load_settings_hydrates_registry_credentials_from_infisical(
-    monkeypatch, tmp_path
-) -> None:
+def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "\n".join(

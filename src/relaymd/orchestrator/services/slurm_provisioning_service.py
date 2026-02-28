@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+import structlog
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -11,6 +12,8 @@ from relaymd.models import Job, JobStatus, Platform, Worker
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.slurm import submit_slurm_job
+
+logger = structlog.get_logger(__name__)
 
 SubmitSlurmJobFn = Callable[[ClusterConfig, OrchestratorSettings], Awaitable[str]]
 
@@ -35,10 +38,29 @@ class SlurmProvisioningService:
 
     async def submit_cluster_if_needed(self, *, cluster: ClusterConfig) -> bool:
         queued_job = (
-            await self._session.exec(select(Job).where(Job.status == JobStatus.queued).limit(1))
+            await self._session.exec(
+                select(Job)
+                .where(Job.status == JobStatus.queued)
+                .order_by(col(Job.created_at))
+                .limit(1)
+            )
         ).first()
         if queued_job is None:
             return False
+
+        if cluster.strategy == "jit_threshold":
+            now = datetime.now(UTC).replace(tzinfo=None)
+            wait_time_hours = (now - queued_job.created_at).total_seconds() / 3600.0
+            if wait_time_hours < cluster.jit_threshold_hours:
+                return False
+
+            logger.info(
+                "jit_threshold reached for cluster",
+                cluster=cluster.name,
+                oldest_job_id=str(queued_job.id),
+                wait_time_hours=round(wait_time_hours, 2),
+                threshold_hours=cluster.jit_threshold_hours,
+            )
 
         if cluster.strategy != "continuous":
             active_hpc_workers = (

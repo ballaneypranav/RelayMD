@@ -40,9 +40,7 @@ async def test_healthz_no_auth_required() -> None:
 @pytest.mark.asyncio
 async def test_operator_endpoints_require_api_token() -> None:
     async with app_client(make_settings()) as (_app, client):
-        create_resp = await client.post(
-            "/jobs", json={"title": "a", "input_bundle_path": "x"}
-        )
+        create_resp = await client.post("/jobs", json={"title": "a", "input_bundle_path": "x"})
         assert create_resp.status_code == 401
         assert (await client.get("/jobs")).status_code == 401
         assert (await client.get("/jobs/00000000-0000-0000-0000-000000000000")).status_code == 401

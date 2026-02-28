@@ -66,7 +66,7 @@ The orchestrator is the only stateful component. It runs as a FastAPI applicatio
 - Validating all in-place job transitions through a central transition service and returning typed `409` conflicts for invalid transitions
 - Assigning jobs to workers based on GPU availability and a preference policy
 - Detecting stale workers via heartbeat timeouts and re-queuing their jobs
-- Proactively submitting new SLURM jobs to HPC clusters via `sbatch` (direct subprocess call — the orchestrator runs on the login node where `sbatch` is in `PATH`) when the queue is idle and work is waiting. This provisioning behavior is configurable via the `strategy` field on each cluster (`reactive` vs `continuous`).
+- Proactively submitting new SLURM jobs to HPC clusters via `sbatch` (direct subprocess call — the orchestrator runs on the login node where `sbatch` is in `PATH`) when the queue is idle and work is waiting. This provisioning behavior is configurable via the `strategy` field on each cluster (`reactive`, `continuous`, or `jit_threshold`).
 - Exposing the REST API that workers, the CLI, and the monitoring UI consume
 
 The orchestrator never touches the simulation directly. It does not know about lambda windows, replica exchange, force fields, or any other scientific detail. A job is just a bundle of files in object storage and a status.

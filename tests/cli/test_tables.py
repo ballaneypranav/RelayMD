@@ -19,8 +19,7 @@ def test_render_jobs_plain_lines_tsv_output() -> None:
 
     assert lines[0] == "id\ttitle\tstatus\tcreated_at\tassigned_worker_id"
     assert (
-        lines[1]
-        == "11111111-1111-1111-1111-111111111111\tjob-one\tqueued\t2026-01-01T00:00:00Z\t-"
+        lines[1] == "11111111-1111-1111-1111-111111111111\tjob-one\tqueued\t2026-01-01T00:00:00Z\t-"
     )
 
 
