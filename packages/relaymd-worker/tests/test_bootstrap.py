@@ -40,6 +40,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     joined = Mock()
     monkeypatch.setattr(bootstrap, "join_tailnet", joined)
+    monkeypatch.setattr(bootstrap, "_wait_for_peer_reachable", Mock())
 
     values = {
         "B2_APPLICATION_KEY_ID": "key-id",
@@ -95,6 +96,7 @@ def test_run_bootstrap_missing_optional_download_bearer_token_uses_empty_default
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.setenv("HOSTNAME", "worker-a")
     monkeypatch.setattr(bootstrap, "join_tailnet", Mock())
+    monkeypatch.setattr(bootstrap, "_wait_for_peer_reachable", Mock())
 
     values = {
         "B2_APPLICATION_KEY_ID": "key-id",
