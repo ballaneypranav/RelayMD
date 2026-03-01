@@ -26,3 +26,19 @@ make docker-push ORG=<org>
 The worker entrypoint is `python -m relaymd.worker`. Provide
 `INFISICAL_TOKEN=<client_id>:<client_secret>` when running the container so
 bootstrap can retrieve runtime secrets.
+
+## Development
+
+### Git Hooks
+
+This repository uses [Ruff](https://docs.astral.sh/ruff/) and [Pyright](https://microsoft.github.io/pyright/) for code quality. We use git hooks to ensure these checks are run before every commit.
+
+To set up the hooks locally, run:
+
+```bash
+make setup-hooks
+```
+
+The hooks are stored in `.githooks/` and include:
+- `pre-commit`: Runs `ruff format`, `ruff check --fix`, and `pyright`.
+- `pre-push`: (Empty placeholder) Useful for longer-running checks like `pytest`.
