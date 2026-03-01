@@ -202,8 +202,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             {
                 "platform": str(worker.get("platform", "-")),
                 "gpu_model": worker.get("gpu_model", "-"),
-                "gpu_count": worker.get("gpu_count", "-"),
-                "vram_gb": worker.get("vram_gb", "-"),
+                "slurm_job_id": worker.get("slurm_job_id", "-"),
                 "last_heartbeat": heartbeat_str,
                 "status": status,
             }
@@ -214,8 +213,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
         columns=[
             "platform",
             "gpu_model",
-            "gpu_count",
-            "vram_gb",
+            "slurm_job_id",
             "last_heartbeat",
             "status",
         ],
@@ -281,8 +279,6 @@ def main() -> None:
                 "name",
                 "partition",
                 "strategy",
-                "gpu_type",
-                "gpu_count",
                 "max_pending_jobs",
                 "wall_time",
             ],

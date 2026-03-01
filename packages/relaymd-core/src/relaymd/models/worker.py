@@ -34,4 +34,5 @@ class WorkerRead(SQLModel):
     gpu_model: str
     gpu_count: int
     vram_gb: int
+    slurm_job_id: str | None = None
     last_heartbeat: datetime
