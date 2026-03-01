@@ -1,4 +1,4 @@
-from .assignment_service import AssignmentService, score_worker
+from .assignment_service import AssignmentService
 from .errors import JobTransitionConflictError, OrchestratorDomainError
 from .job_transitions import (
     ACTIVE_CHECKPOINT_JOB_STATUSES,
@@ -21,6 +21,5 @@ __all__ = [
     "SlurmProvisioningService",
     "TERMINAL_JOB_STATUSES",
     "WorkerLifecycleService",
-    "score_worker",
     "submit_pending_slurm_jobs",
 ]

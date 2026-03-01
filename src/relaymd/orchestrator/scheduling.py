@@ -5,12 +5,11 @@ from uuid import UUID
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, Worker
-from relaymd.orchestrator.services.assignment_service import AssignmentService, score_worker
+from relaymd.orchestrator.services.assignment_service import AssignmentService
 
 __all__ = [
     "assign_job",
     "assign_job_for_requesting_worker",
-    "score_worker",
 ]
 
 

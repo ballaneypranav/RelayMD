@@ -14,6 +14,7 @@ from relaymd.orchestrator.background_scheduler import build_background_scheduler
 from relaymd.orchestrator.config import OrchestratorSettings, load_settings
 from relaymd.orchestrator.db import create_db_and_tables, dispose_engine, init_engine
 from relaymd.orchestrator.logging import configure_logging, get_logger
+from relaymd.orchestrator.routers.config import router as config_router
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
@@ -93,6 +94,7 @@ def create_app(
     app.include_router(workers_router)
     app.include_router(jobs_worker_router)
     app.include_router(jobs_operator_router)
+    app.include_router(config_router)
 
     return app
 
