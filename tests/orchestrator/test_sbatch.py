@@ -101,6 +101,8 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
+    assert '--env RELAYMD_CLUSTER_NAME="gilbreth"' in rendered
+    assert '--env SLURM_JOB_ID="${SLURM_JOB_ID}"' in rendered
 
 
 @pytest.mark.asyncio

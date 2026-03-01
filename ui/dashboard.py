@@ -158,22 +158,15 @@ def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, s
 
 
 def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tuple[bool, str]:
-    payload: dict[str, Any] = {
-        "title": f"{job.get('title', 'job')} (re-queued)",
-        "input_bundle_path": job.get("input_bundle_path"),
-    }
-    latest_checkpoint_path = job.get("latest_checkpoint_path")
-    if latest_checkpoint_path is not None:
-        payload["latest_checkpoint_path"] = latest_checkpoint_path
-
+    job_id = job["id"]
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        response = client.post("/jobs", headers=_api_headers(token), json=payload)
+        response = client.post(f"/jobs/{job_id}/requeue", headers=_api_headers(token))
     if response.is_success:
         try:
             created_job = response.json()
-            return True, f"Created job {created_job.get('id', '<unknown id>')}"
+            return True, f"Re-queued as job {created_job.get('id', '<unknown id>')}"
         except ValueError:
-            return True, "Created re-queued job"
+            return True, "Job re-queued"
     return False, f"Re-queue failed ({response.status_code}): {response.text}"
 
 
@@ -188,17 +181,23 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
         checkpoint_at = _parse_datetime(job.get("last_checkpoint_at"))
         if checkpoint_at is None:
             time_since_checkpoint = "-"
-            checkpoint_str = "-"
         else:
-            checkpoint_str = checkpoint_at.strftime("%Y-%m-%d %H:%M:%S UTC")
             time_since_checkpoint = _format_duration((now - checkpoint_at).total_seconds())
+
+        created_at = _parse_datetime(job.get("created_at"))
+        age = _format_duration((now - created_at).total_seconds()) if created_at else "-"
+
+        updated_at = _parse_datetime(job.get("updated_at"))
+        time_in_status = _format_duration((now - updated_at).total_seconds()) if updated_at else "-"
 
         rows.append(
             {
+                "job_id": _truncate_uuid(job.get("id")),
                 "title": job.get("title", "-"),
                 "status": str(job.get("status", "-")),
+                "age": age,
+                "time_in_status": time_in_status,
                 "assigned_worker_id": _truncate_uuid(job.get("assigned_worker_id")),
-                "last_checkpoint_at": checkpoint_str,
                 "time_since_checkpoint": time_since_checkpoint,
             }
         )
@@ -206,10 +205,12 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
     return pd.DataFrame(
         rows,
         columns=[
+            "job_id",
             "title",
             "status",
+            "age",
+            "time_in_status",
             "assigned_worker_id",
-            "last_checkpoint_at",
             "time_since_checkpoint",
         ],
     )
@@ -223,7 +224,20 @@ def _worker_row_style(status: str, row_length: int) -> list[str]:
     return [""] * row_length
 
 
-def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -> pd.DataFrame:
+def _build_workers_dataframe(
+    raw_workers: list[dict[str, Any]],
+    now: datetime,
+    raw_jobs: list[dict[str, Any]] | None = None,
+) -> pd.DataFrame:
+    # Build worker_id -> job label mapping for active assignments
+    worker_job: dict[str, str] = {}
+    for job in raw_jobs or []:
+        wid = str(job.get("assigned_worker_id") or "")
+        if wid and str(job.get("status")) in {"running", "assigned"}:
+            jid = _truncate_uuid(job.get("id"))
+            title = str(job.get("title") or "")[:24]
+            worker_job[wid] = f"{title} ({jid})"
+
     rows: list[dict[str, Any]] = []
     for worker in raw_workers:
         heartbeat_at = _parse_datetime(worker.get("last_heartbeat"))
@@ -231,21 +245,37 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             heartbeat_str = "-"
             status = "stale"
         else:
-            heartbeat_str = heartbeat_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+            heartbeat_str = heartbeat_at.strftime("%H:%M:%S UTC")
             age_seconds = (now - heartbeat_at).total_seconds()
             status = "stale" if age_seconds > STALE_WORKER_SECONDS else "active"
+
+        registered_at = _parse_datetime(worker.get("registered_at"))
+        uptime = _format_duration((now - registered_at).total_seconds()) if registered_at else "-"
 
         slurm_id = str(worker.get("provider_id") or "")
         worker_status = str(worker.get("status") or "active")
         if worker_status == "queued":
             status = "provisioning"
 
+        gpu_count = worker.get("gpu_count", "-")
+        vram_gb = worker.get("vram_gb")
+        gpu_spec = (
+            f"{gpu_count}x {worker.get('gpu_model', '?')} ({vram_gb} GB)"
+            if vram_gb is not None
+            else str(worker.get("gpu_model", "-"))
+        )
+
+        worker_id_str = str(worker.get("id") or "")
+        current_job = worker_job.get(worker_id_str, "-")
+
         rows.append(
             {
                 "platform": str(worker.get("platform", "-")),
-                "gpu_model": worker.get("gpu_model", "-"),
+                "gpu": gpu_spec,
                 "provider_id": slurm_id or "-",
+                "uptime": uptime,
                 "last_heartbeat": heartbeat_str,
+                "current_job": current_job,
                 "status": status,
             }
         )
@@ -254,9 +284,11 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
         rows,
         columns=[
             "platform",
-            "gpu_model",
+            "gpu",
             "provider_id",
+            "uptime",
             "last_heartbeat",
+            "current_job",
             "status",
         ],
     )
@@ -296,8 +328,27 @@ def main() -> None:
         st.warning(warn)
 
     st.title("RelayMD Operator Dashboard")
-    st.caption(f"Orchestrator: {orchestrator_url}")
-    st.caption(f"Refresh interval: {refresh_interval_seconds}s")
+    st.caption(f"Orchestrator: {orchestrator_url} · Refresh: {refresh_interval_seconds}s")
+
+    # --- Summary metrics strip ---
+    status_counts: dict[str, int] = {}
+    for job in raw_jobs:
+        s = str(job.get("status", "unknown"))
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    active_workers = sum(1 for w in raw_workers if str(w.get("status") or "active") != "queued")
+    provisioning_workers = sum(
+        1 for w in raw_workers if str(w.get("status") or "active") == "queued"
+    )
+
+    mc1, mc2, mc3, mc4, mc5, mc6, mc7 = st.columns(7)
+    mc1.metric("Queued", status_counts.get("queued", 0))
+    mc2.metric("Running", status_counts.get("running", 0))
+    mc3.metric("Completed", status_counts.get("completed", 0))
+    mc4.metric("Failed", status_counts.get("failed", 0))
+    mc5.metric("Cancelled", status_counts.get("cancelled", 0))
+    mc6.metric("Active Workers", active_workers)
+    mc7.metric("Provisioning", provisioning_workers)
 
     # Tailscale status strip
     if "tailscale" in health:
@@ -312,36 +363,162 @@ def main() -> None:
 
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
-    jobs_placeholder = st.empty()
-    clusters_placeholder = st.empty()
-    workers_placeholder = st.empty()
+    st.divider()
 
+    # --- Sidebar: Settings and Manual Controls ---
+    with st.sidebar:
+        st.header("Settings")
+        st.caption(f"**URL:** {orchestrator_url}")
+        st.caption(f"**Refresh:** {refresh_interval_seconds}s")
+
+        st.divider()
+        st.header("Manual Controls")
+        st.info(
+            "No drain worker button is provided. To drain workers, cancel assigned jobs; "
+            "workers stop naturally on their next poll cycle."
+        )
+
+        cancelable_jobs = [
+            job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}
+        ]
+        requeue_jobs = [
+            job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}
+        ]
+
+        st.subheader("Cancel Job")
+        cancel_selected = st.selectbox(
+            "Cancelable jobs",
+            options=cancelable_jobs,
+            format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+            key="cancel_job_select",
+            disabled=not cancelable_jobs,
+        )
+        if st.button("Cancel", disabled=not cancelable_jobs, key="cancel_job_btn"):
+            st.session_state["cancel_pending_job"] = cancel_selected
+
+        pending_cancel = st.session_state.get("cancel_pending_job")
+        if pending_cancel is not None:
+            title = str(pending_cancel.get("title", "<untitled>"))
+            st.warning(f"Cancel job '{title}'? This cannot be undone.")
+            confirm_col, abort_col = st.columns(2)
+            with confirm_col:
+                if st.button("Confirm", key="cancel_confirm"):
+                    ok, message = _cancel_job(
+                        orchestrator_url=orchestrator_url,
+                        token=api_token,
+                        job_id=str(pending_cancel["id"]),
+                    )
+                    if ok:
+                        st.success(message)
+                    else:
+                        st.error(message)
+                    st.session_state["cancel_pending_job"] = None
+            with abort_col:
+                if st.button("Abort", key="cancel_abort"):
+                    st.session_state["cancel_pending_job"] = None
+
+        st.subheader("Re-queue Job")
+        requeue_selected = st.selectbox(
+            "Failed or cancelled jobs",
+            options=requeue_jobs,
+            format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+            key="requeue_job_select",
+            disabled=not requeue_jobs,
+        )
+        if st.button("Re-queue", disabled=not requeue_jobs, key="requeue_job_btn"):
+            ok, message = _requeue_job(
+                orchestrator_url=orchestrator_url,
+                token=api_token,
+                job=requeue_selected,
+            )
+            if ok:
+                st.success(message)
+            else:
+                st.error(message)
+
+    # --- Main content area with tabs ---
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
-    workers_df = _build_workers_dataframe(raw_workers, now)
+    workers_df = _build_workers_dataframe(raw_workers, now, raw_jobs)
 
-    with jobs_placeholder.container():
+    tab_jobs, tab_workers, tab_clusters = st.tabs(["Jobs", "Workers", "Cluster Configs"])
+
+    # --- Jobs Tab ---
+    with tab_jobs:
         st.subheader("Jobs")
-        styled_jobs = jobs_df.style.apply(
-            lambda row: _job_row_style(str(row["status"]), len(row)),
-            axis=1,
-        )
-        st.dataframe(styled_jobs, width="stretch", hide_index=True)
 
-    with clusters_placeholder.container():
-        st.subheader("Cluster Configs")
-        clusters_df = pd.DataFrame(
-            raw_clusters,
-            columns=[
-                "name",
-                "partition",
-                "strategy",
-                "max_pending_jobs",
-                "wall_time",
-            ],
-        )
-        st.dataframe(clusters_df, width="stretch", hide_index=True)
+        # Filter by status
+        if not jobs_df.empty:
+            available_statuses = sorted(jobs_df["status"].unique().tolist())
+            selected_statuses = st.multiselect(
+                "Filter by status",
+                options=available_statuses,
+                default=available_statuses,
+                key="job_status_filter",
+            )
+            filtered_jobs_df = (
+                jobs_df[jobs_df["status"].isin(selected_statuses)] if selected_statuses else jobs_df
+            )
+        else:
+            filtered_jobs_df = jobs_df
 
-    with workers_placeholder.container():
+        # Render jobs table with color styling
+        if not filtered_jobs_df.empty:
+            styled_jobs = filtered_jobs_df.style.apply(
+                lambda row: _job_row_style(str(row["status"]), len(row)),
+                axis=1,
+            )
+            st.dataframe(styled_jobs, width="stretch", hide_index=True)
+        else:
+            st.info("No jobs match the selected filters.")
+
+        # Job detail expander — select any job to inspect full IDs and paths
+        if raw_jobs:
+            with st.expander("Job details", expanded=False):
+                detail_job = st.selectbox(
+                    "Select job",
+                    options=raw_jobs,
+                    format_func=lambda j: (
+                        f"{j.get('title', '<untitled>')} [{j.get('status', '-')}]"
+                    ),
+                    key="detail_job_select",
+                )
+                if detail_job:
+                    d1, d2 = st.columns(2)
+                    with d1:
+                        st.text_input("Job ID", value=str(detail_job.get("id", "")), disabled=True)
+                        st.text_input(
+                            "Assigned Worker ID",
+                            value=str(detail_job.get("assigned_worker_id") or ""),
+                            disabled=True,
+                        )
+                        created_at = _parse_datetime(detail_job.get("created_at"))
+                        st.text_input(
+                            "Created at",
+                            value=(
+                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if created_at else "-"
+                            ),
+                            disabled=True,
+                        )
+                    with d2:
+                        st.text_input(
+                            "Input bundle path",
+                            value=str(detail_job.get("input_bundle_path") or ""),
+                            disabled=True,
+                        )
+                        st.text_input(
+                            "Latest checkpoint path",
+                            value=str(detail_job.get("latest_checkpoint_path") or ""),
+                            disabled=True,
+                        )
+                        chk_at = _parse_datetime(detail_job.get("last_checkpoint_at"))
+                        st.text_input(
+                            "Last checkpoint at",
+                            value=(chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"),
+                            disabled=True,
+                        )
+
+    # --- Workers Tab ---
+    with tab_workers:
         st.subheader("Workers")
         styled_workers = workers_df.style.apply(
             lambda row: _worker_row_style(str(row["status"]), len(row)),
@@ -349,69 +526,23 @@ def main() -> None:
         )
         st.dataframe(styled_workers, width="stretch", hide_index=True)
 
-    st.divider()
-    st.subheader("Manual Controls")
-    st.info(
-        "No drain worker button is provided. To drain workers, cancel assigned jobs; "
-        "workers stop naturally on their next poll cycle."
-    )
-
-    cancelable_jobs = [job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}]
-    requeue_jobs = [job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}]
-
-    st.markdown("### Cancel Job")
-    cancel_selected = st.selectbox(
-        "Cancelable jobs",
-        options=cancelable_jobs,
-        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
-        key="cancel_job_select",
-        disabled=not cancelable_jobs,
-    )
-    if st.button("Cancel", disabled=not cancelable_jobs):
-        st.session_state["cancel_pending_job"] = cancel_selected
-
-    pending_cancel = st.session_state.get("cancel_pending_job")
-    if pending_cancel is not None:
-        title = str(pending_cancel.get("title", "<untitled>"))
-        st.warning(f"Cancel job '{title}'? This cannot be undone.")
-        confirm_col, abort_col = st.columns(2)
-        with confirm_col:
-            if st.button("Confirm", key="cancel_confirm"):
-                ok, message = _cancel_job(
-                    orchestrator_url=orchestrator_url,
-                    token=api_token,
-                    job_id=str(pending_cancel["id"]),
-                )
-                if ok:
-                    st.success(message)
-                else:
-                    st.error(message)
-                st.session_state["cancel_pending_job"] = None
-        with abort_col:
-            if st.button("Abort", key="cancel_abort"):
-                st.session_state["cancel_pending_job"] = None
-
-    st.markdown("### Re-queue Job")
-    requeue_selected = st.selectbox(
-        "Failed or cancelled jobs",
-        options=requeue_jobs,
-        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
-        key="requeue_job_select",
-        disabled=not requeue_jobs,
-    )
-    if st.button("Re-queue", disabled=not requeue_jobs):
-        # Cancellation is state-only for running jobs: workers finish current chunk,
-        # may still POST /jobs/{id}/complete, orchestrator discards it for cancelled jobs,
-        # and workers then exit naturally on the next /jobs/request poll cycle.
-        ok, message = _requeue_job(
-            orchestrator_url=orchestrator_url,
-            token=api_token,
-            job=requeue_selected,
-        )
-        if ok:
-            st.success(message)
+    # --- Cluster Configs Tab ---
+    with tab_clusters:
+        st.subheader("Cluster Configs")
+        if raw_clusters:
+            clusters_df = pd.DataFrame(
+                raw_clusters,
+                columns=[
+                    "name",
+                    "partition",
+                    "strategy",
+                    "max_pending_jobs",
+                    "wall_time",
+                ],
+            )
+            st.dataframe(clusters_df, width="stretch", hide_index=True)
         else:
-            st.error(message)
+            st.info("No cluster configs available.")
 
 
 if __name__ == "__main__":

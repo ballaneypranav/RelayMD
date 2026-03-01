@@ -68,10 +68,16 @@ if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
     # Optional TTL: if RELAYMD_SIF_MAX_AGE_HOURS is set and the cached SIF is
     # older than that many hours, treat it as stale and re-pull.
     if [[ -f "${_SIF_PATH}" && -n "${RELAYMD_SIF_MAX_AGE_HOURS:-}" ]]; then
-      _SIF_AGE_SECONDS=$(( $(date +%s) - $(date -r "${_SIF_PATH}" +%s) ))
-      _MAX_AGE_SECONDS=$(( RELAYMD_SIF_MAX_AGE_HOURS * 3600 ))
-      if (( _SIF_AGE_SECONDS > _MAX_AGE_SECONDS )); then
-        rm -f "${_SIF_PATH}"
+      # Validate that RELAYMD_SIF_MAX_AGE_HOURS is a non-negative integer to
+      # prevent arithmetic errors from aborting the job.
+      if [[ ! "${RELAYMD_SIF_MAX_AGE_HOURS}" =~ ^[0-9]+$ ]]; then
+        echo "WARNING: RELAYMD_SIF_MAX_AGE_HOURS must be a non-negative integer, got '${RELAYMD_SIF_MAX_AGE_HOURS}'; skipping cache TTL check" >&2
+      else
+        _SIF_AGE_SECONDS=$(( $(date +%s) - $(date -r "${_SIF_PATH}" +%s) ))
+        _MAX_AGE_SECONDS=$(( 10#${RELAYMD_SIF_MAX_AGE_HOURS} * 3600 ))
+        if (( _SIF_AGE_SECONDS > _MAX_AGE_SECONDS )); then
+          rm -f "${_SIF_PATH}"
+        fi
       fi
     fi
     if [[ ! -f "${_SIF_PATH}" ]]; then
@@ -102,4 +108,6 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
+  --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}" \
+  --env SLURM_JOB_ID="${SLURM_JOB_ID}" \
   "${_APPTAINER_IMAGE}" python -m relaymd.worker
