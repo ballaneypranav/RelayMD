@@ -16,5 +16,5 @@ class Platform(StrEnum):
 
 
 class WorkerStatus(StrEnum):
-    queued = "queued"   # submitted to provider, not yet started
-    active = "active"   # worker process registered and heartbeating
+    queued = "queued"  # submitted to provider, not yet started
+    active = "active"  # worker process registered and heartbeating
