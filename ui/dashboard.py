@@ -192,6 +192,7 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
 
         rows.append(
             {
+                "job_id": _truncate_uuid(job.get("id")),
                 "title": job.get("title", "-"),
                 "status": str(job.get("status", "-")),
                 "age": age,
@@ -204,6 +205,7 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
     return pd.DataFrame(
         rows,
         columns=[
+            "job_id",
             "title",
             "status",
             "age",
@@ -222,7 +224,20 @@ def _worker_row_style(status: str, row_length: int) -> list[str]:
     return [""] * row_length
 
 
-def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -> pd.DataFrame:
+def _build_workers_dataframe(
+    raw_workers: list[dict[str, Any]],
+    now: datetime,
+    raw_jobs: list[dict[str, Any]] | None = None,
+) -> pd.DataFrame:
+    # Build worker_id -> job label mapping for active assignments
+    worker_job: dict[str, str] = {}
+    for job in raw_jobs or []:
+        wid = str(job.get("assigned_worker_id") or "")
+        if wid and str(job.get("status")) in {"running", "assigned"}:
+            jid = _truncate_uuid(job.get("id"))
+            title = str(job.get("title") or "")[:24]
+            worker_job[wid] = f"{title} ({jid})"
+
     rows: list[dict[str, Any]] = []
     for worker in raw_workers:
         heartbeat_at = _parse_datetime(worker.get("last_heartbeat"))
@@ -250,6 +265,9 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             else str(worker.get("gpu_model", "-"))
         )
 
+        worker_id_str = str(worker.get("id") or "")
+        current_job = worker_job.get(worker_id_str, "-")
+
         rows.append(
             {
                 "platform": str(worker.get("platform", "-")),
@@ -257,6 +275,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
                 "provider_id": slurm_id or "-",
                 "uptime": uptime,
                 "last_heartbeat": heartbeat_str,
+                "current_job": current_job,
                 "status": status,
             }
         )
@@ -269,6 +288,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             "provider_id",
             "uptime",
             "last_heartbeat",
+            "current_job",
             "status",
         ],
     )
@@ -348,7 +368,7 @@ def main() -> None:
     workers_placeholder = st.empty()
 
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
-    workers_df = _build_workers_dataframe(raw_workers, now)
+    workers_df = _build_workers_dataframe(raw_workers, now, raw_jobs)
 
     with jobs_placeholder.container():
         st.subheader("Jobs")
