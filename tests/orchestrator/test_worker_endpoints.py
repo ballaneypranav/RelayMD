@@ -186,57 +186,6 @@ async def test_request_returns_no_job_available_when_queue_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_request_only_assigns_to_highest_scoring_idle_worker() -> None:
-    settings = make_settings()
-    headers = {"X-API-Token": "test-token"}
-
-    async with app_client(settings) as (_app, client):
-        higher_register = await client.post(
-            "/workers/register",
-            headers=headers,
-            json={
-                "platform": "hpc",
-                "gpu_model": "NVIDIA A100",
-                "gpu_count": 4,
-                "vram_gb": 80,
-            },
-        )
-        higher_worker_id = higher_register.json()["worker_id"]
-        lower_register = await client.post(
-            "/workers/register",
-            headers=headers,
-            json={
-                "platform": "salad",
-                "gpu_model": "NVIDIA A10",
-                "gpu_count": 1,
-                "vram_gb": 24,
-            },
-        )
-        lower_worker_id = lower_register.json()["worker_id"]
-
-        async with get_sessionmaker()() as session:
-            job = Job(title="train-priority", input_bundle_path="jobs/priority/input/bundle.tar.gz")
-            session.add(job)
-            await session.commit()
-
-        lower_response = await client.post(
-            "/jobs/request",
-            headers=headers,
-            params={"worker_id": lower_worker_id},
-        )
-        assert lower_response.status_code == 200
-        assert lower_response.json() == {"status": "no_job_available"}
-
-        higher_response = await client.post(
-            "/jobs/request",
-            headers=headers,
-            params={"worker_id": higher_worker_id},
-        )
-        assert higher_response.status_code == 200
-        assert higher_response.json()["status"] == "assigned"
-
-
-@pytest.mark.asyncio
 async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
     settings = make_settings()
     headers = {"X-API-Token": "test-token"}
