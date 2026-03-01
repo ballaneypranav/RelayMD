@@ -30,12 +30,43 @@
 set -euo pipefail
 
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
+
 {% if apptainer_docker_username and apptainer_docker_password %}
 export APPTAINER_DOCKER_USERNAME="{{ apptainer_docker_username }}"
 export APPTAINER_DOCKER_PASSWORD="{{ apptainer_docker_password }}"
 export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"
 export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"
 {% endif %}
+
+# Resolve the Apptainer image.  For docker:// URIs we pre-pull to a shared SIF
+# cache under ~/.apptainer/relaymd-sif-cache, using flock to serialise the
+# OCI→SIF build.  The first job that arrives builds the SIF; every subsequent
+# job acquires the lock, finds the SIF already present, and skips the build.
+# The cache path is keyed by a slug of the image URI so different image versions
+# produce distinct files and never collide.
+_APPTAINER_IMAGE="{{ apptainer_image | default(sif_path) }}"
+
+if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
+  _IMAGE_SLUG="$(printf '%s' "${_APPTAINER_IMAGE}" | tr -cs 'a-zA-Z0-9._-' '_')"
+  _SIF_CACHE_DIR="${HOME}/.apptainer/relaymd-sif-cache"
+  mkdir -p "${_SIF_CACHE_DIR}"
+  _SIF_PATH="${_SIF_CACHE_DIR}/${_IMAGE_SLUG}.sif"
+  _LOCK_FILE="${_SIF_CACHE_DIR}/${_IMAGE_SLUG}.lock"
+
+  (
+    flock -x 200
+    if [[ ! -f "${_SIF_PATH}" ]]; then
+      # Isolate Apptainer's working tmp so concurrent builds on other images
+      # don't interfere; cleaned up when this subshell exits.
+      export APPTAINER_TMPDIR="${TMPDIR:-/tmp}/apptainer-tmp-${SLURM_JOB_ID}"
+      mkdir -p "${APPTAINER_TMPDIR}"
+      trap 'rm -rf "${APPTAINER_TMPDIR}"' EXIT
+      apptainer pull "${_SIF_PATH}" "${_APPTAINER_IMAGE}"
+    fi
+  ) 200>"${_LOCK_FILE}"
+
+  _APPTAINER_IMAGE="${_SIF_PATH}"
+fi
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
@@ -46,4 +77,4 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
-  {{ apptainer_image | default(sif_path) }} python -m relaymd.worker
+  "${_APPTAINER_IMAGE}" python -m relaymd.worker
