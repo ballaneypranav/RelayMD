@@ -64,6 +64,9 @@ slurm_cluster_configs:
     # 1) shared Apptainer image path (best for offline/restricted compute nodes)
     sif_path: /depot/shared/containers/relaymd.sif
     # 2) OR direct registry image (Apptainer uses docker://<image>)
+    # Prefer a SHA tag over :latest to pin to a specific build.
+    # The SHA tag is printed in the GitHub Actions job summary after each CI run.
+    # image_uri: ghcr.io/<org>/relaymd-worker:sha-abc1234
     # image_uri: ghcr.io/<org>/relaymd-worker:latest
     # Optional scheduler directives:
     # nodes: 1
