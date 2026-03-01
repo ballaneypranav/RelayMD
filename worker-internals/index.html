@@ -1372,6 +1372,7 @@
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">orchestrator_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">30.0</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">sigterm_checkpoint_wait_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span>
 </span></code></pre></div>
+<p>On HPC, <code>SLURM_JOB_ID</code> is automatically present in the environment. The worker reads it and passes it as <code>slurm_job_id</code> in <code>POST /workers/register</code>. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.</p>
 <h3 id="secret-bootstrap">Secret Bootstrap</h3>
 <p>The bootstrap token is injected via SLURM's <code>--export</code> env var (never written to disk) or the Salad dashboard environment. From it, Infisical provides all other secrets: B2 credentials, the Tailscale ephemeral auth key, the orchestrator API token.</p>
 <h3 id="tailscale">Tailscale</h3>

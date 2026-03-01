@@ -696,6 +696,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#placeholder-worker-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Placeholder Worker Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1188,6 +1199,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#placeholder-worker-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Placeholder Worker Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1224,7 +1246,9 @@
 <ol>
 <li><strong><code>stale_worker_reaper_job</code></strong> — every <code>stale_worker_reaper_interval_seconds</code> (default 60s); marks workers stale if <code>last_heartbeat &gt; heartbeat_interval_seconds × heartbeat_timeout_multiplier</code>; re-queues their jobs; calls Salad autoscaling.</li>
 <li><strong><code>orphaned_job_requeue_once</code></strong> — every <code>orphaned_job_requeue_interval_seconds</code> (default 60s); handles jobs that reached <code>assigned</code> state but whose worker never registered (e.g. SLURM job failed to boot).</li>
-<li><strong><code>sbatch_submission_job</code></strong> — every <code>sbatch_submission_interval_seconds</code> (default 60s); for each <code>ClusterConfig</code>, if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls <code>sbatch --parsable</code> as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions.</li>
+<li><strong><code>sbatch_submission_job</code></strong> — every <code>sbatch_submission_interval_seconds</code> (default 60s); for each <code>ClusterConfig</code>, proceeds in two steps:</li>
+<li><strong>Dead-placeholder reap</strong>: queries all placeholder workers (those with <code>slurm_job_id</code> containing <code>:</code>), calls <code>squeue --jobs &lt;id,...&gt;</code>, and deletes any whose SLURM job is no longer alive. This reclaims the <code>max_pending_jobs</code> slot so the next submission cycle can proceed. Errors from <code>squeue</code> (e.g. on non-HPC environments) are swallowed and never crash the scheduler.</li>
+<li><strong>New submission</strong>: if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls <code>sbatch --parsable</code> as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record (<code>slurm_job_id = "&lt;cluster&gt;:&lt;id&gt;"</code>) to prevent duplicate submissions during the SLURM pending window.</li>
 </ol>
 <p>Scheduler settings: <code>coalesce=True</code>, <code>max_instances=1</code>, no persistent job store.</p>
 <h2 id="sbatch-submission">sbatch Submission</h2>
@@ -1236,6 +1260,24 @@
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span>
 </span></code></pre></div>
 <p><strong>Current limitation:</strong> the orchestrator must run on the same login node as the target cluster. Cross-cluster submission (e.g. submitting to clusterB from a clusterA-hosted orchestrator) requires SSH and is not yet implemented.</p>
+<h2 id="placeholder-worker-lifecycle">Placeholder Worker Lifecycle</h2>
+<p>When <code>sbatch</code> succeeds, the orchestrator inserts a <strong>placeholder</strong> <code>Worker</code> row with:</p>
+<ul>
+<li><code>platform = hpc</code></li>
+<li><code>slurm_job_id = "&lt;cluster_name&gt;:&lt;slurm_job_id&gt;"</code> (the colon is the sentinel)</li>
+<li><code>vram_gb = 0</code> (unknown until the real worker registers)</li>
+<li><code>last_heartbeat = now</code></li>
+</ul>
+<p>The placeholder is visible in the UI with <code>status = provisioning</code>. It is <strong>never reaped by the stale-worker reaper</strong> (which explicitly skips rows whose <code>slurm_job_id</code> contains <code>:</code>), and it is <strong>never assigned jobs</strong> (the assignment query requires <code>slurm_job_id IS NULL</code>).</p>
+<p>The placeholder is cleaned up by one of two paths:</p>
+<ol>
+<li>
+<p><strong>Happy path</strong> — the SLURM job starts and the worker process calls <code>POST /workers/register</code> with <code>slurm_job_id</code> set to <code>$SLURM_JOB_ID</code>. <code>register_worker</code> finds the matching placeholder (by suffix <code>":&lt;id&gt;"</code>) and deletes it atomically before committing the real worker row. The real worker has <code>slurm_job_id = NULL</code> and a live heartbeat.</p>
+</li>
+<li>
+<p><strong>Dead-job path</strong> — the <code>sbatch_submission_job</code> scheduler calls <code>reap_dead_slurm_placeholders</code> before each submission cycle. It calls <code>squeue --jobs &lt;id1,id2,...&gt; --noheader --format=%i</code> and deletes any placeholder whose job ID is no longer returned by squeue (job failed, timed out, or was cancelled before starting).</p>
+</li>
+</ol>
 
 
 

@@ -1364,7 +1364,7 @@
 <ol>
 <li>Fetches secrets from Infisical using a bootstrap token injected at job submission time</li>
 <li>Joins the private Tailscale network in userspace mode (no root required)</li>
-<li>Registers with the orchestrator, reporting its hardware (GPU model, count, VRAM, platform)</li>
+<li>Registers with the orchestrator, reporting its hardware (GPU model, count, VRAM, platform). On HPC, the worker also passes <code>slurm_job_id</code> (from <code>$SLURM_JOB_ID</code>) in the registration payload. The orchestrator uses this to atomically delete the corresponding placeholder row, so only one worker row exists per SLURM allocation.</li>
 <li>Polls for a job assignment. If none is available, handles idle state based on <code>worker_idle_strategy</code>:</li>
 <li><code>immediate_exit</code>: Exits cleanly (default).</li>
 <li><code>poll_then_exit</code>: Sleeps <code>worker_idle_poll_interval_seconds</code> and retries, up to <code>worker_idle_poll_max_seconds</code> before exiting cleanly.</li>
