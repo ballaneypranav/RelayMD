@@ -456,9 +456,7 @@ def main() -> None:
                 key="job_status_filter",
             )
             filtered_jobs_df = (
-                jobs_df[jobs_df["status"].isin(selected_statuses)]
-                if selected_statuses
-                else jobs_df
+                jobs_df[jobs_df["status"].isin(selected_statuses)] if selected_statuses else jobs_df
             )
         else:
             filtered_jobs_df = jobs_df
@@ -469,7 +467,7 @@ def main() -> None:
                 lambda row: _job_row_style(str(row["status"]), len(row)),
                 axis=1,
             )
-            st.dataframe(styled_jobs, width='stretch', hide_index=True)
+            st.dataframe(styled_jobs, width="stretch", hide_index=True)
         else:
             st.info("No jobs match the selected filters.")
 
@@ -497,9 +495,7 @@ def main() -> None:
                         st.text_input(
                             "Created at",
                             value=(
-                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-                                if created_at
-                                else "-"
+                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if created_at else "-"
                             ),
                             disabled=True,
                         )
@@ -517,9 +513,7 @@ def main() -> None:
                         chk_at = _parse_datetime(detail_job.get("last_checkpoint_at"))
                         st.text_input(
                             "Last checkpoint at",
-                            value=(
-                                chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"
-                            ),
+                            value=(chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"),
                             disabled=True,
                         )
 
@@ -530,7 +524,7 @@ def main() -> None:
             lambda row: _worker_row_style(str(row["status"]), len(row)),
             axis=1,
         )
-        st.dataframe(styled_workers, width='stretch', hide_index=True)
+        st.dataframe(styled_workers, width="stretch", hide_index=True)
 
     # --- Cluster Configs Tab ---
     with tab_clusters:
@@ -546,7 +540,7 @@ def main() -> None:
                     "wall_time",
                 ],
             )
-            st.dataframe(clusters_df, width='stretch', hide_index=True)
+            st.dataframe(clusters_df, width="stretch", hide_index=True)
         else:
             st.info("No cluster configs available.")
 
