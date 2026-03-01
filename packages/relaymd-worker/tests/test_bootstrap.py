@@ -172,6 +172,7 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
 
     run_mock = Mock(return_value=subprocess.CompletedProcess(args=[], returncode=0))
     monkeypatch.setattr(subprocess, "run", run_mock)
+    monkeypatch.setattr(bootstrap, "_wait_for_socks5_ready", Mock())
 
     bootstrap.join_tailnet("ts-auth-key", "worker-host")
 

@@ -12,6 +12,9 @@ from relaymd.orchestrator.logging import get_logger
 from relaymd.orchestrator.services import WorkerLifecycleService
 from relaymd.orchestrator.services.salad_autoscaling_service import SaladAutoscalingService
 from relaymd.orchestrator.services.slurm_provisioning_service import (
+    pending_slurm_job_marker,
+)
+from relaymd.orchestrator.services.slurm_provisioning_service import (
     reap_dead_slurm_placeholders as _reap_dead_slurm_placeholders,
 )
 from relaymd.orchestrator.services.slurm_provisioning_service import (
@@ -60,6 +63,10 @@ async def orphaned_job_requeue_once() -> None:
     async with sessionmaker() as session:
         service = WorkerLifecycleService(session)
         await service.requeue_orphaned_jobs_once()
+
+
+def _pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
+    return pending_slurm_job_marker(cluster_name, slurm_job_id)
 
 
 async def submit_pending_slurm_jobs(settings: OrchestratorSettings) -> int:

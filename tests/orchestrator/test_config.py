@@ -226,6 +226,7 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
         "RELAYMD_API_TOKEN": "relaymd-token",
         "APPTAINER_DOCKER_USERNAME": "gh-user",
         "APPTAINER_DOCKER_PASSWORD": "gh-pass",
+        "TAILSCALE_AUTH_KEY": "tskey-auth-test",
     }
     secret_calls: list[str] = []
 
@@ -276,6 +277,7 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
         "RELAYMD_API_TOKEN",
         "APPTAINER_DOCKER_USERNAME",
         "APPTAINER_DOCKER_PASSWORD",
+        "TAILSCALE_AUTH_KEY",
     ]
 
 

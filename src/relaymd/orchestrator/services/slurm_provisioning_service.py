@@ -25,6 +25,11 @@ def slurm_provider_id(cluster_name: str, slurm_job_id: str) -> str:
     return f"{cluster_name}:{slurm_job_id}"
 
 
+def pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
+    """Return the marker string used to track a pending SLURM job."""
+    return slurm_provider_id(cluster_name, slurm_job_id)
+
+
 async def _query_live_slurm_job_ids(job_ids: list[str]) -> set[str]:
     """Ask squeue which of the given raw SLURM job IDs are still alive (PD or R).
 

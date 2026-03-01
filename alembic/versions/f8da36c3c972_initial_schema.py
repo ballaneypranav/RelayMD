@@ -9,7 +9,6 @@ Create Date: 2026-02-28 22:36:41.285362
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-import sqlmodel
 
 from alembic import op
 
@@ -26,7 +25,7 @@ def upgrade() -> None:
     op.create_table(
         "job",
         sa.Column("id", sa.Uuid(), nullable=False),
-        sa.Column("title", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("title", sa.String(), nullable=False),
         sa.Column(
             "status",
             sa.Enum(
@@ -40,11 +39,11 @@ def upgrade() -> None:
             ),
             nullable=False,
         ),
-        sa.Column("input_bundle_path", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column("latest_checkpoint_path", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("input_bundle_path", sa.String(), nullable=False),
+        sa.Column("latest_checkpoint_path", sa.String(), nullable=True),
         sa.Column("last_checkpoint_at", sa.DateTime(), nullable=True),
         sa.Column("assigned_worker_id", sa.Uuid(), nullable=True),
-        sa.Column("slurm_job_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("slurm_job_id", sa.String(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
@@ -53,11 +52,11 @@ def upgrade() -> None:
         "worker",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("platform", sa.Enum("hpc", "salad", name="platform"), nullable=False),
-        sa.Column("gpu_model", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("gpu_model", sa.String(), nullable=False),
         sa.Column("gpu_count", sa.Integer(), nullable=False),
         sa.Column("vram_gb", sa.Integer(), nullable=False),
         sa.Column("status", sa.Enum("queued", "active", name="workerstatus"), nullable=False),
-        sa.Column("provider_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        sa.Column("provider_id", sa.String(), nullable=True),
         sa.Column("last_heartbeat", sa.DateTime(), nullable=False),
         sa.Column("registered_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
