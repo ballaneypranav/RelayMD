@@ -11,12 +11,12 @@ from httpx import ASGITransport, AsyncClient
 from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 from sqlmodel import select
 
+from relaymd.orchestrator import main as orchestrator_main
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
 from relaymd.orchestrator.slurm import submit_slurm_job
-from relaymd.orchestrator import main as orchestrator_main
 
 
 @asynccontextmanager
