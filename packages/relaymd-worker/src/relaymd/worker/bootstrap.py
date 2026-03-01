@@ -264,16 +264,20 @@ def _wait_for_peer_reachable(
     peer_ip: str,
     socket_path: str,
     *,
-    timeout_seconds: float = 60.0,
+    timeout_seconds: float = 15.0,
 ) -> None:
-    """Block until the tailnet peer at *peer_ip* is routable.
+    """Attempt to drive the WireGuard handshake for *peer_ip* to completion.
 
-    ``tailscale ping`` drives the WireGuard handshake with the target peer to
-    completion.  BackendState == 'Running' only means the node is authenticated
-    to the control plane; peer routes in userspace-networking mode are
-    established lazily on first contact.  Without this step the SOCKS5 proxy
-    will return ``General SOCKS server failure`` (0x01) if the worker tries to
-    reach the orchestrator before the handshake completes.
+    In userspace-networking mode Tailscale establishes WireGuard sessions
+    lazily on first contact.  Without priming the route, the SOCKS5 proxy may
+    return ``General SOCKS server failure`` (0x01) if the worker tries to reach
+    the orchestrator before the handshake completes.
+
+    This is intentionally best-effort: if the ping times out or reports
+    ``no reply`` (e.g. because the orchestrator is not currently on the
+    tailnet), a warning is logged and execution continues.  The gateway retry
+    loop will then surface a clear "failed to register after N attempts" error
+    rather than failing here with a low-level tailscale message.
     """
     try:
         result = subprocess.run(  # noqa: S603
@@ -291,13 +295,22 @@ def _wait_for_peer_reachable(
             timeout=timeout_seconds + 5.0,
         )
         if result.returncode != 0:
-            raise RuntimeError(
-                f"tailscale ping {peer_ip} failed: {result.stderr.strip() or result.stdout.strip()}"
+            # "no reply" means the peer is not (yet) on the tailnet — the
+            # orchestrator may be starting up or temporarily unreachable.
+            # Log and proceed; the gateway will retry the actual connection.
+            LOG.warning(
+                "tailscale_peer_ping_failed",
+                peer_ip=peer_ip,
+                output=(result.stderr.strip() or result.stdout.strip()),
             )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"tailscale ping {peer_ip} did not complete within {timeout_seconds:.0f}s"
-        ) from exc
+        else:
+            LOG.info("tailscale_peer_reachable", peer_ip=peer_ip)
+    except subprocess.TimeoutExpired:
+        LOG.warning(
+            "tailscale_peer_ping_timeout",
+            peer_ip=peer_ip,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 def _initialize_tailscale_runtime() -> Path:
