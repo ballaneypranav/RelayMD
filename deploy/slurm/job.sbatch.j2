@@ -74,7 +74,7 @@ if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
         echo "WARNING: RELAYMD_SIF_MAX_AGE_HOURS must be a non-negative integer, got '${RELAYMD_SIF_MAX_AGE_HOURS}'; skipping cache TTL check" >&2
       else
         _SIF_AGE_SECONDS=$(( $(date +%s) - $(date -r "${_SIF_PATH}" +%s) ))
-        _MAX_AGE_SECONDS=$(( RELAYMD_SIF_MAX_AGE_HOURS * 3600 ))
+        _MAX_AGE_SECONDS=$(( 10#${RELAYMD_SIF_MAX_AGE_HOURS} * 3600 ))
         if (( _SIF_AGE_SECONDS > _MAX_AGE_SECONDS )); then
           rm -f "${_SIF_PATH}"
         fi

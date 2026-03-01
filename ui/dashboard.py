@@ -158,7 +158,7 @@ def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, s
 
 
 def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tuple[bool, str]:
-    job_id = job.get("id")
+    job_id = job["id"]
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.post(f"/jobs/{job_id}/requeue", headers=_api_headers(token))
     if response.is_success:
