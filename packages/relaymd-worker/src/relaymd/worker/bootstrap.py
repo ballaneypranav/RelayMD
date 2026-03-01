@@ -347,7 +347,12 @@ def join_tailnet(auth_key: str, hostname: str) -> None:
             f"{tailscale_up.returncode}: {tailscale_up.stderr.strip()}"
         )
 
-    _wait_for_socks5_ready(socks5_listen_addr)
+    try:
+        _wait_for_socks5_ready(socks5_listen_addr)
+    except Exception:
+        _stop_tailscaled_process(tailscaled_process)
+        shutil.rmtree(runtime_dir, ignore_errors=True)
+        raise
 
     _TAILSCALED_PROCESS = tailscaled_process
     _TAILSCALE_RUNTIME_DIR_PATH = runtime_dir
