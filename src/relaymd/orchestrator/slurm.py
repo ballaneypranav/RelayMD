@@ -69,7 +69,13 @@ def _render_sbatch_script(
         worker_platform="hpc",
         log_directory=cluster.log_directory,
         axiom_token=settings.axiom_token,
+        axiom_token_shell_quoted=_shell_single_quote(settings.axiom_token)
+        if settings.axiom_token
+        else None,
         axiom_dataset=settings.axiom_dataset,
+        axiom_dataset_shell_quoted=_shell_single_quote(settings.axiom_dataset)
+        if settings.axiom_dataset
+        else None,
     )
 
 
@@ -80,7 +86,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
     )
 
     logger = structlog.get_logger(__name__)
-    logger.info("Submitting job script:\n%s", rendered)
+    logger.debug("Submitting job script:\n%s", rendered)
 
     command = [
         "ssh",
@@ -94,7 +100,9 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
         command.extend(["-i", cluster.ssh_key_file])
     command.append(f"{cluster.ssh_username}@{cluster.ssh_host}")
     if cluster.log_directory:
-        command.append(f"mkdir -p {cluster.log_directory} && sbatch --parsable")
+        command.append(
+            f"mkdir -p {_shell_single_quote(cluster.log_directory)} && sbatch --parsable"
+        )
     else:
         command.extend(["sbatch", "--parsable"])
 

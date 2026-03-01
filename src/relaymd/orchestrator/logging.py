@@ -59,13 +59,14 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    if getattr(settings, "axiom_token", None):
+    axiom_token = getattr(settings, "axiom_token", None)
+    if axiom_token:
         from relaymd.axiom_logging import AxiomProcessor
 
         processors.append(
             AxiomProcessor(
-                axiom_token=settings.axiom_token,  # type: ignore[attr-defined]
-                dataset=settings.axiom_dataset,  # type: ignore[attr-defined]
+                axiom_token=axiom_token,
+                dataset=settings.axiom_dataset,
             )
         )
 

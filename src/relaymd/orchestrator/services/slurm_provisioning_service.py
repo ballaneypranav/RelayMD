@@ -213,6 +213,14 @@ async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
     for cluster_name, raw_id_dict in cluster_to_raw_ids.items():
         cluster_config = cluster_configs.get(cluster_name)
         if not cluster_config:
+            import structlog
+
+            structlog.get_logger(__name__).warning(
+                "slurm_cluster_config_missing_for_placeholders",
+                cluster_name=cluster_name,
+                placeholder_count=len(raw_id_dict),
+            )
+            dead_placeholders.extend(raw_id_dict.values())
             continue
 
         raw_ids = list(raw_id_dict.keys())

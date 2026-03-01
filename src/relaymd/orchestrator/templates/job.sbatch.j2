@@ -38,8 +38,8 @@ export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"
 export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"
 {% endif %}
 {% if axiom_token %}
-export AXIOM_TOKEN="{{ axiom_token }}"
-export AXIOM_DATASET="{{ axiom_dataset }}"
+export AXIOM_TOKEN={{ axiom_token_shell_quoted }}
+export AXIOM_DATASET={{ axiom_dataset_shell_quoted }}
 {% endif %}
 
 # Resolve the Apptainer image.  For docker:// URIs we pre-pull to a shared SIF

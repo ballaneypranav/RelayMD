@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 import orjson
 import structlog
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CONFIGURED = False
@@ -15,6 +16,22 @@ class LoggingSettings(BaseSettings):
     relaymd_env: Literal["development", "production"] = "production"
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
+    axiom_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "axiom_token",
+            "AXIOM_TOKEN",
+            "RELAYMD_AXIOM_TOKEN",
+        ),
+    )
+    axiom_dataset: str = Field(
+        default="relaymd",
+        validation_alias=AliasChoices(
+            "axiom_dataset",
+            "AXIOM_DATASET",
+            "RELAYMD_AXIOM_DATASET",
+        ),
+    )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -53,13 +70,14 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    if getattr(active_settings, "axiom_token", None):
+    axiom_token = getattr(active_settings, "axiom_token", None)
+    if axiom_token:
         from relaymd.axiom_logging import AxiomProcessor
 
         processors.append(
             AxiomProcessor(
-                axiom_token=active_settings.axiom_token,  # type: ignore[attr-defined]
-                dataset=active_settings.axiom_dataset,  # type: ignore[attr-defined]
+                axiom_token=axiom_token,
+                dataset=active_settings.axiom_dataset,
             )
         )
 

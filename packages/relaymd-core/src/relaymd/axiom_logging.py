@@ -22,11 +22,11 @@ class AxiomSenderThread(threading.Thread):
         self.dataset = dataset
         self.flush_interval = flush_interval
         self.max_batch_size = max_batch_size
-        self._queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=10000)
+        self._queue: queue.Queue[structlog.types.EventDict] = queue.Queue(maxsize=10000)
         self._stop_event = threading.Event()
         self.url = f"https://api.axiom.co/v1/datasets/{self.dataset}/ingest"
 
-    def enqueue(self, event_dict: dict[str, Any]) -> None:
+    def enqueue(self, event_dict: structlog.types.EventDict) -> None:
         with suppress(queue.Full):
             self._queue.put_nowait(event_dict)
 
@@ -39,7 +39,7 @@ class AxiomSenderThread(threading.Thread):
                 # Avoid spinning if the queue is empty
                 time.sleep(0.1)
 
-    def _gather_batch(self) -> list[dict[str, Any]]:
+    def _gather_batch(self) -> list[structlog.types.EventDict]:
         batch = []
         with suppress(queue.Empty):
             # Wait up to flush_interval for the first item
@@ -51,8 +51,8 @@ class AxiomSenderThread(threading.Thread):
                 batch.append(item)
         return batch
 
-    def _send_batch(self, batch: list[dict[str, Any]]) -> None:
-        with suppress(Exception):
+    def _send_batch(self, batch: list[structlog.types.EventDict]) -> None:
+        try:
             payload = orjson.dumps(batch)
             req = urllib.request.Request(
                 self.url,
@@ -66,6 +66,14 @@ class AxiomSenderThread(threading.Thread):
             )
             with urllib.request.urlopen(req, timeout=10.0):
                 pass
+        except Exception as exc:
+            import datetime
+            import sys
+
+            now = datetime.datetime.now(datetime.UTC).isoformat()
+            sys.stderr.write(
+                f"[{now}] relaymd-axiom-logger: failed to send batch of {len(batch)} logs: {exc}\n"
+            )
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -102,8 +110,8 @@ class AxiomProcessor:
         self.thread = get_axiom_thread(axiom_token, dataset)
 
     def __call__(
-        self, logger: structlog.BoundLogger, method_name: str, event_dict: dict[str, Any]
-    ) -> dict[str, Any]:
+        self, logger: structlog.types.WrappedLogger, method_name: str, event_dict: structlog.types.EventDict
+    ) -> structlog.types.EventDict:
         # Copy the event_dict so modifications down the pipeline don't mutate our view
         dict_copy = dict(event_dict)
         # Ensure timestamp field matches what axiom parses natively
