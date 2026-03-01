@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import shutil
 import signal
@@ -210,6 +211,42 @@ def _wait_for_socks5_ready(
         time.sleep(poll_interval_seconds)
 
 
+def _wait_for_tailscale_running(
+    socket_path: str,
+    *,
+    timeout_seconds: float = 60.0,
+    poll_interval_seconds: float = 1.0,
+) -> None:
+    """Block until tailscale reports BackendState == 'Running'.
+
+    The SOCKS5 port being open only means tailscaled is accepting connections;
+    it does not mean the tailnet peer routes are established.  Polling
+    ``tailscale status --json`` for BackendState == 'Running' ensures the node
+    is fully authenticated and route advertisements have been received before
+    the worker attempts to connect to the orchestrator.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        result = subprocess.run(  # noqa: S603
+            ["tailscale", f"--socket={socket_path}", "status", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            try:
+                status = json.loads(result.stdout)
+                if status.get("BackendState") == "Running":
+                    return
+            except (ValueError, KeyError):
+                pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Tailscale did not reach Running state within {timeout_seconds:.0f}s"
+            )
+        time.sleep(poll_interval_seconds)
+
+
 def _initialize_tailscale_runtime() -> Path:
     runtime_dir = _runtime_dir()
     managed_runtime_root = _runtime_root()
@@ -349,6 +386,7 @@ def join_tailnet(auth_key: str, hostname: str) -> None:
 
     try:
         _wait_for_socks5_ready(socks5_listen_addr)
+        _wait_for_tailscale_running(socket_path)
     except Exception:
         _stop_tailscaled_process(tailscaled_process)
         shutil.rmtree(runtime_dir, ignore_errors=True)
