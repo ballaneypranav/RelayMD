@@ -29,10 +29,12 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
     df = dashboard._build_jobs_dataframe(jobs, now)
 
     assert list(df.columns) == [
+        "job_id",
         "title",
         "status",
+        "age",
+        "time_in_status",
         "assigned_worker_id",
-        "last_checkpoint_at",
         "time_since_checkpoint",
     ]
     assert len(df) == 1
@@ -66,9 +68,11 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
 
     assert list(df.columns) == [
         "platform",
-        "gpu_model",
+        "gpu",
         "provider_id",
+        "uptime",
         "last_heartbeat",
+        "current_job",
         "status",
     ]
     assert len(df) == 2
