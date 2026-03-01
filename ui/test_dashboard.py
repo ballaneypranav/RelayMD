@@ -49,6 +49,7 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
             "gpu_model": "NVIDIA A100",
             "gpu_count": 1,
             "vram_gb": 80,
+            "slurm_job_id": None,
             "last_heartbeat": "2026-02-24T11:57:30Z",
         },
         {
@@ -56,6 +57,7 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
             "gpu_model": "NVIDIA H100",
             "gpu_count": 4,
             "vram_gb": 320,
+            "slurm_job_id": None,
             "last_heartbeat": "2026-02-24T11:59:50Z",
         },
     ]
@@ -65,14 +67,36 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
     assert list(df.columns) == [
         "platform",
         "gpu_model",
-        "gpu_count",
-        "vram_gb",
+        "provider_id",
         "last_heartbeat",
         "status",
     ]
     assert len(df) == 2
     assert df.loc[0, "status"] == "stale"
     assert df.loc[1, "status"] == "active"
+
+
+def test_build_workers_dataframe_marks_provisioning_workers() -> None:
+    dashboard = _import_dashboard_module()
+    now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
+    workers = [
+        {
+            "platform": "hpc",
+            "gpu_model": "a100",
+            "gpu_count": 2,
+            "vram_gb": 0,
+            "provider_id": "gilbreth:12345",
+            "status": "queued",
+            # Old heartbeat — but status should be "provisioning", not "stale"
+            "last_heartbeat": "2026-02-24T10:00:00Z",
+        }
+    ]
+
+    df = dashboard._build_workers_dataframe(workers, now)
+
+    assert len(df) == 1
+    assert df.loc[0, "status"] == "provisioning"
+    assert df.loc[0, "provider_id"] == "gilbreth:12345"
 
 
 def test_resolve_runtime_settings_uses_cli_config_when_env_is_missing(

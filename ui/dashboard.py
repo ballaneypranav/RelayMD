@@ -183,6 +183,8 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
 def _worker_row_style(status: str, row_length: int) -> list[str]:
     if status == "stale":
         return ["background-color: #f8d7da"] * row_length
+    if status == "provisioning":
+        return ["background-color: #fff3cd; color: #856404"] * row_length
     return [""] * row_length
 
 
@@ -198,11 +200,16 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             age_seconds = (now - heartbeat_at).total_seconds()
             status = "stale" if age_seconds > STALE_WORKER_SECONDS else "active"
 
+        slurm_id = str(worker.get("provider_id") or "")
+        worker_status = str(worker.get("status") or "active")
+        if worker_status == "queued":
+            status = "provisioning"
+
         rows.append(
             {
                 "platform": str(worker.get("platform", "-")),
                 "gpu_model": worker.get("gpu_model", "-"),
-                "slurm_job_id": worker.get("slurm_job_id", "-"),
+                "provider_id": slurm_id or "-",
                 "last_heartbeat": heartbeat_str,
                 "status": status,
             }
@@ -213,7 +220,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
         columns=[
             "platform",
             "gpu_model",
-            "slurm_job_id",
+            "provider_id",
             "last_heartbeat",
             "status",
         ],
