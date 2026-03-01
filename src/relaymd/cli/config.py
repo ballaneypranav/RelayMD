@@ -210,7 +210,14 @@ def _hydrate_settings_from_infisical(settings: CliSettings) -> CliSettings:
             "b2_secret_access_key": get("B2_APPLICATION_KEY"),
         }
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Failed to load CLI settings from Infisical") from exc
+        msg = str(exc)
+        if "Invalid credentials" in msg or "invalid credentials" in msg:
+            raise RuntimeError(
+                "Infisical authentication failed: the token in 'infisical_token' is invalid "
+                "or expired. Rotate your machine identity token in the Infisical dashboard "
+                "and update the INFISICAL_TOKEN env var or 'infisical_token' in your config."
+            ) from exc
+        raise RuntimeError(f"Failed to load CLI settings from Infisical: {msg}") from exc
 
     updates: dict[str, str] = {}
     if settings.api_token.strip() in {"", "change-me"} and infisical_values["api_token"].strip():

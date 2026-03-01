@@ -29,10 +29,14 @@ class SubmitService:
             return
 
         details = ", ".join(f"{field} ({env_vars})" for field, env_vars in missing)
-        raise RuntimeError(
-            "Missing required B2 storage settings for submit: "
-            f"{details}. Set env vars or update relaymd-config.yaml."
+        hint = (
+            " Set INFISICAL_TOKEN (or 'infisical_token' in config) to load secrets "
+            "automatically, or provide the missing values directly via env vars or "
+            "relaymd-config.yaml."
+            if not self._context.settings.infisical_token.strip()
+            else " Set env vars or update relaymd-config.yaml."
         )
+        raise RuntimeError(f"Missing required B2 storage settings for submit: {details}.{hint}")
 
     def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
         self._validate_storage_settings()
