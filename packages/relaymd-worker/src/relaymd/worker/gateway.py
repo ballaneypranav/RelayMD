@@ -186,7 +186,7 @@ class ApiOrchestratorGateway:
         if isinstance(exception, httpx.HTTPStatusError):
             return exception.response.status_code >= 500
 
-        return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
+        return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException, httpx.ProxyError))
 
     def _register_worker_once(
         self,

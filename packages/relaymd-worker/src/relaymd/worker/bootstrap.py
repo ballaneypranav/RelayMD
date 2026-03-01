@@ -185,6 +185,31 @@ def _find_available_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _wait_for_socks5_ready(
+    listen_addr: str,
+    *,
+    timeout_seconds: float = 30.0,
+    poll_interval_seconds: float = 0.25,
+) -> None:
+    """Block until the SOCKS5 proxy port accepts TCP connections."""
+    host, _, port_str = listen_addr.rpartition(":")
+    host = host or "localhost"
+    port = int(port_str)
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                return
+        except OSError:
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Tailscale SOCKS5 proxy at {listen_addr} did not become ready "
+                f"within {timeout_seconds:.0f}s"
+            )
+        time.sleep(poll_interval_seconds)
+
+
 def _initialize_tailscale_runtime() -> Path:
     runtime_dir = _runtime_dir()
     managed_runtime_root = _runtime_root()
@@ -321,6 +346,8 @@ def join_tailnet(auth_key: str, hostname: str) -> None:
             "tailscale up failed with exit code "
             f"{tailscale_up.returncode}: {tailscale_up.stderr.strip()}"
         )
+
+    _wait_for_socks5_ready(socks5_listen_addr)
 
     _TAILSCALED_PROCESS = tailscaled_process
     _TAILSCALE_RUNTIME_DIR_PATH = runtime_dir
