@@ -1,5 +1,5 @@
 from .api import JobAssigned, JobConflict, JobRequestResponse, NoJobAvailable
-from .enums import JobStatus, Platform
+from .enums import JobStatus, Platform, WorkerStatus
 from .job import CheckpointReport, Job, JobCreate, JobRead
 from .worker import Worker, WorkerRead, WorkerRegister
 
@@ -20,4 +20,5 @@ __all__ = [
     "Worker",
     "WorkerRead",
     "WorkerRegister",
+    "WorkerStatus",
 ]

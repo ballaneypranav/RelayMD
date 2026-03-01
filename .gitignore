@@ -26,6 +26,7 @@ env/
 .env.*
 !.env.orchestrator.example
 !.env.worker.example
+env*
 
 # Local databases
 relaymd.db

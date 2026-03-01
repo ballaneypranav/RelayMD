@@ -1,8 +1,8 @@
-"""initial schema
+"""Initial schema
 
-Revision ID: 51c343ab81c6
+Revision ID: f8da36c3c972
 Revises:
-Create Date: 2026-02-24 00:49:22.564505
+Create Date: 2026-02-28 22:36:41.285362
 
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "51c343ab81c6"
+revision: str = "f8da36c3c972"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -55,7 +55,8 @@ def upgrade() -> None:
         sa.Column("gpu_model", sa.String(), nullable=False),
         sa.Column("gpu_count", sa.Integer(), nullable=False),
         sa.Column("vram_gb", sa.Integer(), nullable=False),
-        sa.Column("slurm_job_id", sa.String(), nullable=True),
+        sa.Column("status", sa.Enum("queued", "active", name="workerstatus"), nullable=False),
+        sa.Column("provider_id", sa.String(), nullable=True),
         sa.Column("last_heartbeat", sa.DateTime(), nullable=False),
         sa.Column("registered_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),

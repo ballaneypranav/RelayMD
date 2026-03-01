@@ -79,6 +79,7 @@ def _make_worker_read() -> WorkerRead:
             "gpu_model": "NVIDIA A100",
             "gpu_count": 1,
             "vram_gb": 80,
+            "status": "active",
             "last_heartbeat": datetime.now(UTC).isoformat(),
         }
     )

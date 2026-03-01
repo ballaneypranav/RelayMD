@@ -37,10 +37,10 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 class ClusterConfig(BaseModel):
     name: str
-    partition: str
+    partition: str | list[str]
     account: str
-    gpu_type: str
-    gpu_count: int
+    gpu_type: str = "unknown"
+    gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
     jit_threshold_hours: float = Field(default=6.0, gt=0)
     sif_path: str | None = None
@@ -152,6 +152,49 @@ class OrchestratorSettings(BaseSettings):
     relaymd_env: Literal["development", "production"] = "production"
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
+    tailscale_socket: str = Field(
+        default="~/.tailscale/tailscaled.sock",
+        validation_alias=AliasChoices("tailscale_socket", "RELAYMD_TAILSCALE_SOCKET"),
+    )
+    tailscale_auth_key: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "tailscale_auth_key", "TAILSCALE_AUTH_KEY", "RELAYMD_TAILSCALE_AUTH_KEY"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _expand_cluster_partitions(self) -> OrchestratorSettings:
+        expanded_configs: list[ClusterConfig] = []
+        for config in self.slurm_cluster_configs:
+            partitions: list[str]
+            if isinstance(config.partition, list):
+                partitions = [p.strip() for p in config.partition]
+            else:
+                partitions = [p.strip() for p in config.partition.split(",")]
+
+            # Filter out empty strings from the list
+            partitions = [p for p in partitions if p]
+
+            if len(partitions) <= 1:
+                # Normalize singlular partition to string for template rendering
+                if partitions:
+                    config.partition = partitions[0]
+                expanded_configs.append(config)
+                continue
+
+            # Expand into multiple configs
+            for partition in partitions:
+                new_config = config.model_copy(
+                    update={
+                        "name": f"{config.name}-{partition}",
+                        "partition": partition,
+                    }
+                )
+                expanded_configs.append(new_config)
+
+        self.slurm_cluster_configs = expanded_configs
+        return self
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -277,6 +320,7 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
             "api_token": get("RELAYMD_API_TOKEN"),
             "apptainer_docker_username": get("APPTAINER_DOCKER_USERNAME"),
             "apptainer_docker_password": get("APPTAINER_DOCKER_PASSWORD"),
+            "tailscale_auth_key": get("TAILSCALE_AUTH_KEY"),
         }
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to load orchestrator settings from Infisical") from exc
@@ -297,6 +341,9 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
             and infisical_values["apptainer_docker_password"].strip()
         ):
             updates["apptainer_docker_password"] = infisical_values["apptainer_docker_password"]
+
+    if not settings.tailscale_auth_key.strip() and infisical_values["tailscale_auth_key"].strip():
+        updates["tailscale_auth_key"] = infisical_values["tailscale_auth_key"]
 
     if not updates:
         return settings

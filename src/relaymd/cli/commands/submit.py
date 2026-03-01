@@ -99,6 +99,11 @@ def submit(
 
     try:
         submit_service = SubmitService(create_cli_context())
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Failed to load settings:[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+
+    try:
         with tempfile.TemporaryDirectory() as tmpdir:
             staged_input_dir = Path(tmpdir) / "input"
             shutil.copytree(input_dir, staged_input_dir)
@@ -107,12 +112,16 @@ def submit(
             archive_path = Path(tmpdir) / "bundle.tar.gz"
             create_bundle_archive(staged_input_dir, archive_path)
             upload_bundle(archive_path, b2_key, service=submit_service)
-
-        created_job_id = register_job(title, b2_key, service=submit_service)
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to submit job:[/red] {escape(str(exc))}")
+        console.print(f"[red]Failed to upload bundle:[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+
+    try:
+        created_job_id = register_job(title, b2_key, service=submit_service)
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[red]Failed to register job:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     console.print(

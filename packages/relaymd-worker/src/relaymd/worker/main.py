@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import signal
 import tarfile
@@ -343,11 +344,19 @@ def run_worker(config: WorkerConfig) -> None:
             timeout_seconds=runtime_settings.orchestrator_timeout_seconds,
             register_worker_max_attempts=runtime_settings.orchestrator_register_max_attempts,
         ) as gateway:
+            provider_id = None
+            if platform == Platform.hpc:
+                cluster_name = os.environ.get("RELAYMD_CLUSTER_NAME")
+                slurm_job_id = os.environ.get("SLURM_JOB_ID")
+                if cluster_name and slurm_job_id:
+                    provider_id = f"{cluster_name}:{slurm_job_id}"
+
             worker_id = gateway.register_worker(
                 platform=ApiPlatform(platform.value),
                 gpu_model=gpu_model,
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
+                provider_id=provider_id,
             )
             worker_log = LOG.bind(worker_id=str(worker_id))
 

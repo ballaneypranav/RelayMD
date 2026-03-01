@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from relaymd.models import Job, JobStatus
 
+from relaymd.orchestrator import main as orchestrator_main
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
@@ -15,8 +16,9 @@ from relaymd.orchestrator.scheduler import apply_salad_autoscaling_policy
 @asynccontextmanager
 async def app_with_db(settings: OrchestratorSettings):
     app = create_app(settings, start_background_tasks=False)
-    async with app.router.lifespan_context(app):
-        yield app
+    with patch.object(orchestrator_main, "_ensure_tailscale_running", return_value=None):
+        async with app.router.lifespan_context(app):
+            yield app
 
 
 def _salad_settings() -> OrchestratorSettings:

@@ -110,6 +110,41 @@ def _resolve_runtime_settings() -> tuple[str, str, int]:
     return orchestrator_url.rstrip("/"), api_token, refresh_interval_seconds
 
 
+def _render_offline_state(
+    orchestrator_url: str,
+    refresh_interval_seconds: int,
+    exc: Exception,
+) -> None:
+    """Render a clear 'orchestrator unreachable' panel instead of a bare st.error."""
+    now = datetime.now(UTC)
+
+    # Record the first time we noticed the outage.
+    if "orchestrator_offline_since" not in st.session_state:
+        st.session_state["orchestrator_offline_since"] = now
+    offline_since: datetime = st.session_state["orchestrator_offline_since"]
+    offline_duration = _format_duration((now - offline_since).total_seconds())
+
+    # Keep auto-refreshing so the dashboard recovers the moment the orchestrator comes back.
+    st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
+
+    st.title("RelayMD Operator Dashboard")
+    st.error("Orchestrator unreachable", icon="\U0001f534")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("URL", orchestrator_url)
+    with col2:
+        st.metric("Offline for", offline_duration)
+
+    with st.expander("Error details", expanded=True):
+        st.code(str(exc), language=None)
+
+    st.caption(
+        f"Retrying every {refresh_interval_seconds}s. "
+        "Start the orchestrator (e.g. start the tmux session) to restore service."
+    )
+
+
 def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, str]:
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.delete(
@@ -183,6 +218,8 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
 def _worker_row_style(status: str, row_length: int) -> list[str]:
     if status == "stale":
         return ["background-color: #f8d7da"] * row_length
+    if status == "provisioning":
+        return ["background-color: #fff3cd; color: #856404"] * row_length
     return [""] * row_length
 
 
@@ -198,12 +235,16 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             age_seconds = (now - heartbeat_at).total_seconds()
             status = "stale" if age_seconds > STALE_WORKER_SECONDS else "active"
 
+        slurm_id = str(worker.get("provider_id") or "")
+        worker_status = str(worker.get("status") or "active")
+        if worker_status == "queued":
+            status = "provisioning"
+
         rows.append(
             {
                 "platform": str(worker.get("platform", "-")),
                 "gpu_model": worker.get("gpu_model", "-"),
-                "gpu_count": worker.get("gpu_count", "-"),
-                "vram_gb": worker.get("vram_gb", "-"),
+                "provider_id": slurm_id or "-",
                 "last_heartbeat": heartbeat_str,
                 "status": status,
             }
@@ -214,8 +255,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
         columns=[
             "platform",
             "gpu_model",
-            "gpu_count",
-            "vram_gb",
+            "provider_id",
             "last_heartbeat",
             "status",
         ],
@@ -235,14 +275,21 @@ def main() -> None:
     now = datetime.now(UTC)
     raw_jobs: list[dict[str, Any]] = []
     raw_workers: list[dict[str, Any]] = []
+    raw_clusters: list[dict[str, Any]] = []
     health: dict[str, Any] = {}
     try:
         raw_jobs = _fetch_json(orchestrator_url, api_token, "/jobs")
         raw_workers = _fetch_json(orchestrator_url, api_token, "/workers")
+        raw_clusters = _fetch_json(
+            orchestrator_url, api_token, "/config/slurm-clusters", expect_list=False
+        ).get("clusters", [])
         health = _fetch_json(orchestrator_url, api_token, "/healthz", expect_list=False)
     except Exception as exc:
-        st.error(f"Failed to fetch dashboard data: {exc}")
+        _render_offline_state(orchestrator_url, refresh_interval_seconds, exc)
         st.stop()
+
+    # Orchestrator is reachable — clear any recorded outage time.
+    st.session_state.pop("orchestrator_offline_since", None)
 
     # Display system warnings at the very top
     for warn in health.get("warnings", []):
@@ -252,9 +299,21 @@ def main() -> None:
     st.caption(f"Orchestrator: {orchestrator_url}")
     st.caption(f"Refresh interval: {refresh_interval_seconds}s")
 
+    # Tailscale status strip
+    if "tailscale" in health:
+        ts = health["tailscale"]
+        if ts.get("connected"):
+            ts_label = ts.get("hostname") or ts.get("dns_name") or ts.get("ip") or "connected"
+            ts_ip = ts.get("ip", "")
+            st.success(f"🟢 Tailscale: **{ts_label}** ({ts_ip})", icon=None)
+        else:
+            ts_error = ts.get("error", "unknown error")
+            st.error(f"🔴 Tailscale: not connected — {ts_error}")
+
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
     jobs_placeholder = st.empty()
+    clusters_placeholder = st.empty()
     workers_placeholder = st.empty()
 
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
@@ -267,6 +326,20 @@ def main() -> None:
             axis=1,
         )
         st.dataframe(styled_jobs, width="stretch", hide_index=True)
+
+    with clusters_placeholder.container():
+        st.subheader("Cluster Configs")
+        clusters_df = pd.DataFrame(
+            raw_clusters,
+            columns=[
+                "name",
+                "partition",
+                "strategy",
+                "max_pending_jobs",
+                "wall_time",
+            ],
+        )
+        st.dataframe(clusters_df, width="stretch", hide_index=True)
 
     with workers_placeholder.container():
         st.subheader("Workers")

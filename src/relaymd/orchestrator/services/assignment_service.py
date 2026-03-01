@@ -6,32 +6,9 @@ from uuid import UUID
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobStatus, Platform, Worker
+from relaymd.models import Job, JobStatus, Worker, WorkerStatus
 
 from .job_transitions import JobTransitionService
-
-# GPU model strings observed/expected across HPC and Salad deployments.
-VRAM_TIERS: dict[str, int] = {
-    "NVIDIA H100": 94,
-    "NVIDIA A100": 80,
-    "NVIDIA A6000": 48,
-    "NVIDIA RTX A6000": 48,
-    "NVIDIA A5000": 24,
-    "NVIDIA RTX A5000": 24,
-    "NVIDIA RTX 4090": 24,
-    "NVIDIA A10": 24,
-}
-
-
-def _resolved_vram_gb(worker: Worker) -> int:
-    if worker.vram_gb > 0:
-        return worker.vram_gb
-    return VRAM_TIERS.get(worker.gpu_model.strip(), 0)
-
-
-def score_worker(worker: Worker) -> int:
-    platform_bonus = 10 if worker.platform == Platform.hpc else 0
-    return worker.gpu_count * 1000 + platform_bonus * 100 + _resolved_vram_gb(worker)
 
 
 class AssignmentService:
@@ -78,62 +55,54 @@ class AssignmentService:
         if worker is None:
             return None
 
+        # Ensure worker is not stale
         stale_cutoff = self._stale_cutoff()
         if worker.last_heartbeat < stale_cutoff:
+            return None
+
+        # Ensure worker is not already busy
+        busy_worker_ids = await self._busy_worker_ids()
+        if worker.id in busy_worker_ids:
             return None
 
         queued_job = await self._claim_next_queued_job()
         if queued_job is None:
             return None
 
-        busy_worker_ids = await self._busy_worker_ids()
-        fresh_workers = (
-            await self._session.exec(
-                select(Worker).where(
-                    col(Worker.last_heartbeat) >= stale_cutoff,
-                    col(Worker.slurm_job_id).is_(None),
-                )
-            )
-        ).all()
-        idle_workers = [
-            candidate for candidate in fresh_workers if candidate.id not in busy_worker_ids
-        ]
-        if not idle_workers:
-            return None
-
-        selected_worker = max(
-            idle_workers,
-            key=lambda candidate: (
-                score_worker(candidate),
-                candidate.registered_at.timestamp() * -1,
-            ),
-        )
-        if selected_worker.id != requesting_worker_id:
-            return None
-
-        self._transitions.assign_job(queued_job, worker_id=selected_worker.id)
+        self._transitions.assign_job(queued_job, worker_id=worker.id)
         self._session.add(queued_job)
         await self._session.commit()
         await self._session.refresh(queued_job)
         return queued_job
 
     async def assign_next_job(self) -> tuple[Job, Worker] | None:
+        """Find the next queued job and assign it to the first available worker."""
         queued_job = await self._claim_next_queued_job()
         if queued_job is None:
             return None
 
         busy_worker_ids = await self._busy_worker_ids()
-        all_workers = (
-            await self._session.exec(select(Worker).where(col(Worker.slurm_job_id).is_(None)))
+        stale_cutoff = self._stale_cutoff()
+
+        # Find any fresh, non-placeholder worker that is not busy
+        workers = (
+            await self._session.exec(
+                select(Worker)
+                .where(
+                    col(Worker.last_heartbeat) >= stale_cutoff,
+                    # We only assign jobs to fully active workers; queued placeholders
+                    # are ignored until they actually start and register.
+                    Worker.status == WorkerStatus.active,
+                )
+                .order_by(col(Worker.registered_at).asc())
+            )
         ).all()
-        idle_workers = [worker for worker in all_workers if worker.id not in busy_worker_ids]
-        if not idle_workers:
+
+        available_workers = [w for w in workers if w.id not in busy_worker_ids]
+        if not available_workers:
             return None
 
-        selected_worker = max(
-            idle_workers,
-            key=lambda worker: (score_worker(worker), worker.registered_at.timestamp() * -1),
-        )
+        selected_worker = available_workers[0]
         self._transitions.assign_job(queued_job, worker_id=selected_worker.id)
         self._session.add(queued_job)
         await self._session.commit()

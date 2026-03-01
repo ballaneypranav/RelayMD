@@ -13,3 +13,8 @@ class JobStatus(StrEnum):
 class Platform(StrEnum):
     hpc = "hpc"
     salad = "salad"
+
+
+class WorkerStatus(StrEnum):
+    queued = "queued"  # submitted to provider, not yet started
+    active = "active"  # worker process registered and heartbeating

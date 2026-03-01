@@ -52,6 +52,8 @@ class WorkerSettings(BaseSettings):
     sigterm_checkpoint_wait_seconds: int = 60
 ```
 
+On HPC, `SLURM_JOB_ID` is automatically present in the environment. The worker reads it and passes it as `slurm_job_id` in `POST /workers/register`. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.
+
 ### Secret Bootstrap
 
 The bootstrap token is injected via SLURM's `--export` env var (never written to disk) or the Salad dashboard environment. From it, Infisical provides all other secrets: B2 credentials, the Tailscale ephemeral auth key, the orchestrator API token.
