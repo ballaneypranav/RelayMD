@@ -227,19 +227,31 @@ def _wait_for_tailscale_running(
     """
     deadline = time.monotonic() + timeout_seconds
     while True:
-        result = subprocess.run(  # noqa: S603
-            ["tailscale", f"--socket={socket_path}", "status", "--json"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode == 0:
-            try:
-                status = json.loads(result.stdout)
-                if status.get("BackendState") == "Running":
-                    return
-            except (ValueError, KeyError):
-                pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError(
+                f"Tailscale did not reach Running state within {timeout_seconds:.0f}s"
+            )
+        # Cap the per-call timeout so a hung process doesn't outlive the deadline.
+        call_timeout = min(remaining, max(poll_interval_seconds * 2, 5.0))
+        try:
+            result = subprocess.run(  # noqa: S603
+                ["tailscale", f"--socket={socket_path}", "status", "--json"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=call_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            if result.returncode == 0:
+                try:
+                    status = json.loads(result.stdout)
+                    if status.get("BackendState") == "Running":
+                        return
+                except (ValueError, KeyError):
+                    pass
         if time.monotonic() >= deadline:
             raise RuntimeError(
                 f"Tailscale did not reach Running state within {timeout_seconds:.0f}s"
