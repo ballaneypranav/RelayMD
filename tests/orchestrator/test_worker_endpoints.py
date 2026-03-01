@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from freezegun import freeze_time
 from httpx import ASGITransport, AsyncClient
-from relaymd.models import Job, JobStatus, Platform, Worker
+from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
@@ -261,7 +261,8 @@ async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
                     gpu_model="NVIDIA H100",
                     gpu_count=8,
                     vram_gb=0,
-                    slurm_job_id="gilbreth:placeholder",
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:placeholder",
                     last_heartbeat=datetime.now(UTC).replace(tzinfo=None),
                 )
             )
@@ -316,6 +317,61 @@ async def test_list_workers_returns_registered_workers() -> None:
         assert len(payload) == 2
         assert payload[0]["id"] == second_register.json()["worker_id"]
         assert payload[1]["id"] == first_register.json()["worker_id"]
+
+
+@pytest.mark.asyncio
+async def test_register_worker_with_provider_id_activates_matching_placeholder() -> None:
+    """When a SLURM worker registers with its provider_id, the matching queued
+    placeholder is activated in-place: same UUID, status=active, real vram_gb."""
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        # Seed a placeholder the way the provisioning service would.
+        async with get_sessionmaker()() as session:
+            placeholder = Worker(
+                platform=Platform.hpc,
+                gpu_model="a100",
+                gpu_count=2,
+                vram_gb=0,
+                status=WorkerStatus.queued,
+                provider_id="gilbreth:99001",
+                last_heartbeat=datetime.now(UTC).replace(tzinfo=None),
+            )
+            session.add(placeholder)
+            await session.commit()
+            await session.refresh(placeholder)
+            placeholder_id = str(placeholder.id)
+
+        # The real worker starts and registers with its full provider_id.
+        register_response = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "hpc",
+                "gpu_model": "a100",
+                "gpu_count": 2,
+                "vram_gb": 80,
+                "provider_id": "gilbreth:99001",
+            },
+        )
+        assert register_response.status_code == 200
+        returned_worker_id = register_response.json()["worker_id"]
+
+        # Same UUID — placeholder was activated in place, not recreated.
+        assert returned_worker_id == placeholder_id
+
+        # Only one worker row should exist.
+        listed = await client.get("/workers", headers=headers)
+        assert listed.status_code == 200
+        payload = listed.json()
+        assert len(payload) == 1
+
+        real_worker = payload[0]
+        assert real_worker["id"] == placeholder_id
+        assert real_worker["status"] == "active"
+        assert real_worker["vram_gb"] == 80  # updated from real GPU
+        assert real_worker["provider_id"] == "gilbreth:99001"  # preserved
 
 
 @pytest.mark.asyncio

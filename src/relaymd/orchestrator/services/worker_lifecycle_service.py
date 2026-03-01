@@ -3,12 +3,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
+import structlog
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobStatus, Worker, WorkerRegister
+from relaymd.models import Job, JobStatus, Worker, WorkerRegister, WorkerStatus
 
 from .job_transitions import JobTransitionService
+
+logger = structlog.get_logger(__name__)
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class WorkerLifecycleService:
@@ -17,7 +24,52 @@ class WorkerLifecycleService:
         self._transitions = JobTransitionService()
 
     async def register_worker(self, payload: WorkerRegister) -> Worker:
-        worker = Worker(**payload.model_dump())
+        """Register a worker, activating an existing queued placeholder if one matches.
+
+        When a SLURM-launched worker starts, it passes ``provider_id`` (composed
+        from ``RELAYMD_CLUSTER_NAME`` + ``SLURM_JOB_ID`` in the sbatch environment).
+        If a queued placeholder with that exact ``provider_id`` exists, we activate
+        it in-place — updating the real VRAM, heartbeat, and status — so the same
+        UUID represents the worker across its entire lifecycle, from submission to
+        completion. This avoids orphaned placeholder rows without requiring a
+        sentinel-based string encoding.
+
+        If no matching placeholder is found (Salad workers, or a SLURM worker whose
+        placeholder was already reaped), a fresh row is inserted.
+        """
+        if payload.provider_id:
+            existing = (
+                await self._session.exec(
+                    select(Worker).where(
+                        Worker.provider_id == payload.provider_id,
+                        Worker.status == WorkerStatus.queued,
+                    )
+                )
+            ).first()
+            if existing is not None:
+                logger.info(
+                    "activating_queued_placeholder",
+                    provider_id=payload.provider_id,
+                    worker_id=str(existing.id),
+                )
+                existing.status = WorkerStatus.active
+                existing.vram_gb = payload.vram_gb
+                existing.gpu_model = payload.gpu_model
+                existing.gpu_count = payload.gpu_count
+                existing.last_heartbeat = _utcnow_naive()
+                self._session.add(existing)
+                await self._session.commit()
+                await self._session.refresh(existing)
+                return existing
+
+        worker = Worker(
+            platform=payload.platform,
+            gpu_model=payload.gpu_model,
+            gpu_count=payload.gpu_count,
+            vram_gb=payload.vram_gb,
+            provider_id=payload.provider_id,
+            status=WorkerStatus.active,
+        )
         self._session.add(worker)
         await self._session.commit()
         await self._session.refresh(worker)
@@ -28,7 +80,7 @@ class WorkerLifecycleService:
         if worker is None:
             return None
 
-        worker.last_heartbeat = datetime.now(UTC).replace(tzinfo=None)
+        worker.last_heartbeat = _utcnow_naive()
         self._session.add(worker)
         await self._session.commit()
         return worker
@@ -57,7 +109,12 @@ class WorkerLifecycleService:
     async def reap_stale_workers(self, *, stale_cutoff: datetime) -> int:
         stale_workers = (
             await self._session.exec(
-                select(Worker).where(col(Worker.last_heartbeat) < stale_cutoff)
+                select(Worker).where(
+                    col(Worker.last_heartbeat) < stale_cutoff,
+                    # Only reap active workers — queued placeholders are managed
+                    # by reap_dead_slurm_placeholders via squeue.
+                    Worker.status == WorkerStatus.active,
+                )
             )
         ).all()
         if not stale_workers:

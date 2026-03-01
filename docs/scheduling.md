@@ -10,7 +10,12 @@ The requesting worker is only assigned the job if it is the highest-scoring idle
 
 Salad Cloud workers are eligible for any job but are assigned only when no HPC workers are available or idle. This ensures cheapest, most capable resources are used first.
 
-The orchestrator schedules a 60-second sbatch submission job. For each configured cluster, if there are queued jobs and no registered (or pending-registration) HPC workers for that cluster, it renders and submits a new SLURM job. It stores the SLURM job ID in the DB as a placeholder worker record to prevent duplicate submissions during the SLURM pending window.
+The orchestrator schedules a 60-second sbatch submission job. Each cycle runs as two phases:
+
+1. **Dead-placeholder reap**: all pending placeholder workers are checked against `squeue`. Any whose SLURM job is no longer alive (failed or cancelled before the worker started) are deleted, freeing up the `max_pending_jobs` slot.
+2. **New submission**: for each configured cluster, if there are queued jobs and no active/pending HPC workers for that cluster, a new SLURM job is rendered and submitted. The returned job ID is stored in the DB as a placeholder worker record (`slurm_job_id = "<cluster>:<id>"`) to prevent duplicate submissions during the SLURM pending window.
+
+When the SLURM job starts, the worker registers itself with the orchestrator and includes `$SLURM_JOB_ID` in the registration payload. The orchestrator uses this to locate and atomically delete the placeholder row, so only the real worker row remains visible in the UI.
 
 ---
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from relaymd.models import Job, JobStatus, Platform, Worker
+from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 from sqlmodel import select
 
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
@@ -277,7 +277,8 @@ async def test_submit_pending_jobs_skips_when_pending_placeholder_exists(monkeyp
                     gpu_model="a100",
                     gpu_count=2,
                     vram_gb=0,
-                    slurm_job_id="gilbreth:12345",
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:12345",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
                 )
@@ -319,5 +320,117 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
 
     assert len(workers) == 1
     worker = workers[0]
-    assert worker.slurm_job_id == "gilbreth:44444"
+    assert worker.provider_id == "gilbreth:44444"
+    assert worker.status == WorkerStatus.queued
     assert worker.last_heartbeat >= datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
+
+
+@pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> None:
+    """Placeholder workers whose SLURM jobs are no longer in squeue must be deleted."""
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+
+    async def fake_squeue_dead(*args, **kwargs):
+        """squeue returns empty — both jobs are gone."""
+        _ = (args, kwargs)
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b"", b""
+
+        return FakeProc()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_dead,
+    )
+
+    async with app_client(settings):
+        async with get_sessionmaker()() as session:
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="a100",
+                    gpu_count=2,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:11111",
+                    last_heartbeat=datetime(1970, 1, 1),
+                    registered_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="a100",
+                    gpu_count=2,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:22222",
+                    last_heartbeat=datetime(1970, 1, 1),
+                    registered_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            await session.commit()
+
+        reaped = await reap_dead_slurm_placeholders(settings)
+        assert reaped == 2
+
+        async with get_sessionmaker()() as session:
+            remaining = (await session.exec(select(Worker))).all()
+
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None:
+    """Placeholder workers whose SLURM jobs are still in squeue must be preserved."""
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+
+    async def fake_squeue_live(*args, **kwargs):
+        """squeue reports job 33333 as still running."""
+        _ = (args, kwargs)
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b"33333\n", b""
+
+        return FakeProc()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_live,
+    )
+
+    async with app_client(settings):
+        async with get_sessionmaker()() as session:
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="a100",
+                    gpu_count=2,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:33333",
+                    last_heartbeat=datetime(1970, 1, 1),
+                    registered_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            await session.commit()
+
+        reaped = await reap_dead_slurm_placeholders(settings)
+        assert reaped == 0
+
+        async with get_sessionmaker()() as session:
+            remaining = (await session.exec(select(Worker))).all()
+
+    assert len(remaining) == 1
+    assert remaining[0].provider_id == "gilbreth:33333"

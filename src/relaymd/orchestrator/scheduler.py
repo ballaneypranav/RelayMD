@@ -12,7 +12,7 @@ from relaymd.orchestrator.logging import get_logger
 from relaymd.orchestrator.services import WorkerLifecycleService
 from relaymd.orchestrator.services.salad_autoscaling_service import SaladAutoscalingService
 from relaymd.orchestrator.services.slurm_provisioning_service import (
-    pending_slurm_job_marker,
+    reap_dead_slurm_placeholders as _reap_dead_slurm_placeholders,
 )
 from relaymd.orchestrator.services.slurm_provisioning_service import (
     submit_pending_slurm_jobs as _submit_pending_slurm_jobs,
@@ -62,13 +62,17 @@ async def orphaned_job_requeue_once() -> None:
         await service.requeue_orphaned_jobs_once()
 
 
-def _pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
-    return pending_slurm_job_marker(cluster_name, slurm_job_id)
-
-
 async def submit_pending_slurm_jobs(settings: OrchestratorSettings) -> int:
     return await _submit_pending_slurm_jobs(settings, submit_job=submit_slurm_job)
 
 
+async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
+    return await _reap_dead_slurm_placeholders(settings)
+
+
 async def sbatch_submission_job(settings: OrchestratorSettings) -> None:
+    try:
+        await reap_dead_slurm_placeholders(settings)
+    except Exception:  # noqa: BLE001
+        LOG.warning("dead_slurm_placeholder_reap_failed", exc_info=True)
     await submit_pending_slurm_jobs(settings)

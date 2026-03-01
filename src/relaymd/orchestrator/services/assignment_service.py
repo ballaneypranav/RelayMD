@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobStatus, Worker
+from relaymd.models import Job, JobStatus, Worker, WorkerStatus
 
 from .job_transitions import JobTransitionService
 
@@ -90,9 +90,9 @@ class AssignmentService:
                 select(Worker)
                 .where(
                     col(Worker.last_heartbeat) >= stale_cutoff,
-                    # We ignore slurm_job_id because placeholders shouldn't receive assignments
-                    # until they actually start and register.
-                    col(Worker.slurm_job_id).is_(None),
+                    # We only assign jobs to fully active workers; queued placeholders
+                    # are ignored until they actually start and register.
+                    Worker.status == WorkerStatus.active,
                 )
                 .order_by(col(Worker.registered_at).asc())
             )
