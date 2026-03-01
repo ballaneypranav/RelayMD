@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -15,15 +16,17 @@ from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
 from relaymd.orchestrator.slurm import submit_slurm_job
+from relaymd.orchestrator import main as orchestrator_main
 
 
 @asynccontextmanager
 async def app_client(settings: OrchestratorSettings):
     app = create_app(settings, start_background_tasks=False)
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield app, client
+    with patch.object(orchestrator_main, "_ensure_tailscale_running", return_value=None):
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                yield app, client
 
 
 def _settings_with_cluster() -> OrchestratorSettings:
