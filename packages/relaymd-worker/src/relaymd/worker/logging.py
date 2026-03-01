@@ -45,15 +45,28 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
     else:
         renderer = structlog.processors.JSONRenderer(serializer=_orjson_dumps)
 
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    if getattr(active_settings, "axiom_token", None):
+        from relaymd.axiom_logging import AxiomProcessor
+
+        processors.append(
+            AxiomProcessor(
+                axiom_token=active_settings.axiom_token,  # type: ignore[attr-defined]
+                dataset=active_settings.axiom_dataset,  # type: ignore[attr-defined]
+            )
+        )
+
+    processors.append(renderer)
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            renderer,
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(_log_level(active_settings)),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,

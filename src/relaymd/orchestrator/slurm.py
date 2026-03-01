@@ -67,6 +67,9 @@ def _render_sbatch_script(
             else settings.worker_idle_poll_max_seconds
         ),
         worker_platform="hpc",
+        log_directory=cluster.log_directory,
+        axiom_token=settings.axiom_token,
+        axiom_dataset=settings.axiom_dataset,
     )
 
 
@@ -90,7 +93,10 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
     if cluster.ssh_key_file:
         command.extend(["-i", cluster.ssh_key_file])
     command.append(f"{cluster.ssh_username}@{cluster.ssh_host}")
-    command.extend(["sbatch", "--parsable"])
+    if cluster.log_directory:
+        command.append(f"mkdir -p {cluster.log_directory} && sbatch --parsable")
+    else:
+        command.extend(["sbatch", "--parsable"])
 
     process = await asyncio.create_subprocess_exec(
         *command,
