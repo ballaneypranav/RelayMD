@@ -1222,12 +1222,14 @@ name = "relaymd-api-client"
 version = "0.1.0"
 source = { editable = "packages/relaymd-api-client" }
 dependencies = [
+    { name = "attrs" },
     { name = "httpx" },
     { name = "pydantic" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "attrs", specifier = ">=21.3.0" },
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "pydantic", specifier = ">=2.0" },
 ]

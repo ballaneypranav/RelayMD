@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from typing import Any
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,6 +19,26 @@ from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_route
 from relaymd.orchestrator.routers.workers import router as workers_router
 
 LOG = get_logger(__name__)
+
+
+def _check_for_warnings(settings: OrchestratorSettings) -> list[str]:
+    warnings = []
+    if not settings.infisical_token.strip():
+        has_slurm = len(settings.slurm_cluster_configs) > 0
+        has_salad = bool(
+            settings.salad_api_key
+            and settings.salad_org
+            and settings.salad_project
+            and settings.salad_container_group
+        )
+        if has_slurm or has_salad:
+            warn_msg = (
+                "INFISICAL_TOKEN is missing. Automatic worker provisioning "
+                "(SLURM/Salad) is disabled. Provide a token to enable background provisioning."
+            )
+            LOG.warning("missing_infisical_token", message=warn_msg)
+            warnings.append(warn_msg)
+    return warnings
 
 
 @asynccontextmanager
@@ -59,10 +80,15 @@ def create_app(
     app = FastAPI(lifespan=app_lifespan)
     app.state.settings = active_settings
     app.state.start_background_tasks = start_background_tasks
+    app.state.warnings = _check_for_warnings(active_settings)
 
     @app.get("/healthz")
-    async def healthz() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+    async def healthz() -> dict[str, Any]:
+        return {
+            "status": "ok",
+            "version": __version__,
+            "warnings": app.state.warnings,
+        }
 
     app.include_router(workers_router)
     app.include_router(jobs_worker_router)

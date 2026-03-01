@@ -1,4 +1,8 @@
-.PHONY: ui docker-build docker-push release-cli
+.PHONY: ui docker-build docker-push release-cli setup-hooks
+
+setup-hooks:
+	git config core.hooksPath .githooks
+	chmod +x .githooks/pre-commit .githooks/pre-push
 
 ORG ?= your-org
 IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest

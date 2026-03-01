@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v uv >/dev/null 2>&1; then
+  export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
+  # Run formatting first
+  uv run ruff format .
+  # Then check (linting)
+  uv run ruff check --fix .
+  # Then type checking
+  uv run pyright
+else
+  ruff format .
+  ruff check --fix .
+  pyright
+fi

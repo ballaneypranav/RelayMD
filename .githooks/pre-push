@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This hook was moved to pre-commit.
+# You can add pytest or other pre-push checks here later.
+exit 0
