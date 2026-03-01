@@ -158,22 +158,15 @@ def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, s
 
 
 def _requeue_job(orchestrator_url: str, token: str, job: dict[str, Any]) -> tuple[bool, str]:
-    payload: dict[str, Any] = {
-        "title": f"{job.get('title', 'job')} (re-queued)",
-        "input_bundle_path": job.get("input_bundle_path"),
-    }
-    latest_checkpoint_path = job.get("latest_checkpoint_path")
-    if latest_checkpoint_path is not None:
-        payload["latest_checkpoint_path"] = latest_checkpoint_path
-
+    job_id = job.get("id")
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        response = client.post("/jobs", headers=_api_headers(token), json=payload)
+        response = client.post(f"/jobs/{job_id}/requeue", headers=_api_headers(token))
     if response.is_success:
         try:
             created_job = response.json()
-            return True, f"Created job {created_job.get('id', '<unknown id>')}"
+            return True, f"Re-queued as job {created_job.get('id', '<unknown id>')}"
         except ValueError:
-            return True, "Created re-queued job"
+            return True, "Job re-queued"
     return False, f"Re-queue failed ({response.status_code}): {response.text}"
 
 
@@ -188,17 +181,24 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
         checkpoint_at = _parse_datetime(job.get("last_checkpoint_at"))
         if checkpoint_at is None:
             time_since_checkpoint = "-"
-            checkpoint_str = "-"
         else:
-            checkpoint_str = checkpoint_at.strftime("%Y-%m-%d %H:%M:%S UTC")
             time_since_checkpoint = _format_duration((now - checkpoint_at).total_seconds())
+
+        created_at = _parse_datetime(job.get("created_at"))
+        age = _format_duration((now - created_at).total_seconds()) if created_at else "-"
+
+        updated_at = _parse_datetime(job.get("updated_at"))
+        time_in_status = (
+            _format_duration((now - updated_at).total_seconds()) if updated_at else "-"
+        )
 
         rows.append(
             {
                 "title": job.get("title", "-"),
                 "status": str(job.get("status", "-")),
+                "age": age,
+                "time_in_status": time_in_status,
                 "assigned_worker_id": _truncate_uuid(job.get("assigned_worker_id")),
-                "last_checkpoint_at": checkpoint_str,
                 "time_since_checkpoint": time_since_checkpoint,
             }
         )
@@ -208,8 +208,9 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
         columns=[
             "title",
             "status",
+            "age",
+            "time_in_status",
             "assigned_worker_id",
-            "last_checkpoint_at",
             "time_since_checkpoint",
         ],
     )
@@ -231,20 +232,34 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             heartbeat_str = "-"
             status = "stale"
         else:
-            heartbeat_str = heartbeat_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+            heartbeat_str = heartbeat_at.strftime("%H:%M:%S UTC")
             age_seconds = (now - heartbeat_at).total_seconds()
             status = "stale" if age_seconds > STALE_WORKER_SECONDS else "active"
+
+        registered_at = _parse_datetime(worker.get("registered_at"))
+        uptime = (
+            _format_duration((now - registered_at).total_seconds()) if registered_at else "-"
+        )
 
         slurm_id = str(worker.get("provider_id") or "")
         worker_status = str(worker.get("status") or "active")
         if worker_status == "queued":
             status = "provisioning"
 
+        gpu_count = worker.get("gpu_count", "-")
+        vram_gb = worker.get("vram_gb")
+        gpu_spec = (
+            f"{gpu_count}x {worker.get('gpu_model', '?')} ({vram_gb} GB)"
+            if vram_gb is not None
+            else str(worker.get("gpu_model", "-"))
+        )
+
         rows.append(
             {
                 "platform": str(worker.get("platform", "-")),
-                "gpu_model": worker.get("gpu_model", "-"),
+                "gpu": gpu_spec,
                 "provider_id": slurm_id or "-",
+                "uptime": uptime,
                 "last_heartbeat": heartbeat_str,
                 "status": status,
             }
@@ -254,8 +269,9 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
         rows,
         columns=[
             "platform",
-            "gpu_model",
+            "gpu",
             "provider_id",
+            "uptime",
             "last_heartbeat",
             "status",
         ],
@@ -296,8 +312,29 @@ def main() -> None:
         st.warning(warn)
 
     st.title("RelayMD Operator Dashboard")
-    st.caption(f"Orchestrator: {orchestrator_url}")
-    st.caption(f"Refresh interval: {refresh_interval_seconds}s")
+    st.caption(f"Orchestrator: {orchestrator_url} · Refresh: {refresh_interval_seconds}s")
+
+    # --- Summary metrics strip ---
+    status_counts: dict[str, int] = {}
+    for job in raw_jobs:
+        s = str(job.get("status", "unknown"))
+        status_counts[s] = status_counts.get(s, 0) + 1
+
+    active_workers = sum(
+        1 for w in raw_workers if str(w.get("status") or "active") != "queued"
+    )
+    provisioning_workers = sum(
+        1 for w in raw_workers if str(w.get("status") or "active") == "queued"
+    )
+
+    mc1, mc2, mc3, mc4, mc5, mc6, mc7 = st.columns(7)
+    mc1.metric("Queued", status_counts.get("queued", 0))
+    mc2.metric("Running", status_counts.get("running", 0))
+    mc3.metric("Completed", status_counts.get("completed", 0))
+    mc4.metric("Failed", status_counts.get("failed", 0))
+    mc5.metric("Cancelled", status_counts.get("cancelled", 0))
+    mc6.metric("Active Workers", active_workers)
+    mc7.metric("Provisioning", provisioning_workers)
 
     # Tailscale status strip
     if "tailscale" in health:
@@ -326,6 +363,57 @@ def main() -> None:
             axis=1,
         )
         st.dataframe(styled_jobs, width="stretch", hide_index=True)
+
+        # Job detail expander — select any job to inspect full IDs and paths
+        if raw_jobs:
+            with st.expander("Job details", expanded=False):
+                detail_job = st.selectbox(
+                    "Select job",
+                    options=raw_jobs,
+                    format_func=lambda j: (
+                        f"{j.get('title', '<untitled>')} "
+                        f"[{j.get('status', '-')}]"
+                    ),
+                    key="detail_job_select",
+                )
+                if detail_job:
+                    d1, d2 = st.columns(2)
+                    with d1:
+                        st.text_input("Job ID", value=str(detail_job.get("id", "")), disabled=True)
+                        st.text_input(
+                            "Assigned Worker ID",
+                            value=str(detail_job.get("assigned_worker_id") or ""),
+                            disabled=True,
+                        )
+                        created_at = _parse_datetime(detail_job.get("created_at"))
+                        st.text_input(
+                            "Created at",
+                            value=(
+                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                                if created_at
+                                else "-"
+                            ),
+                            disabled=True,
+                        )
+                    with d2:
+                        st.text_input(
+                            "Input bundle path",
+                            value=str(detail_job.get("input_bundle_path") or ""),
+                            disabled=True,
+                        )
+                        st.text_input(
+                            "Latest checkpoint path",
+                            value=str(detail_job.get("latest_checkpoint_path") or ""),
+                            disabled=True,
+                        )
+                        chk_at = _parse_datetime(detail_job.get("last_checkpoint_at"))
+                        st.text_input(
+                            "Last checkpoint at",
+                            value=(
+                                chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"
+                            ),
+                            disabled=True,
+                        )
 
     with clusters_placeholder.container():
         st.subheader("Cluster Configs")
