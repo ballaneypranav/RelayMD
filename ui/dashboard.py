@@ -363,20 +363,115 @@ def main() -> None:
 
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
-    jobs_placeholder = st.empty()
-    clusters_placeholder = st.empty()
-    workers_placeholder = st.empty()
+    st.divider()
 
+    # --- Sidebar: Settings and Manual Controls ---
+    with st.sidebar:
+        st.header("Settings")
+        st.caption(f"**URL:** {orchestrator_url}")
+        st.caption(f"**Refresh:** {refresh_interval_seconds}s")
+
+        st.divider()
+        st.header("Manual Controls")
+        st.info(
+            "No drain worker button is provided. To drain workers, cancel assigned jobs; "
+            "workers stop naturally on their next poll cycle."
+        )
+
+        cancelable_jobs = [
+            job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}
+        ]
+        requeue_jobs = [
+            job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}
+        ]
+
+        st.subheader("Cancel Job")
+        cancel_selected = st.selectbox(
+            "Cancelable jobs",
+            options=cancelable_jobs,
+            format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+            key="cancel_job_select",
+            disabled=not cancelable_jobs,
+        )
+        if st.button("Cancel", disabled=not cancelable_jobs, key="cancel_job_btn"):
+            st.session_state["cancel_pending_job"] = cancel_selected
+
+        pending_cancel = st.session_state.get("cancel_pending_job")
+        if pending_cancel is not None:
+            title = str(pending_cancel.get("title", "<untitled>"))
+            st.warning(f"Cancel job '{title}'? This cannot be undone.")
+            confirm_col, abort_col = st.columns(2)
+            with confirm_col:
+                if st.button("Confirm", key="cancel_confirm"):
+                    ok, message = _cancel_job(
+                        orchestrator_url=orchestrator_url,
+                        token=api_token,
+                        job_id=str(pending_cancel["id"]),
+                    )
+                    if ok:
+                        st.success(message)
+                    else:
+                        st.error(message)
+                    st.session_state["cancel_pending_job"] = None
+            with abort_col:
+                if st.button("Abort", key="cancel_abort"):
+                    st.session_state["cancel_pending_job"] = None
+
+        st.subheader("Re-queue Job")
+        requeue_selected = st.selectbox(
+            "Failed or cancelled jobs",
+            options=requeue_jobs,
+            format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
+            key="requeue_job_select",
+            disabled=not requeue_jobs,
+        )
+        if st.button("Re-queue", disabled=not requeue_jobs, key="requeue_job_btn"):
+            ok, message = _requeue_job(
+                orchestrator_url=orchestrator_url,
+                token=api_token,
+                job=requeue_selected,
+            )
+            if ok:
+                st.success(message)
+            else:
+                st.error(message)
+
+    # --- Main content area with tabs ---
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
     workers_df = _build_workers_dataframe(raw_workers, now, raw_jobs)
 
-    with jobs_placeholder.container():
+    tab_jobs, tab_workers, tab_clusters = st.tabs(["Jobs", "Workers", "Cluster Configs"])
+
+    # --- Jobs Tab ---
+    with tab_jobs:
         st.subheader("Jobs")
-        styled_jobs = jobs_df.style.apply(
-            lambda row: _job_row_style(str(row["status"]), len(row)),
-            axis=1,
-        )
-        st.dataframe(styled_jobs, width="stretch", hide_index=True)
+
+        # Filter by status
+        if not jobs_df.empty:
+            available_statuses = sorted(jobs_df["status"].unique().tolist())
+            selected_statuses = st.multiselect(
+                "Filter by status",
+                options=available_statuses,
+                default=available_statuses,
+                key="job_status_filter",
+            )
+            filtered_jobs_df = (
+                jobs_df[jobs_df["status"].isin(selected_statuses)]
+                if selected_statuses
+                else jobs_df
+            )
+        else:
+            filtered_jobs_df = jobs_df
+
+        # Render jobs table with color styling
+        if not filtered_jobs_df.empty:
+            styled_jobs = filtered_jobs_df.style.apply(
+                lambda row: _job_row_style(str(row["status"]), len(row)),
+                axis=1,
+            )
+            st.dataframe(styled_jobs, width='stretch', hide_index=True)
+        else:
+            st.info("No jobs match the selected filters.")
 
         # Job detail expander — select any job to inspect full IDs and paths
         if raw_jobs:
@@ -402,7 +497,9 @@ def main() -> None:
                         st.text_input(
                             "Created at",
                             value=(
-                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if created_at else "-"
+                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                                if created_at
+                                else "-"
                             ),
                             disabled=True,
                         )
@@ -420,95 +517,38 @@ def main() -> None:
                         chk_at = _parse_datetime(detail_job.get("last_checkpoint_at"))
                         st.text_input(
                             "Last checkpoint at",
-                            value=(chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"),
+                            value=(
+                                chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"
+                            ),
                             disabled=True,
                         )
 
-    with clusters_placeholder.container():
-        st.subheader("Cluster Configs")
-        clusters_df = pd.DataFrame(
-            raw_clusters,
-            columns=[
-                "name",
-                "partition",
-                "strategy",
-                "max_pending_jobs",
-                "wall_time",
-            ],
-        )
-        st.dataframe(clusters_df, width="stretch", hide_index=True)
-
-    with workers_placeholder.container():
+    # --- Workers Tab ---
+    with tab_workers:
         st.subheader("Workers")
         styled_workers = workers_df.style.apply(
             lambda row: _worker_row_style(str(row["status"]), len(row)),
             axis=1,
         )
-        st.dataframe(styled_workers, width="stretch", hide_index=True)
+        st.dataframe(styled_workers, width='stretch', hide_index=True)
 
-    st.divider()
-    st.subheader("Manual Controls")
-    st.info(
-        "No drain worker button is provided. To drain workers, cancel assigned jobs; "
-        "workers stop naturally on their next poll cycle."
-    )
-
-    cancelable_jobs = [job for job in raw_jobs if str(job.get("status")) in {"queued", "running"}]
-    requeue_jobs = [job for job in raw_jobs if str(job.get("status")) in {"failed", "cancelled"}]
-
-    st.markdown("### Cancel Job")
-    cancel_selected = st.selectbox(
-        "Cancelable jobs",
-        options=cancelable_jobs,
-        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
-        key="cancel_job_select",
-        disabled=not cancelable_jobs,
-    )
-    if st.button("Cancel", disabled=not cancelable_jobs):
-        st.session_state["cancel_pending_job"] = cancel_selected
-
-    pending_cancel = st.session_state.get("cancel_pending_job")
-    if pending_cancel is not None:
-        title = str(pending_cancel.get("title", "<untitled>"))
-        st.warning(f"Cancel job '{title}'? This cannot be undone.")
-        confirm_col, abort_col = st.columns(2)
-        with confirm_col:
-            if st.button("Confirm", key="cancel_confirm"):
-                ok, message = _cancel_job(
-                    orchestrator_url=orchestrator_url,
-                    token=api_token,
-                    job_id=str(pending_cancel["id"]),
-                )
-                if ok:
-                    st.success(message)
-                else:
-                    st.error(message)
-                st.session_state["cancel_pending_job"] = None
-        with abort_col:
-            if st.button("Abort", key="cancel_abort"):
-                st.session_state["cancel_pending_job"] = None
-
-    st.markdown("### Re-queue Job")
-    requeue_selected = st.selectbox(
-        "Failed or cancelled jobs",
-        options=requeue_jobs,
-        format_func=lambda job: f"{job.get('title', '<untitled>')} [{job.get('status', '-')}]",
-        key="requeue_job_select",
-        disabled=not requeue_jobs,
-    )
-    if st.button("Re-queue", disabled=not requeue_jobs):
-        # Cancellation is state-only for running jobs: workers finish current chunk,
-        # may still POST /jobs/{id}/complete, orchestrator discards it for cancelled jobs,
-        # and workers then exit naturally on the next /jobs/request poll cycle.
-        ok, message = _requeue_job(
-            orchestrator_url=orchestrator_url,
-            token=api_token,
-            job=requeue_selected,
-        )
-        if ok:
-            st.success(message)
+    # --- Cluster Configs Tab ---
+    with tab_clusters:
+        st.subheader("Cluster Configs")
+        if raw_clusters:
+            clusters_df = pd.DataFrame(
+                raw_clusters,
+                columns=[
+                    "name",
+                    "partition",
+                    "strategy",
+                    "max_pending_jobs",
+                    "wall_time",
+                ],
+            )
+            st.dataframe(clusters_df, width='stretch', hide_index=True)
         else:
-            st.error(message)
+            st.info("No cluster configs available.")
 
 
 if __name__ == "__main__":
