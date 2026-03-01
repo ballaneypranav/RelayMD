@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 from infisical_client import ClientSettings, InfisicalClient
 from infisical_client.schemas import GetSecretOptions
@@ -259,6 +260,46 @@ def _wait_for_tailscale_running(
         time.sleep(poll_interval_seconds)
 
 
+def _wait_for_peer_reachable(
+    peer_ip: str,
+    socket_path: str,
+    *,
+    timeout_seconds: float = 60.0,
+) -> None:
+    """Block until the tailnet peer at *peer_ip* is routable.
+
+    ``tailscale ping`` drives the WireGuard handshake with the target peer to
+    completion.  BackendState == 'Running' only means the node is authenticated
+    to the control plane; peer routes in userspace-networking mode are
+    established lazily on first contact.  Without this step the SOCKS5 proxy
+    will return ``General SOCKS server failure`` (0x01) if the worker tries to
+    reach the orchestrator before the handshake completes.
+    """
+    try:
+        result = subprocess.run(  # noqa: S603
+            [
+                "tailscale",
+                f"--socket={socket_path}",
+                "ping",
+                f"--timeout={int(timeout_seconds)}s",
+                "--c=1",
+                peer_ip,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds + 5.0,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"tailscale ping {peer_ip} failed: {result.stderr.strip() or result.stdout.strip()}"
+            )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"tailscale ping {peer_ip} did not complete within {timeout_seconds:.0f}s"
+        ) from exc
+
+
 def _initialize_tailscale_runtime() -> Path:
     runtime_dir = _runtime_dir()
     managed_runtime_root = _runtime_root()
@@ -453,6 +494,16 @@ def run_bootstrap() -> WorkerConfig:
 
     hostname = os.getenv("HOSTNAME", "relaymd-worker")
     join_tailnet(config.tailscale_auth_key, hostname)
+
+    orchestrator_host = urlparse(config.relaymd_orchestrator_url).hostname or ""
+    if orchestrator_host:
+        LOG.info(
+            "tailscale_waiting_for_peer",
+            peer_ip=orchestrator_host,
+            tailscale_socket=tailscale_socket_path(),
+        )
+        _wait_for_peer_reachable(orchestrator_host, tailscale_socket_path())
+
     LOG.info(
         "tailscale_userspace_proxy_ready",
         socks5_proxy_url=tailscale_socks5_proxy_url(),
