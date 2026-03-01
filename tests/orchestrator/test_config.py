@@ -21,6 +21,8 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
                 "    account: my-account",
                 "    gpu_type: a30",
                 "    gpu_count: 1",
+                "    ssh_host: host1",
+                "    ssh_username: user1",
                 "    sif_path: /shared/containers/relaymd.sif",
                 "    nodes: 1",
                 "    ntasks: 8",
@@ -50,6 +52,8 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
             name="gilbreth-a30",
             partition="a30",
             account="my-account",
+            ssh_host="host1",
+            ssh_username="user1",
             gpu_type="a30",
             gpu_count=1,
             sif_path="/shared/containers/relaymd.sif",
@@ -137,11 +141,11 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
 
 def test_cluster_config_supports_registry_image_uri() -> None:
     cluster = ClusterConfig(
-        name="gilbreth-a30",
-        partition="a30",
-        account="my-account",
-        gpu_type="a30",
-        gpu_count=1,
+        name="test",
+        partition="gpu",
+        account="lab",
+        ssh_host="test-host",
+        ssh_username="test-user",
         image_uri="ghcr.io/acme/relaymd-worker:latest",
     )
     assert cluster.apptainer_image == "docker://ghcr.io/acme/relaymd-worker:latest"
@@ -152,6 +156,8 @@ def test_cluster_config_supports_gres_override() -> None:
         name="gilbreth-a30",
         partition="a30",
         account="my-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
         gpu_type="a30",
         gpu_count=1,
         sif_path="/shared/containers/relaymd.sif",
@@ -166,6 +172,8 @@ def test_cluster_config_requires_exactly_one_image_source() -> None:
             name="gilbreth-a30",
             partition="a30",
             account="my-account",
+            ssh_host="test-host",
+            ssh_username="test-user",
             gpu_type="a30",
             gpu_count=1,
         )
@@ -176,6 +184,8 @@ def test_cluster_config_requires_exactly_one_image_source() -> None:
             account="my-account",
             gpu_type="a30",
             gpu_count=1,
+            ssh_host="test-host",
+            ssh_username="test-user",
             sif_path="/shared/containers/relaymd.sif",
             image_uri="ghcr.io/acme/relaymd-worker:latest",
         )
@@ -189,6 +199,8 @@ def test_cluster_config_rejects_multiple_memory_directives() -> None:
             account="my-account",
             gpu_type="a30",
             gpu_count=1,
+            ssh_host="test-host",
+            ssh_username="test-user",
             sif_path="/shared/containers/relaymd.sif",
             memory="120G",
             memory_per_gpu="60G",
@@ -207,6 +219,8 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
                 "    partition: a30",
                 "    account: my-account",
                 "    gpu_type: a30",
+                "    ssh_host: test-host",
+                "    ssh_username: test-user",
                 "    gpu_count: 1",
                 "    image_uri: ghcr.io/acme/relaymd-worker:latest",
             ]
@@ -295,6 +309,8 @@ def test_load_settings_skips_infisical_when_registry_credentials_not_needed(
                 "    partition: a30",
                 "    account: my-account",
                 "    gpu_type: a30",
+                "    ssh_host: test-host",
+                "    ssh_username: test-user",
                 "    gpu_count: 1",
                 "    sif_path: /shared/containers/relaymd.sif",
             ]

@@ -39,6 +39,10 @@ class ClusterConfig(BaseModel):
     name: str
     partition: str | list[str]
     account: str
+    ssh_host: str
+    ssh_username: str
+    ssh_key_file: str | None = None
+    ssh_port: int = 22
     gpu_type: str = "unknown"
     gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
