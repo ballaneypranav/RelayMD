@@ -55,13 +55,13 @@ def _truncate_uuid(value: Any) -> str:
     return text if len(text) <= 12 else f"{text[:8]}..."
 
 
-def _fetch_json(orchestrator_url: str, token: str, path: str) -> list[dict[str, Any]]:
+def _fetch_json(orchestrator_url: str, token: str, path: str, *, expect_list: bool = True) -> Any:
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.get(path, headers=_api_headers(token))
         response.raise_for_status()
         payload = response.json()
 
-    if not isinstance(payload, list):
+    if expect_list and not isinstance(payload, list):
         raise ValueError(f"Expected list response for {path}, got {type(payload).__name__}")
     return payload
 
@@ -224,31 +224,38 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
 
 def main() -> None:
     st.set_page_config(page_title="RelayMD Operator Dashboard", layout="wide")
-    st.title("RelayMD Operator Dashboard")
 
     orchestrator_url, api_token, refresh_interval_seconds = _resolve_runtime_settings()
-
-    st.caption(f"Orchestrator: {orchestrator_url}")
-    st.caption(f"Refresh interval: {refresh_interval_seconds}s")
 
     if not api_token:
         st.error("RELAYMD_API_TOKEN is required.")
         st.stop()
 
-    st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
-
+    # Fetch all data early to show warnings at the top
     now = datetime.now(UTC)
-    jobs_placeholder = st.empty()
-    workers_placeholder = st.empty()
-
     raw_jobs: list[dict[str, Any]] = []
     raw_workers: list[dict[str, Any]] = []
+    health: dict[str, Any] = {}
     try:
         raw_jobs = _fetch_json(orchestrator_url, api_token, "/jobs")
         raw_workers = _fetch_json(orchestrator_url, api_token, "/workers")
+        health = _fetch_json(orchestrator_url, api_token, "/healthz", expect_list=False)
     except Exception as exc:
         st.error(f"Failed to fetch dashboard data: {exc}")
         st.stop()
+
+    # Display system warnings at the very top
+    for warn in health.get("warnings", []):
+        st.warning(warn)
+
+    st.title("RelayMD Operator Dashboard")
+    st.caption(f"Orchestrator: {orchestrator_url}")
+    st.caption(f"Refresh interval: {refresh_interval_seconds}s")
+
+    st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
+
+    jobs_placeholder = st.empty()
+    workers_placeholder = st.empty()
 
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
     workers_df = _build_workers_dataframe(raw_workers, now)
