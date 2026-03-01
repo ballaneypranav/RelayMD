@@ -69,6 +69,7 @@ async def _ensure_tailscale_running(
         f"--socket={socket_path}",
         "up",
         f"--authkey={settings.tailscale_auth_key}",
+        f"--hostname={settings.tailscale_hostname}",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
