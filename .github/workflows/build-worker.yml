@@ -19,8 +19,29 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-worker
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
       - uses: docker/build-push-action@v5
+        id: build
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - name: Summary
+        run: |
+          echo "### Worker image" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pin a cluster to this build in \`relaymd-config.yaml\`:" >> $GITHUB_STEP_SUMMARY
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
