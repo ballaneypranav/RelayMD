@@ -153,7 +153,11 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     assert "export APPTAINER_DOCKER_PASSWORD='gh-pass'" in rendered
     assert 'export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"' in rendered
     assert 'export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"' in rendered
-    assert "docker://ghcr.io/acme/relaymd-worker:latest python -m relaymd.worker" in rendered
+    # docker URI must appear in the flock/pull block, not on the exec line.
+    assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
+    assert '"${_APPTAINER_IMAGE}" python -m relaymd.worker' in rendered
+    assert "flock -x 200" in rendered
+    assert "apptainer pull" in rendered
     assert "#SBATCH --gres=gpu:1" in rendered
     assert "#SBATCH --nodes=1" in rendered
     assert "#SBATCH --ntasks=8" in rendered
