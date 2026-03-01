@@ -37,10 +37,10 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 class ClusterConfig(BaseModel):
     name: str
-    partition: str
+    partition: str | list[str]
     account: str
-    gpu_type: str
-    gpu_count: int
+    gpu_type: str = "unknown"
+    gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
     jit_threshold_hours: float = Field(default=6.0, gt=0)
     sif_path: str | None = None
@@ -152,6 +152,39 @@ class OrchestratorSettings(BaseSettings):
     relaymd_env: Literal["development", "production"] = "production"
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
+
+    @model_validator(mode="after")
+    def _expand_cluster_partitions(self) -> OrchestratorSettings:
+        expanded_configs: list[ClusterConfig] = []
+        for config in self.slurm_cluster_configs:
+            partitions: list[str]
+            if isinstance(config.partition, list):
+                partitions = [p.strip() for p in config.partition]
+            else:
+                partitions = [p.strip() for p in config.partition.split(",")]
+
+            # Filter out empty strings from the list
+            partitions = [p for p in partitions if p]
+
+            if len(partitions) <= 1:
+                # Normalize singlular partition to string for template rendering
+                if partitions:
+                    config.partition = partitions[0]
+                expanded_configs.append(config)
+                continue
+
+            # Expand into multiple configs
+            for partition in partitions:
+                new_config = config.model_copy(
+                    update={
+                        "name": f"{config.name}-{partition}",
+                        "partition": partition,
+                    }
+                )
+                expanded_configs.append(new_config)
+
+        self.slurm_cluster_configs = expanded_configs
+        return self
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

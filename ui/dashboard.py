@@ -235,10 +235,14 @@ def main() -> None:
     now = datetime.now(UTC)
     raw_jobs: list[dict[str, Any]] = []
     raw_workers: list[dict[str, Any]] = []
+    raw_clusters: list[dict[str, Any]] = []
     health: dict[str, Any] = {}
     try:
         raw_jobs = _fetch_json(orchestrator_url, api_token, "/jobs")
         raw_workers = _fetch_json(orchestrator_url, api_token, "/workers")
+        raw_clusters = _fetch_json(
+            orchestrator_url, api_token, "/config/slurm-clusters", expect_list=False
+        ).get("clusters", [])
         health = _fetch_json(orchestrator_url, api_token, "/healthz", expect_list=False)
     except Exception as exc:
         st.error(f"Failed to fetch dashboard data: {exc}")
@@ -255,6 +259,7 @@ def main() -> None:
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
     jobs_placeholder = st.empty()
+    clusters_placeholder = st.empty()
     workers_placeholder = st.empty()
 
     jobs_df = _build_jobs_dataframe(raw_jobs, now)
@@ -267,6 +272,22 @@ def main() -> None:
             axis=1,
         )
         st.dataframe(styled_jobs, width="stretch", hide_index=True)
+
+    with clusters_placeholder.container():
+        st.subheader("Cluster Configs")
+        clusters_df = pd.DataFrame(
+            raw_clusters,
+            columns=[
+                "name",
+                "partition",
+                "strategy",
+                "gpu_type",
+                "gpu_count",
+                "max_pending_jobs",
+                "wall_time",
+            ],
+        )
+        st.dataframe(clusters_df, width="stretch", hide_index=True)
 
     with workers_placeholder.container():
         st.subheader("Workers")
