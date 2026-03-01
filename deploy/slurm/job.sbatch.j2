@@ -102,4 +102,6 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
+  --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}" \
+  --env SLURM_JOB_ID="${SLURM_JOB_ID}" \
   "${_APPTAINER_IMAGE}" python -m relaymd.worker

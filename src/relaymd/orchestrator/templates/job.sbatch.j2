@@ -104,4 +104,5 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env IDLE_POLL_INTERVAL_SECONDS="{{ worker_idle_poll_interval_seconds | default(30) }}" \
   --env IDLE_POLL_MAX_SECONDS="{{ worker_idle_poll_max_seconds | default(600) }}" \
   --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}" \
+  --env SLURM_JOB_ID="${SLURM_JOB_ID}" \
   "${_APPTAINER_IMAGE}" python -m relaymd.worker
