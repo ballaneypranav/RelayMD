@@ -195,6 +195,7 @@ class ApiOrchestratorGateway:
         gpu_model: str,
         gpu_count: int,
         vram_gb: int,
+        provider_id: str | None = None,
     ) -> UUID:
         response = register_worker_workers_register_post.sync(
             client=self.client,
@@ -203,6 +204,7 @@ class ApiOrchestratorGateway:
                 gpu_model=gpu_model,
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
+                provider_id=provider_id,
             ),
             x_api_token=self._api_token,
         )
@@ -221,6 +223,7 @@ class ApiOrchestratorGateway:
         gpu_model: str,
         gpu_count: int,
         vram_gb: int,
+        provider_id: str | None = None,
     ) -> UUID:
         retrying = Retrying(
             wait=wait_exponential(multiplier=1, min=1, max=30),
@@ -237,6 +240,7 @@ class ApiOrchestratorGateway:
                 gpu_model=gpu_model,
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
+                provider_id=provider_id,
             )
         except Exception as exc:  # noqa: BLE001
             if not self._is_retryable_register_error(exc):
