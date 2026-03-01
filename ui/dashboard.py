@@ -188,9 +188,7 @@ def _build_jobs_dataframe(raw_jobs: list[dict[str, Any]], now: datetime) -> pd.D
         age = _format_duration((now - created_at).total_seconds()) if created_at else "-"
 
         updated_at = _parse_datetime(job.get("updated_at"))
-        time_in_status = (
-            _format_duration((now - updated_at).total_seconds()) if updated_at else "-"
-        )
+        time_in_status = _format_duration((now - updated_at).total_seconds()) if updated_at else "-"
 
         rows.append(
             {
@@ -237,9 +235,7 @@ def _build_workers_dataframe(raw_workers: list[dict[str, Any]], now: datetime) -
             status = "stale" if age_seconds > STALE_WORKER_SECONDS else "active"
 
         registered_at = _parse_datetime(worker.get("registered_at"))
-        uptime = (
-            _format_duration((now - registered_at).total_seconds()) if registered_at else "-"
-        )
+        uptime = _format_duration((now - registered_at).total_seconds()) if registered_at else "-"
 
         slurm_id = str(worker.get("provider_id") or "")
         worker_status = str(worker.get("status") or "active")
@@ -320,9 +316,7 @@ def main() -> None:
         s = str(job.get("status", "unknown"))
         status_counts[s] = status_counts.get(s, 0) + 1
 
-    active_workers = sum(
-        1 for w in raw_workers if str(w.get("status") or "active") != "queued"
-    )
+    active_workers = sum(1 for w in raw_workers if str(w.get("status") or "active") != "queued")
     provisioning_workers = sum(
         1 for w in raw_workers if str(w.get("status") or "active") == "queued"
     )
@@ -371,8 +365,7 @@ def main() -> None:
                     "Select job",
                     options=raw_jobs,
                     format_func=lambda j: (
-                        f"{j.get('title', '<untitled>')} "
-                        f"[{j.get('status', '-')}]"
+                        f"{j.get('title', '<untitled>')} [{j.get('status', '-')}]"
                     ),
                     key="detail_job_select",
                 )
@@ -389,9 +382,7 @@ def main() -> None:
                         st.text_input(
                             "Created at",
                             value=(
-                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-                                if created_at
-                                else "-"
+                                created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if created_at else "-"
                             ),
                             disabled=True,
                         )
@@ -409,9 +400,7 @@ def main() -> None:
                         chk_at = _parse_datetime(detail_job.get("last_checkpoint_at"))
                         st.text_input(
                             "Last checkpoint at",
-                            value=(
-                                chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"
-                            ),
+                            value=(chk_at.strftime("%Y-%m-%d %H:%M:%S UTC") if chk_at else "-"),
                             disabled=True,
                         )
 
