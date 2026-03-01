@@ -110,6 +110,41 @@ def _resolve_runtime_settings() -> tuple[str, str, int]:
     return orchestrator_url.rstrip("/"), api_token, refresh_interval_seconds
 
 
+def _render_offline_state(
+    orchestrator_url: str,
+    refresh_interval_seconds: int,
+    exc: Exception,
+) -> None:
+    """Render a clear 'orchestrator unreachable' panel instead of a bare st.error."""
+    now = datetime.now(UTC)
+
+    # Record the first time we noticed the outage.
+    if "orchestrator_offline_since" not in st.session_state:
+        st.session_state["orchestrator_offline_since"] = now
+    offline_since: datetime = st.session_state["orchestrator_offline_since"]
+    offline_duration = _format_duration((now - offline_since).total_seconds())
+
+    # Keep auto-refreshing so the dashboard recovers the moment the orchestrator comes back.
+    st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
+
+    st.title("RelayMD Operator Dashboard")
+    st.error("Orchestrator unreachable", icon="\U0001f534")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("URL", orchestrator_url)
+    with col2:
+        st.metric("Offline for", offline_duration)
+
+    with st.expander("Error details", expanded=True):
+        st.code(str(exc), language=None)
+
+    st.caption(
+        f"Retrying every {refresh_interval_seconds}s. "
+        "Start the orchestrator (e.g. start the tmux session) to restore service."
+    )
+
+
 def _cancel_job(orchestrator_url: str, token: str, job_id: str) -> tuple[bool, str]:
     with httpx.Client(base_url=orchestrator_url, timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = client.delete(
@@ -250,8 +285,11 @@ def main() -> None:
         ).get("clusters", [])
         health = _fetch_json(orchestrator_url, api_token, "/healthz", expect_list=False)
     except Exception as exc:
-        st.error(f"Failed to fetch dashboard data: {exc}")
+        _render_offline_state(orchestrator_url, refresh_interval_seconds, exc)
         st.stop()
+
+    # Orchestrator is reachable — clear any recorded outage time.
+    st.session_state.pop("orchestrator_offline_since", None)
 
     # Display system warnings at the very top
     for warn in health.get("warnings", []):
@@ -260,6 +298,16 @@ def main() -> None:
     st.title("RelayMD Operator Dashboard")
     st.caption(f"Orchestrator: {orchestrator_url}")
     st.caption(f"Refresh interval: {refresh_interval_seconds}s")
+
+    # Tailscale status strip
+    ts = health.get("tailscale", {})
+    if ts.get("connected"):
+        ts_label = ts.get("hostname") or ts.get("dns_name") or ts.get("ip") or "connected"
+        ts_ip = ts.get("ip", "")
+        st.success(f"🟢 Tailscale: **{ts_label}** ({ts_ip})", icon=None)
+    else:
+        ts_error = ts.get("error", "unknown error")
+        st.error(f"🔴 Tailscale: not connected — {ts_error}")
 
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
