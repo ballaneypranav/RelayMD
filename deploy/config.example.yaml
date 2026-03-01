@@ -13,6 +13,15 @@ api_token: change-me
 # Prefer setting this via INFISICAL_TOKEN env var.
 infisical_token: ""
 
+# Tailscale settings for the orchestrator.
+# tailscale_hostname is used as the stable MagicDNS name for this orchestrator
+# node regardless of which login node it runs on.  Set RELAYMD_ORCHESTRATOR_URL
+# in Infisical to http://<tailscale_hostname>:8000 so workers always resolve the
+# current IP via DNS instead of a hardcoded address.
+# tailscale_hostname: relaymd-orchestrator  # default; override via RELAYMD_TAILSCALE_HOSTNAME
+# tailscale_socket: ~/.tailscale/tailscaled.sock  # default; set via RELAYMD_TAILSCALE_SOCKET
+# tailscale_auth_key: ""  # set via TAILSCALE_AUTH_KEY or RELAYMD_TAILSCALE_AUTH_KEY
+
 # Optional registry auth for Apptainer docker:// pulls (e.g. private GHCR).
 # Can also be sourced from Infisical path /RelayMD as:
 # - APPTAINER_DOCKER_USERNAME

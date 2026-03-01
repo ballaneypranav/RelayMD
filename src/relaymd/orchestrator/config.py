@@ -162,6 +162,10 @@ class OrchestratorSettings(BaseSettings):
             "tailscale_auth_key", "TAILSCALE_AUTH_KEY", "RELAYMD_TAILSCALE_AUTH_KEY"
         ),
     )
+    tailscale_hostname: str = Field(
+        default="relaymd-orchestrator",
+        validation_alias=AliasChoices("tailscale_hostname", "RELAYMD_TAILSCALE_HOSTNAME"),
+    )
 
     @model_validator(mode="after")
     def _expand_cluster_partitions(self) -> OrchestratorSettings:

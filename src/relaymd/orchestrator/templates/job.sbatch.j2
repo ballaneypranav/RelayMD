@@ -42,19 +42,38 @@ export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"
 # cache under ~/.apptainer/relaymd-sif-cache, using flock to serialise the
 # OCI→SIF build.  The first job that arrives builds the SIF; every subsequent
 # job acquires the lock, finds the SIF already present, and skips the build.
-# The cache path is keyed by a slug of the image URI so different image versions
-# produce distinct files and never collide.
+#
+# Cache key: SHA-256 of the full image URI (first 16 hex chars).  A content
+# hash is used instead of a slug so that URIs that differ only in characters
+# that a slug would collapse (e.g. "/" vs "_", ":" vs "_") never collide.
+#
+# NOTE: The cache has no automatic TTL.  Mutable tags (e.g. :latest, :main)
+# are cached indefinitely; the first pull wins and subsequent jobs reuse it
+# even after the upstream image changes.  Always use an immutable tag (e.g. a
+# git-SHA tag like :sha-abc1234 or a @sha256:... digest) to guarantee
+# reproducibility.  To force a re-pull set RELAYMD_SIF_MAX_AGE_HOURS, or
+# manually delete the cached SIF:
+#   rm ~/.apptainer/relaymd-sif-cache/<key>.sif
 _APPTAINER_IMAGE="{{ apptainer_image | default(sif_path) }}"
 
 if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
-  _IMAGE_SLUG="$(printf '%s' "${_APPTAINER_IMAGE}" | tr -cs 'a-zA-Z0-9._-' '_')"
+  _IMAGE_KEY="$(printf '%s' "${_APPTAINER_IMAGE}" | sha256sum | cut -c1-16)"
   _SIF_CACHE_DIR="${HOME}/.apptainer/relaymd-sif-cache"
   mkdir -p "${_SIF_CACHE_DIR}"
-  _SIF_PATH="${_SIF_CACHE_DIR}/${_IMAGE_SLUG}.sif"
-  _LOCK_FILE="${_SIF_CACHE_DIR}/${_IMAGE_SLUG}.lock"
+  _SIF_PATH="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.sif"
+  _LOCK_FILE="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.lock"
 
   (
     flock -x 200
+    # Optional TTL: if RELAYMD_SIF_MAX_AGE_HOURS is set and the cached SIF is
+    # older than that many hours, treat it as stale and re-pull.
+    if [[ -f "${_SIF_PATH}" && -n "${RELAYMD_SIF_MAX_AGE_HOURS:-}" ]]; then
+      _SIF_AGE_SECONDS=$(( $(date +%s) - $(date -r "${_SIF_PATH}" +%s) ))
+      _MAX_AGE_SECONDS=$(( RELAYMD_SIF_MAX_AGE_HOURS * 3600 ))
+      if (( _SIF_AGE_SECONDS > _MAX_AGE_SECONDS )); then
+        rm -f "${_SIF_PATH}"
+      fi
+    fi
     if [[ ! -f "${_SIF_PATH}" ]]; then
       export APPTAINER_TMPDIR="${TMPDIR:-/tmp}/apptainer-tmp-${SLURM_JOB_ID}"
       _SIF_TMP="${_SIF_PATH}.tmp.${SLURM_JOB_ID}"
