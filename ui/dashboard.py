@@ -300,14 +300,15 @@ def main() -> None:
     st.caption(f"Refresh interval: {refresh_interval_seconds}s")
 
     # Tailscale status strip
-    ts = health.get("tailscale", {})
-    if ts.get("connected"):
-        ts_label = ts.get("hostname") or ts.get("dns_name") or ts.get("ip") or "connected"
-        ts_ip = ts.get("ip", "")
-        st.success(f"🟢 Tailscale: **{ts_label}** ({ts_ip})", icon=None)
-    else:
-        ts_error = ts.get("error", "unknown error")
-        st.error(f"🔴 Tailscale: not connected — {ts_error}")
+    if "tailscale" in health:
+        ts = health["tailscale"]
+        if ts.get("connected"):
+            ts_label = ts.get("hostname") or ts.get("dns_name") or ts.get("ip") or "connected"
+            ts_ip = ts.get("ip", "")
+            st.success(f"🟢 Tailscale: **{ts_label}** ({ts_ip})", icon=None)
+        else:
+            ts_error = ts.get("error", "unknown error")
+            st.error(f"🔴 Tailscale: not connected — {ts_error}")
 
     st_autorefresh(interval=refresh_interval_seconds * 1000, key="relaymd-dashboard-refresh")
 
