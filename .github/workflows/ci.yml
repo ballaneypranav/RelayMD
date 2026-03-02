@@ -1,25 +1,57 @@
 name: CI
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'mkdocs.yml'
-      - '.github/workflows/**'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - 'mkdocs.yml'
-      - '.github/workflows/**'
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
 
 jobs:
-  test:
+  changes:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      base_image: ${{ steps.filter.outputs.base_image }}
+      worker_image: ${{ steps.filter.outputs.worker_image }}
+      cli: ${{ steps.filter.outputs.cli }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'packages/**'
+              - 'tests/**'
+              - 'ui/**'
+              - 'pyproject.toml'
+              - 'ui/requirements.txt'
+              - 'scripts/sync_workspace.sh'
+            base_image:
+              - 'Dockerfile.base'
+              - '.github/workflows/ci.yml'
+            worker_image:
+              - 'Dockerfile'
+              - 'Dockerfile.base'
+              - 'packages/**'
+              - 'scripts/sync_workspace.sh'
+              - '.github/workflows/ci.yml'
+            cli:
+              - 'packages/relaymd-core/**'
+              - 'packages/relaymd-api-client/**'
+              - 'relaymd-cli.spec'
+              - 'scripts/sync_workspace.sh'
+              - '.github/workflows/ci.yml'
+
+  test:
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -39,3 +71,102 @@ jobs:
         uses: py-cov-action/python-coverage-comment-action@v3
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-base:
+    needs: [changes, test]
+    if: ${{ always() && needs.changes.outputs.base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-base
+          tags: |
+            type=raw,value=latest
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        id: build
+        with:
+          context: .
+          file: Dockerfile.base
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-worker:
+    needs: [changes, test, build-base]
+    if: ${{ always() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: ./scripts/sync_workspace.sh
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-worker
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        id: build
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-base:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Summary
+        run: |
+          echo "### Worker image" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Pin a cluster to this build in \`relaymd-config.yaml\`:" >> $GITHUB_STEP_SUMMARY
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
+
+  build-cli:
+    needs: [changes, test]
+    if: ${{ always() && needs.changes.outputs.cli == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: ./scripts/sync_workspace.sh
+      - run: uv run pyinstaller relaymd-cli.spec
+      - name: Rename binary
+        run: mv dist/relaymd dist/relaymd-linux-x86_64
+      - name: Upload to GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest
+          prerelease: false
+          make_latest: true
+          files: dist/relaymd-linux-x86_64
