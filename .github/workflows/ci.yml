@@ -30,6 +30,7 @@ jobs:
               - 'tests/**'
               - 'ui/**'
               - 'pyproject.toml'
+              - 'uv.lock'
               - 'ui/requirements.txt'
               - 'scripts/sync_workspace.sh'
             base_image:
@@ -39,12 +40,16 @@ jobs:
               - 'Dockerfile'
               - 'Dockerfile.base'
               - 'packages/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
               - 'scripts/sync_workspace.sh'
               - '.github/workflows/ci.yml'
             cli:
               - 'packages/relaymd-core/**'
               - 'packages/relaymd-api-client/**'
               - 'relaymd-cli.spec'
+              - 'pyproject.toml'
+              - 'uv.lock'
               - 'scripts/sync_workspace.sh'
               - '.github/workflows/ci.yml'
 

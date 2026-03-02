@@ -1,8 +1,9 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=ghcr.io/ballaneypranav/relaymd-base:latest
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
 
+COPY pyproject.toml uv.lock ./
 COPY packages ./packages
 
 RUN --mount=type=cache,target=/root/.cache/uv \
