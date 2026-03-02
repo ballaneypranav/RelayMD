@@ -7,9 +7,8 @@ on:
   pull_request:
 
 permissions:
-  contents: write
-  packages: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   changes:
@@ -55,6 +54,9 @@ jobs:
 
   test:
     needs: changes
+    permissions:
+      contents: read
+      pull-requests: write
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -66,7 +68,7 @@ jobs:
       - run: uv pip install --python .venv/bin/python -r ui/requirements.txt
       - run: uv run pytest
       - name: Upload coverage report
-        if: always()
+        if: '!cancelled()'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -79,7 +81,10 @@ jobs:
 
   build-base:
     needs: [changes, test]
-    if: ${{ always() && needs.changes.outputs.base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ !cancelled() && needs.changes.outputs.base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,7 +113,10 @@ jobs:
 
   build-worker:
     needs: [changes, test, build-base]
-    if: ${{ always() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') }}
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +163,9 @@ jobs:
 
   build-cli:
     needs: [changes, test]
-    if: ${{ always() && needs.changes.outputs.cli == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    permissions:
+      contents: write
+    if: ${{ !cancelled() && needs.changes.outputs.cli == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
