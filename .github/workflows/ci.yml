@@ -6,11 +6,13 @@ on:
       - 'docs/**'
       - '*.md'
       - 'mkdocs.yml'
+      - '.github/workflows/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
       - '*.md'
       - 'mkdocs.yml'
+      - '.github/workflows/**'
 
 jobs:
   test:
