@@ -103,11 +103,9 @@ fi
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
-  {% if axiom_token %}
-  --env AXIOM_TOKEN="${AXIOM_TOKEN}" \
+{% if axiom_token %}  --env AXIOM_TOKEN="${AXIOM_TOKEN}" \
   --env AXIOM_DATASET="${AXIOM_DATASET}" \
-  {% endif %}
-  --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}" \
+{% endif %}  --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}" \
   --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}" \
   --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}" \
   --env ORCHESTRATOR_TIMEOUT_SECONDS="{{ worker_orchestrator_timeout_seconds | default(30.0) }}" \

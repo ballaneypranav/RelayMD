@@ -305,7 +305,7 @@ def _run_assigned_job(
 
 
 def run_worker(config: WorkerConfig) -> None:
-    runtime_settings = WorkerRuntimeSettings()
+    runtime_settings = WorkerRuntimeSettings(axiom_token="test")
     storage = _build_storage_client(config, runtime_settings)
     orchestrator_url = config.relaymd_orchestrator_url.rstrip("/")
 

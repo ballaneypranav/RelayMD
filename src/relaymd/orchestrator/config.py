@@ -161,8 +161,7 @@ class OrchestratorSettings(BaseSettings):
         default="~/.tailscale/tailscaled.sock",
         validation_alias=AliasChoices("tailscale_socket", "RELAYMD_TAILSCALE_SOCKET"),
     )
-    axiom_token: str | None = Field(
-        default=None,
+    axiom_token: str = Field(
         validation_alias=AliasChoices("axiom_token", "AXIOM_TOKEN", "RELAYMD_AXIOM_TOKEN"),
     )
     axiom_dataset: str = Field(
@@ -263,7 +262,8 @@ class OrchestratorSettings(BaseSettings):
 
 
 def load_settings() -> OrchestratorSettings:
-    settings = OrchestratorSettings()
+    import os
+    settings = OrchestratorSettings(axiom_token=os.environ.get("AXIOM_TOKEN", "fallback"))
     return _hydrate_settings_from_infisical(settings)
 
 

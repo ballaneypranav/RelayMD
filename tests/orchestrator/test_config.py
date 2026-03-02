@@ -41,7 +41,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
     monkeypatch.delenv("RELAYMD_INFISICAL_TOKEN", raising=False)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
     assert settings.api_token == "yaml-token"
@@ -74,7 +74,7 @@ def test_missing_yaml_path_is_non_fatal(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:///./relaymd.db"
 
@@ -85,7 +85,7 @@ def test_env_secret_overrides_yaml_value(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-token")
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "env-token"
 
@@ -97,7 +97,7 @@ def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.setenv("API_TOKEN", "env-token")
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "env-token"
 
@@ -116,7 +116,7 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(orchestrator_config, "DEFAULT_RELAYMD_CONFIG_PATH", str(home_config))
     monkeypatch.chdir(cwd_dir)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "cwd-token"
 
@@ -134,7 +134,7 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.chdir(cwd_dir)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "explicit-token"
 

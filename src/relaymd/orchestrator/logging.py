@@ -28,7 +28,7 @@ class _LoggingSettingsProtocol(Protocol):
 
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
-    return orjson.dumps(event_dict).decode("utf-8")
+    return orjson.dumps(event_dict, default=str).decode("utf-8")
 
 
 def _log_level(settings: _LoggingSettingsProtocol) -> int:

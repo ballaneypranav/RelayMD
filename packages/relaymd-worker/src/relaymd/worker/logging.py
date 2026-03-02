@@ -16,8 +16,7 @@ class LoggingSettings(BaseSettings):
     relaymd_env: Literal["development", "production"] = "production"
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
-    axiom_token: str | None = Field(
-        default=None,
+    axiom_token: str = Field(
         validation_alias=AliasChoices(
             "axiom_token",
             "AXIOM_TOKEN",
@@ -37,7 +36,7 @@ class LoggingSettings(BaseSettings):
 
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
-    return orjson.dumps(event_dict).decode("utf-8")
+    return orjson.dumps(event_dict, default=str).decode("utf-8")
 
 
 def _log_level(settings: LoggingSettings) -> int:
@@ -52,7 +51,7 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
     if _CONFIGURED:
         return
 
-    active_settings = settings or LoggingSettings()
+    active_settings = settings or LoggingSettings(axiom_token="test")
     renderer: structlog.types.Processor
     if active_settings.relaymd_log_format == "console" or (
         active_settings.relaymd_log_format == "auto"

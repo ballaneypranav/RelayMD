@@ -26,6 +26,7 @@ async def app_client(settings: OrchestratorSettings):
 
 def make_settings() -> OrchestratorSettings:
     return OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
     )

@@ -51,28 +51,35 @@ class AxiomSenderThread(threading.Thread):
         return batch
 
     def _send_batch(self, batch: list[structlog.types.EventDict]) -> None:
-        try:
-            payload = orjson.dumps(batch)
-            req = urllib.request.Request(
-                self.url,
-                data=payload,
-                headers={
-                    "Authorization": f"Bearer {self.axiom_token}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "relaymd-axiom-logger/1.0",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=10.0):
-                pass
-        except Exception as exc:
-            import datetime
-            import sys
+        import datetime
+        import sys
 
-            now = datetime.datetime.now(datetime.UTC).isoformat()
-            sys.stderr.write(
-                f"[{now}] relaymd-axiom-logger: failed to send batch of {len(batch)} logs: {exc}\n"
-            )
+        payload = orjson.dumps(batch, default=str)
+        req = urllib.request.Request(
+            self.url,
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {self.axiom_token}",
+                "Content-Type": "application/json",
+                "User-Agent": "relaymd-axiom-logger/1.0",
+            },
+            method="POST",
+        )
+        last_exc: Exception | None = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(2 ** (attempt - 1))  # 1s, 2s
+            try:
+                with urllib.request.urlopen(req, timeout=10.0):
+                    return
+            except Exception as exc:
+                last_exc = exc
+
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        sys.stderr.write(
+            f"[{now}] relaymd-axiom-logger: failed to send batch of {len(batch)} logs"
+            f" after 3 attempts: {last_exc}\n"
+        )
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -87,7 +94,7 @@ _AXIOM_THREAD: AxiomSenderThread | None = None
 
 def get_axiom_thread(axiom_token: str, dataset: str) -> AxiomSenderThread:
     global _AXIOM_THREAD
-    if _AXIOM_THREAD is None:
+    if _AXIOM_THREAD is None or not _AXIOM_THREAD.is_alive():
         _AXIOM_THREAD = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
         _AXIOM_THREAD.start()
         atexit.register(_cleanup_axiom_thread)
@@ -106,7 +113,8 @@ class AxiomProcessor:
     """A structlog processor that queues log dictionaries for Axiom ingestion."""
 
     def __init__(self, axiom_token: str, dataset: str) -> None:
-        self.thread = get_axiom_thread(axiom_token, dataset)
+        self.axiom_token = axiom_token
+        self.dataset = dataset
 
     def __call__(
         self,
@@ -120,5 +128,6 @@ class AxiomProcessor:
         if "timestamp" in dict_copy and "_time" not in dict_copy:
             dict_copy["_time"] = dict_copy["timestamp"]
 
-        self.thread.enqueue(dict_copy)
+        thread = get_axiom_thread(self.axiom_token, self.dataset)
+        thread.enqueue(dict_copy)
         return event_dict

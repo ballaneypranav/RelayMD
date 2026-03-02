@@ -31,6 +31,7 @@ async def app_client(settings: OrchestratorSettings):
 
 def _settings_with_cluster() -> OrchestratorSettings:
     return OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="client-id:client-secret",
@@ -88,6 +89,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="client-id:client-secret",
@@ -155,6 +157,7 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="client-id:client-secret",
@@ -217,6 +220,7 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="client-id:client-secret",
@@ -262,6 +266,7 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="tok$HOME`date`'abc\\def",
