@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=ghcr.io/your-org/relaymd-base:latest
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 WORKDIR /app
