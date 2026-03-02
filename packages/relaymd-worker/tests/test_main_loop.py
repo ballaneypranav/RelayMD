@@ -58,7 +58,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
     )
     runtime_settings = WorkerRuntimeSettings(
-            axiom_token="test",
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
@@ -89,7 +89,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     )
 
     runtime_settings = WorkerRuntimeSettings(
-            axiom_token="test",
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
@@ -97,7 +97,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     assert captured["cf_bearer_token"] == "runtime-token"
 
     runtime_settings = WorkerRuntimeSettings(
-            axiom_token="test",
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="",
     )

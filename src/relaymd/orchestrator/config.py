@@ -263,6 +263,7 @@ class OrchestratorSettings(BaseSettings):
 
 def load_settings() -> OrchestratorSettings:
     import os
+
     settings = OrchestratorSettings(axiom_token=os.environ.get("AXIOM_TOKEN", "fallback"))
     return _hydrate_settings_from_infisical(settings)
 
