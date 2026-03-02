@@ -7,7 +7,6 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import suppress
-from typing import Any
 
 import orjson
 import structlog
@@ -110,7 +109,10 @@ class AxiomProcessor:
         self.thread = get_axiom_thread(axiom_token, dataset)
 
     def __call__(
-        self, logger: structlog.types.WrappedLogger, method_name: str, event_dict: structlog.types.EventDict
+        self,
+        logger: structlog.types.WrappedLogger,
+        method_name: str,
+        event_dict: structlog.types.EventDict,
     ) -> structlog.types.EventDict:
         # Copy the event_dict so modifications down the pipeline don't mutate our view
         dict_copy = dict(event_dict)
