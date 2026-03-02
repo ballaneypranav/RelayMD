@@ -23,8 +23,8 @@
 {% endif %}
 #SBATCH --time={{ wall_time | default("4:00:00") }}
 #SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds | default(300) }}
-#SBATCH --output=slurm-relaymd-%j.out
-#SBATCH --error=slurm-relaymd-%j.err
+#SBATCH --output={% if log_directory %}{{ log_directory }}/{% endif %}slurm-relaymd-%j.out
+#SBATCH --error={% if log_directory %}{{ log_directory }}/{% endif %}slurm-relaymd-%j.err
 #SBATCH --export=ALL
 
 set -euo pipefail
@@ -36,6 +36,10 @@ export APPTAINER_DOCKER_USERNAME={{ apptainer_docker_username_shell_quoted }}
 export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
 export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"
 export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"
+{% endif %}
+{% if axiom_token %}
+export AXIOM_TOKEN={{ axiom_token_shell_quoted }}
+export AXIOM_DATASET={{ axiom_dataset_shell_quoted }}
 {% endif %}
 
 # Resolve the Apptainer image.  For docker:// URIs we pre-pull to a shared SIF
@@ -99,6 +103,10 @@ fi
 
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
   --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
+  {% if axiom_token %}
+  --env AXIOM_TOKEN="${AXIOM_TOKEN}" \
+  --env AXIOM_DATASET="${AXIOM_DATASET}" \
+  {% endif %}
   --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}" \
   --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}" \
   --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}" \

@@ -39,6 +39,8 @@ def _settings_with_cluster() -> OrchestratorSettings:
                 name="gilbreth",
                 partition="gpu",
                 account="lab-account",
+                ssh_host="test-host",
+                ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=2,
                 sif_path="/shared/relaymd.sif",
@@ -58,14 +60,14 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     class FakeProcess:
         returncode = 0
 
-        async def communicate(self) -> tuple[bytes, bytes]:
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
             return b"12345\n", b""
 
     async def fake_create_subprocess_exec(*args, **kwargs):
         _ = kwargs
-        command_args.extend(str(arg) for arg in args[:2])
-        script_path = str(args[2])
-        captured["script"] = Path(script_path).read_text(encoding="utf-8")
+        command_args.extend(str(arg) for arg in args)
         return FakeProcess()
 
     monkeypatch.setattr(
@@ -77,6 +79,8 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         name="gilbreth",
         partition="gpu",
         account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
         sif_path="/shared/relaymd.sif",
@@ -91,7 +95,15 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     job_id = await submit_slurm_job(cluster, settings)
 
     assert job_id == "12345"
-    assert command_args == ["sbatch", "--parsable"]
+    assert command_args == [
+        "ssh",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+        "test-user@test-host",
+        "sbatch",
+        "--parsable",
+    ]
     rendered = captured["script"]
     assert "#SBATCH --gres=gpu:a100:2" in rendered
     assert "#SBATCH --mem-per-gpu=60G" in rendered
@@ -112,13 +124,13 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     class FakeProcess:
         returncode = 0
 
-        async def communicate(self) -> tuple[bytes, bytes]:
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
             return b"12345\n", b""
 
     async def fake_create_subprocess_exec(*args, **kwargs):
-        _ = kwargs
-        script_path = str(args[2])
-        captured["script"] = Path(script_path).read_text(encoding="utf-8")
+        _ = (args, kwargs)
         return FakeProcess()
 
     monkeypatch.setattr(
@@ -130,6 +142,8 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
         name="gilbreth",
         partition="gpu",
         account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
         image_uri="ghcr.io/acme/relaymd-worker:latest",
@@ -175,7 +189,7 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
     class FakeProcess:
         returncode = 0
 
-        async def communicate(self) -> tuple[bytes, bytes]:
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
             await asyncio.sleep(3600)
             return b"", b""
 
@@ -195,6 +209,8 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         name="gilbreth",
         partition="gpu",
         account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
         sif_path="/shared/relaymd.sif",
@@ -220,13 +236,13 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
     class FakeProcess:
         returncode = 0
 
-        async def communicate(self) -> tuple[bytes, bytes]:
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
             return b"12345\n", b""
 
     async def fake_create_subprocess_exec(*args, **kwargs):
-        _ = kwargs
-        script_path = str(args[2])
-        captured["script"] = Path(script_path).read_text(encoding="utf-8")
+        _ = (args, kwargs)
         return FakeProcess()
 
     monkeypatch.setattr(
@@ -238,6 +254,8 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         name="gilbreth",
         partition="gpu",
         account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
         sif_path="/shared/relaymd.sif",
@@ -341,9 +359,11 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
 
     settings = _settings_with_cluster()
 
+    command_args: list[str] = []
+
     async def fake_squeue_dead(*args, **kwargs):
         """squeue returns empty — both jobs are gone."""
-        _ = (args, kwargs)
+        command_args.extend(str(arg) for arg in args)
 
         class FakeProc:
             returncode = 0
@@ -393,6 +413,18 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
             remaining = (await session.exec(select(Worker))).all()
 
     assert remaining == []
+    assert command_args == [
+        "ssh",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+        "test-user@test-host",
+        "squeue",
+        "--jobs",
+        "11111,22222",
+        "--noheader",
+        "--format=%i",
+    ]
 
 
 @pytest.mark.asyncio
@@ -402,9 +434,11 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
 
     settings = _settings_with_cluster()
 
+    command_args: list[str] = []
+
     async def fake_squeue_live(*args, **kwargs):
         """squeue reports job 33333 as still running."""
-        _ = (args, kwargs)
+        command_args.extend(str(arg) for arg in args)
 
         class FakeProc:
             returncode = 0
@@ -443,3 +477,15 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
 
     assert len(remaining) == 1
     assert remaining[0].provider_id == "gilbreth:33333"
+    assert command_args == [
+        "ssh",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+        "test-user@test-host",
+        "squeue",
+        "--jobs",
+        "33333",
+        "--noheader",
+        "--format=%i",
+    ]

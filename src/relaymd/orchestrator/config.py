@@ -39,6 +39,10 @@ class ClusterConfig(BaseModel):
     name: str
     partition: str | list[str]
     account: str
+    ssh_host: str
+    ssh_username: str
+    ssh_key_file: str | None = None
+    ssh_port: int = 22
     gpu_type: str = "unknown"
     gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
@@ -56,6 +60,7 @@ class ClusterConfig(BaseModel):
     idle_poll_max_seconds: int | None = Field(default=None, ge=1)
     max_pending_jobs: int = 1
     wall_time: str = "4:00:00"
+    log_directory: str | None = None
 
     @model_validator(mode="after")
     def _validate_image_source(self) -> ClusterConfig:
@@ -156,6 +161,14 @@ class OrchestratorSettings(BaseSettings):
         default="~/.tailscale/tailscaled.sock",
         validation_alias=AliasChoices("tailscale_socket", "RELAYMD_TAILSCALE_SOCKET"),
     )
+    axiom_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("axiom_token", "AXIOM_TOKEN", "RELAYMD_AXIOM_TOKEN"),
+    )
+    axiom_dataset: str = Field(
+        default="relaymd",
+        validation_alias=AliasChoices("axiom_dataset", "AXIOM_DATASET", "RELAYMD_AXIOM_DATASET"),
+    )
     tailscale_auth_key: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -241,8 +254,9 @@ class OrchestratorSettings(BaseSettings):
                 "salad_project": ("SALAD_PROJECT",),
                 "salad_container_group": ("SALAD_CONTAINER_GROUP",),
                 "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
-                "salad_api_timeout_seconds": ("SALAD_API_TIMEOUT_SECONDS",),
                 "sbatch_submit_timeout_seconds": ("SBATCH_SUBMIT_TIMEOUT_SECONDS",),
+                "axiom_token": ("AXIOM_TOKEN",),
+                "axiom_dataset": ("AXIOM_DATASET",),
             },
             config_paths=cls.config_paths(),
         )

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import tempfile
 from contextlib import suppress
 
+import structlog
 from jinja2 import Environment, PackageLoader
 
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
@@ -68,6 +67,15 @@ def _render_sbatch_script(
             else settings.worker_idle_poll_max_seconds
         ),
         worker_platform="hpc",
+        log_directory=cluster.log_directory,
+        axiom_token=settings.axiom_token,
+        axiom_token_shell_quoted=_shell_single_quote(settings.axiom_token)
+        if settings.axiom_token
+        else None,
+        axiom_dataset=settings.axiom_dataset,
+        axiom_dataset_shell_quoted=_shell_single_quote(settings.axiom_dataset)
+        if settings.axiom_dataset
+        else None,
     )
 
 
@@ -77,50 +85,54 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
         settings=settings,
     )
 
-    tmp_script_path: str | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            suffix=".sbatch",
-            prefix=f"relaymd-{cluster.name}-",
-            delete=False,
-            encoding="utf-8",
-        ) as tmp_script:
-            tmp_script.write(rendered)
-            tmp_script_path = tmp_script.name
+    logger = structlog.get_logger(__name__)
+    logger.debug("Submitting job script:\n%s", rendered)
 
-        process = await asyncio.create_subprocess_exec(
-            "sbatch",
-            "--parsable",
-            tmp_script_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+    command = [
+        "ssh",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+    ]
+    if cluster.ssh_port != 22:
+        command.extend(["-p", str(cluster.ssh_port)])
+    if cluster.ssh_key_file:
+        command.extend(["-i", cluster.ssh_key_file])
+    command.append(f"{cluster.ssh_username}@{cluster.ssh_host}")
+    if cluster.log_directory:
+        command.append(
+            f"mkdir -p {_shell_single_quote(cluster.log_directory)} && sbatch --parsable"
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(),
-                timeout=settings.sbatch_submit_timeout_seconds,
-            )
-        except TimeoutError as exc:
-            with suppress(ProcessLookupError):
-                process.kill()
-            with suppress(Exception):  # noqa: BLE001
-                await asyncio.wait_for(process.communicate(), timeout=1.0)
-            raise RuntimeError(
-                f"sbatch submission timed out after {settings.sbatch_submit_timeout_seconds:.1f}s"
-            ) from exc
-        if process.returncode != 0:
-            stderr_text = stderr.decode("utf-8", errors="replace").strip()
-            raise RuntimeError(
-                f"sbatch submission failed: rc={process.returncode}, stderr={stderr_text}"
-            )
+    else:
+        command.extend(["sbatch", "--parsable"])
 
-        output = stdout.decode("utf-8", errors="replace").strip()
-        if not output:
-            raise RuntimeError("sbatch --parsable returned empty output")
+    process = await asyncio.create_subprocess_exec(
+        *command,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(input=rendered.encode("utf-8")),
+            timeout=settings.sbatch_submit_timeout_seconds,
+        )
+    except TimeoutError as exc:
+        with suppress(ProcessLookupError):
+            process.kill()
+        with suppress(Exception):  # noqa: BLE001
+            await asyncio.wait_for(process.communicate(), timeout=1.0)
+        raise RuntimeError(
+            f"sbatch submission timed out after {settings.sbatch_submit_timeout_seconds:.1f}s"
+        ) from exc
+    if process.returncode != 0:
+        stderr_text = stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            f"sbatch submission failed: rc={process.returncode}, stderr={stderr_text}"
+        )
 
-        return output.split(";", 1)[0]
-    finally:
-        if tmp_script_path is not None:
-            with suppress(FileNotFoundError):
-                os.unlink(tmp_script_path)
+    output = stdout.decode("utf-8", errors="replace").strip()
+    if not output:
+        raise RuntimeError("sbatch --parsable returned empty output")
+
+    return output.split(";", 1)[0]

@@ -30,7 +30,7 @@ def pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
     return slurm_provider_id(cluster_name, slurm_job_id)
 
 
-async def _query_live_slurm_job_ids(job_ids: list[str]) -> set[str]:
+async def _query_live_slurm_job_ids(cluster: ClusterConfig, job_ids: list[str]) -> set[str]:
     """Ask squeue which of the given raw SLURM job IDs are still alive (PD or R).
 
     Returns the set of IDs that squeue reports; an empty set means none are alive
@@ -40,13 +40,30 @@ async def _query_live_slurm_job_ids(job_ids: list[str]) -> set[str]:
     if not job_ids:
         return set()
 
-    try:
-        process = await asyncio.create_subprocess_exec(
+    command = [
+        "ssh",
+        "-q",
+        "-o",
+        "BatchMode=yes",
+    ]
+    if cluster.ssh_port != 22:
+        command.extend(["-p", str(cluster.ssh_port)])
+    if cluster.ssh_key_file:
+        command.extend(["-i", cluster.ssh_key_file])
+    command.append(f"{cluster.ssh_username}@{cluster.ssh_host}")
+    command.extend(
+        [
             "squeue",
             "--jobs",
             ",".join(job_ids),
             "--noheader",
             "--format=%i",
+        ]
+    )
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -179,22 +196,39 @@ async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
     if not placeholders:
         return 0
 
-    # provider_id format: "<cluster_name>:<raw_slurm_job_id>"
-    # Extract the raw SLURM ID (part after the last ":") for squeue lookup.
-    raw_id_to_placeholder: dict[str, Worker] = {}
+    from collections import defaultdict
+
+    cluster_to_raw_ids: dict[str, dict[str, Worker]] = defaultdict(dict)
     for p in placeholders:
         if p.provider_id and ":" in p.provider_id:
-            raw_id = p.provider_id.rsplit(":", 1)[-1]
-            raw_id_to_placeholder[raw_id] = p
+            cluster_name, raw_id = p.provider_id.split(":", 1)
+            cluster_to_raw_ids[cluster_name][raw_id] = p
 
-    if not raw_id_to_placeholder:
+    if not cluster_to_raw_ids:
         return 0
 
-    live_job_ids = await _query_live_slurm_job_ids(list(raw_id_to_placeholder.keys()))
+    cluster_configs = {c.name: c for c in settings.slurm_cluster_configs}
+    dead_placeholders: list[Worker] = []
 
-    dead_placeholders = [
-        p for raw_id, p in raw_id_to_placeholder.items() if raw_id not in live_job_ids
-    ]
+    for cluster_name, raw_id_dict in cluster_to_raw_ids.items():
+        cluster_config = cluster_configs.get(cluster_name)
+        if not cluster_config:
+            import structlog
+
+            structlog.get_logger(__name__).warning(
+                "slurm_cluster_config_missing_for_placeholders",
+                cluster_name=cluster_name,
+                placeholder_count=len(raw_id_dict),
+            )
+            dead_placeholders.extend(raw_id_dict.values())
+            continue
+
+        raw_ids = list(raw_id_dict.keys())
+        live_job_ids = await _query_live_slurm_job_ids(cluster_config, raw_ids)
+
+        for raw_id, p in raw_id_dict.items():
+            if raw_id not in live_job_ids:
+                dead_placeholders.append(p)
 
     if not dead_placeholders:
         return 0

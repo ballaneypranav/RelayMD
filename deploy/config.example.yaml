@@ -61,6 +61,10 @@ slurm_cluster_configs:
   - name: gilbreth-a30
     partition: a30
     account: my-lab-account
+    ssh_host: gilbreth.rcac.purdue.edu
+    ssh_username: my-username
+    # ssh_key_file: /home/local-user/.ssh/id_rsa
+    # ssh_port: 22
     gpu_type: a30
     gpu_count: 1
     # Provisioning strategy (reactive | continuous | jit_threshold):
@@ -87,6 +91,7 @@ slurm_cluster_configs:
     # memory_per_gpu: 60G  # renders: #SBATCH --mem-per-gpu=60G
     wall_time: "4:00:00"
     max_pending_jobs: 1
+    # log_directory: /scratch/gilbreth/my-username/relaymd-logs
 
 # SaladCloud API key for autoscaling workers.
 # Can be set via SALAD_API_KEY env var.

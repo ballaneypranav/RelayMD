@@ -114,5 +114,21 @@ class WorkerRuntimeSettings(BaseSettings):
             "RELAYMD_WORKER_IDLE_POLL_MAX_SECONDS",
         ),
     )
+    axiom_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "axiom_token",
+            "AXIOM_TOKEN",
+            "RELAYMD_AXIOM_TOKEN",
+        ),
+    )
+    axiom_dataset: str = Field(
+        default="relaymd",
+        validation_alias=AliasChoices(
+            "axiom_dataset",
+            "AXIOM_DATASET",
+            "RELAYMD_AXIOM_DATASET",
+        ),
+    )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")

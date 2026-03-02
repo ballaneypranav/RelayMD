@@ -20,6 +20,12 @@ class _LoggingSettingsProtocol(Protocol):
     @property
     def relaymd_log_format(self) -> str: ...
 
+    @property
+    def axiom_token(self) -> str | None: ...
+
+    @property
+    def axiom_dataset(self) -> str: ...
+
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
     return orjson.dumps(event_dict).decode("utf-8")
@@ -45,15 +51,29 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
     else:
         renderer = structlog.processors.JSONRenderer(serializer=_orjson_dumps)
 
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    axiom_token = getattr(settings, "axiom_token", None)
+    if axiom_token:
+        from relaymd.axiom_logging import AxiomProcessor
+
+        processors.append(
+            AxiomProcessor(
+                axiom_token=axiom_token,
+                dataset=settings.axiom_dataset,
+            )
+        )
+
+    processors.append(renderer)
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            renderer,
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(_log_level(settings)),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,

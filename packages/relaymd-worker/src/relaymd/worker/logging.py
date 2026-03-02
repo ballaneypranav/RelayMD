@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 import orjson
 import structlog
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CONFIGURED = False
@@ -15,6 +16,22 @@ class LoggingSettings(BaseSettings):
     relaymd_env: Literal["development", "production"] = "production"
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
+    axiom_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "axiom_token",
+            "AXIOM_TOKEN",
+            "RELAYMD_AXIOM_TOKEN",
+        ),
+    )
+    axiom_dataset: str = Field(
+        default="relaymd",
+        validation_alias=AliasChoices(
+            "axiom_dataset",
+            "AXIOM_DATASET",
+            "RELAYMD_AXIOM_DATASET",
+        ),
+    )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -45,15 +62,29 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
     else:
         renderer = structlog.processors.JSONRenderer(serializer=_orjson_dumps)
 
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+
+    axiom_token = getattr(active_settings, "axiom_token", None)
+    if axiom_token:
+        from relaymd.axiom_logging import AxiomProcessor
+
+        processors.append(
+            AxiomProcessor(
+                axiom_token=axiom_token,
+                dataset=active_settings.axiom_dataset,
+            )
+        )
+
+    processors.append(renderer)
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            renderer,
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(_log_level(active_settings)),
         logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,
