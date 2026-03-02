@@ -1,13 +1,16 @@
 name: Build Worker
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Build Base Image"]
+    types:
+      - completed
   push:
     branches: [main]
     paths:
       - 'packages/**'
       - 'scripts/sync_workspace.sh'
       - 'Dockerfile'
-      - 'Dockerfile.base'
       - '.github/workflows/build-worker.yml'
 jobs:
   build-and-push:
