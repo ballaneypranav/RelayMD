@@ -16,7 +16,7 @@ from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
-from relaymd.orchestrator.slurm import submit_slurm_job
+from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
 
 @asynccontextmanager
@@ -225,10 +225,65 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         sbatch_submit_timeout_seconds=0.01,
     )
 
-    with pytest.raises(RuntimeError, match="timed out"):
+    with pytest.raises(SlurmSubmissionError, match="timed out") as exc_info:
         await submit_slurm_job(cluster, settings)
 
+    assert exc_info.value.stage == "timeout"
+    assert exc_info.value.cluster_name == "gilbreth"
+    assert exc_info.value.submission_target == "test-user@test-host:22"
+
     assert kill_called["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_nonzero_exit_exposes_submission_context(monkeypatch) -> None:
+    class FakeProcess:
+        returncode = 1
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            _ = input
+            return b"", b"sbatch: error: QOSMinGRES"
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=2,
+        sif_path="/shared/relaymd.sif",
+        qos="standby",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+    )
+
+    with pytest.raises(SlurmSubmissionError) as exc_info:
+        await submit_slurm_job(cluster, settings)
+
+    exc = exc_info.value
+    assert exc.stage == "nonzero_exit"
+    assert exc.cluster_name == "gilbreth"
+    assert exc.partition == "gpu"
+    assert exc.account == "lab-account"
+    assert exc.qos == "standby"
+    assert exc.submission_target == "test-user@test-host:22"
+    assert exc.return_code == 1
+    assert exc.stderr == "sbatch: error: QOSMinGRES"
 
 
 @pytest.mark.asyncio
@@ -488,3 +543,96 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
         "--noheader",
         "--format=%i",
     ]
+
+
+@pytest.mark.asyncio
+async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters(
+    monkeypatch,
+) -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="gilbreth",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="gilbreth-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+                max_pending_jobs=3,
+            ),
+            ClusterConfig(
+                name="anvil",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="anvil-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+                max_pending_jobs=3,
+            ),
+        ],
+    )
+
+    async def fake_submit(cluster: ClusterConfig, _settings: OrchestratorSettings) -> str:
+        if cluster.name == "gilbreth":
+            raise SlurmSubmissionError(
+                "sbatch submission failed: rc=1, stderr=sbatch: error: QOSMinGRES",
+                stage="nonzero_exit",
+                cluster_name=cluster.name,
+                partition=cluster.partition,
+                account=cluster.account,
+                qos=cluster.qos,
+                gres=cluster.slurm_gres,
+                nodes=cluster.nodes,
+                ntasks=cluster.ntasks,
+                wall_time=cluster.wall_time,
+                memory=cluster.memory,
+                memory_per_gpu=cluster.memory_per_gpu,
+                ssh_host=cluster.ssh_host,
+                ssh_username=cluster.ssh_username,
+                ssh_port=cluster.ssh_port,
+                ssh_key_file=cluster.ssh_key_file,
+                command=["ssh", "test-user@gilbreth-host", "sbatch", "--parsable"],
+                timeout_seconds=60.0,
+                return_code=1,
+                stdout="",
+                stderr="sbatch: error: QOSMinGRES",
+            )
+        return "77777"
+
+    monkeypatch.setattr("relaymd.orchestrator.scheduler.submit_slurm_job", fake_submit)
+
+    error_log = patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.error")
+    with error_log as error_mock:
+        async with app_client(settings):
+            async with get_sessionmaker()() as session:
+                session.add(
+                    Job(
+                        title="queued-job",
+                        input_bundle_path="jobs/1/input/bundle.tar.gz",
+                        status=JobStatus.queued,
+                    )
+                )
+                await session.commit()
+
+            submitted_count = await submit_pending_slurm_jobs(settings)
+
+            async with get_sessionmaker()() as session:
+                workers = (await session.exec(select(Worker))).all()
+
+    assert submitted_count == 1
+    assert len(workers) == 1
+    assert workers[0].provider_id == "anvil:77777"
+    error_mock.assert_called_once()
+    _, kwargs = error_mock.call_args
+    assert kwargs["cluster_name"] == "gilbreth"
+    assert kwargs["submission_target"] == "test-user@gilbreth-host:22"
+    assert kwargs["stderr"] == "sbatch: error: QOSMinGRES"
+    assert kwargs["stage"] == "nonzero_exit"

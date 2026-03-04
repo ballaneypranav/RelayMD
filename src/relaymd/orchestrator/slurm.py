@@ -9,6 +9,118 @@ from jinja2 import Environment, PackageLoader
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 
 
+class SlurmSubmissionError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        stage: str,
+        cluster_name: str,
+        partition: str,
+        account: str,
+        qos: str | None,
+        gres: str,
+        nodes: int,
+        ntasks: int,
+        wall_time: str,
+        memory: str | None,
+        memory_per_gpu: str | None,
+        ssh_host: str,
+        ssh_username: str,
+        ssh_port: int,
+        ssh_key_file: str | None,
+        command: list[str],
+        timeout_seconds: float,
+        return_code: int | None,
+        stdout: str | None,
+        stderr: str | None,
+    ) -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.cluster_name = cluster_name
+        self.partition = partition
+        self.account = account
+        self.qos = qos
+        self.gres = gres
+        self.nodes = nodes
+        self.ntasks = ntasks
+        self.wall_time = wall_time
+        self.memory = memory
+        self.memory_per_gpu = memory_per_gpu
+        self.ssh_host = ssh_host
+        self.ssh_username = ssh_username
+        self.ssh_port = ssh_port
+        self.ssh_key_file = ssh_key_file
+        self.command = command
+        self.timeout_seconds = timeout_seconds
+        self.return_code = return_code
+        self.stdout = stdout
+        self.stderr = stderr
+
+    @property
+    def submission_target(self) -> str:
+        return f"{self.ssh_username}@{self.ssh_host}:{self.ssh_port}"
+
+    def to_log_fields(self) -> dict[str, object]:
+        return {
+            "stage": self.stage,
+            "cluster_name": self.cluster_name,
+            "partition": self.partition,
+            "account": self.account,
+            "qos": self.qos,
+            "gres": self.gres,
+            "nodes": self.nodes,
+            "ntasks": self.ntasks,
+            "wall_time": self.wall_time,
+            "memory": self.memory,
+            "memory_per_gpu": self.memory_per_gpu,
+            "ssh_host": self.ssh_host,
+            "ssh_username": self.ssh_username,
+            "ssh_port": self.ssh_port,
+            "ssh_key_file": self.ssh_key_file,
+            "submission_target": self.submission_target,
+            "command": self.command,
+            "timeout_seconds": self.timeout_seconds,
+            "return_code": self.return_code,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+        }
+
+
+def _build_submission_context(
+    cluster: ClusterConfig,
+    *,
+    command: list[str],
+    timeout_seconds: float,
+    return_code: int | None = None,
+    stdout: str | None = None,
+    stderr: str | None = None,
+    stage: str,
+) -> dict[str, object]:
+    return {
+        "stage": stage,
+        "cluster_name": cluster.name,
+        "partition": cluster.partition,
+        "account": cluster.account,
+        "qos": cluster.qos,
+        "gres": cluster.slurm_gres,
+        "nodes": cluster.nodes,
+        "ntasks": cluster.ntasks,
+        "wall_time": cluster.wall_time,
+        "memory": cluster.memory,
+        "memory_per_gpu": cluster.memory_per_gpu,
+        "ssh_host": cluster.ssh_host,
+        "ssh_username": cluster.ssh_username,
+        "ssh_port": cluster.ssh_port,
+        "ssh_key_file": cluster.ssh_key_file,
+        "command": command,
+        "timeout_seconds": timeout_seconds,
+        "return_code": return_code,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 def _shell_single_quote(value: str) -> str:
     # Always return a single-quoted shell literal.
     return "'" + value.replace("'", "'\"'\"'") + "'"
@@ -106,17 +218,42 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
             process.kill()
         with suppress(Exception):  # noqa: BLE001
             await asyncio.wait_for(process.communicate(), timeout=1.0)
-        raise RuntimeError(
-            f"sbatch submission timed out after {settings.sbatch_submit_timeout_seconds:.1f}s"
+        raise SlurmSubmissionError(
+            f"sbatch submission timed out after {settings.sbatch_submit_timeout_seconds:.1f}s",
+            **_build_submission_context(
+                cluster,
+                command=command,
+                timeout_seconds=settings.sbatch_submit_timeout_seconds,
+                stage="timeout",
+            ),
         ) from exc
     if process.returncode != 0:
+        stdout_text = stdout.decode("utf-8", errors="replace").strip()
         stderr_text = stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(
-            f"sbatch submission failed: rc={process.returncode}, stderr={stderr_text}"
+        raise SlurmSubmissionError(
+            f"sbatch submission failed: rc={process.returncode}, stderr={stderr_text}",
+            **_build_submission_context(
+                cluster,
+                command=command,
+                timeout_seconds=settings.sbatch_submit_timeout_seconds,
+                return_code=process.returncode,
+                stdout=stdout_text,
+                stderr=stderr_text,
+                stage="nonzero_exit",
+            ),
         )
 
     output = stdout.decode("utf-8", errors="replace").strip()
     if not output:
-        raise RuntimeError("sbatch --parsable returned empty output")
+        raise SlurmSubmissionError(
+            "sbatch --parsable returned empty output",
+            **_build_submission_context(
+                cluster,
+                command=command,
+                timeout_seconds=settings.sbatch_submit_timeout_seconds,
+                return_code=process.returncode,
+                stage="empty_output",
+            ),
+        )
 
     return output.split(";", 1)[0]

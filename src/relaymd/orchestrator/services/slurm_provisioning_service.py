@@ -13,11 +13,31 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
-from relaymd.orchestrator.slurm import submit_slurm_job
+from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
 logger = structlog.get_logger(__name__)
 
 SubmitSlurmJobFn = Callable[[ClusterConfig, OrchestratorSettings], Awaitable[str]]
+
+
+def _cluster_submission_log_fields(cluster: ClusterConfig) -> dict[str, object]:
+    return {
+        "cluster_name": cluster.name,
+        "partition": cluster.partition,
+        "account": cluster.account,
+        "qos": cluster.qos,
+        "gres": cluster.slurm_gres,
+        "nodes": cluster.nodes,
+        "ntasks": cluster.ntasks,
+        "wall_time": cluster.wall_time,
+        "memory": cluster.memory,
+        "memory_per_gpu": cluster.memory_per_gpu,
+        "ssh_host": cluster.ssh_host,
+        "ssh_username": cluster.ssh_username,
+        "ssh_port": cluster.ssh_port,
+        "ssh_key_file": cluster.ssh_key_file,
+        "submission_target": f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+    }
 
 
 def slurm_provider_id(cluster_name: str, slurm_job_id: str) -> str:
@@ -269,7 +289,22 @@ async def submit_pending_slurm_jobs(
             submit_job=submit_job,
         )
         for cluster in settings.slurm_cluster_configs:
-            submitted = await service.submit_cluster_if_needed(cluster=cluster)
+            try:
+                submitted = await service.submit_cluster_if_needed(cluster=cluster)
+            except SlurmSubmissionError as exc:
+                logger.error(
+                    "slurm_cluster_submission_failed",
+                    error=str(exc),
+                    **exc.to_log_fields(),
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "slurm_cluster_submission_unexpected_error",
+                    error=str(exc),
+                    **_cluster_submission_log_fields(cluster),
+                )
+                continue
             if submitted:
                 submissions += 1
 
