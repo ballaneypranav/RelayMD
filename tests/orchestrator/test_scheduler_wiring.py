@@ -36,9 +36,13 @@ def test_build_background_scheduler_registers_expected_jobs(monkeypatch) -> None
     class FakeScheduler:
         def __init__(self) -> None:
             self.jobs: list[tuple[object, dict[str, object]]] = []
+            self.listeners: list[tuple[object, object]] = []
 
         def add_job(self, func: object, **kwargs) -> None:
             self.jobs.append((func, kwargs))
+
+        def add_listener(self, callback: object, mask: object) -> None:
+            self.listeners.append((callback, mask))
 
     monkeypatch.setattr(background_scheduler, "AsyncIOScheduler", FakeScheduler)
     settings = _settings(
@@ -61,6 +65,9 @@ def test_build_background_scheduler_registers_expected_jobs(monkeypatch) -> None
     assert "args" not in built.jobs[1][1]
     assert built.jobs[2][0] is background_scheduler.sbatch_submission_job
     assert built.jobs[2][1]["args"] == [settings]
+    assert len(built.listeners) == 1
+    assert built.listeners[0][0] is background_scheduler._log_scheduler_job_error
+    assert built.listeners[0][1] == background_scheduler.EVENT_JOB_ERROR
 
 
 @pytest.mark.asyncio
@@ -264,3 +271,17 @@ async def test_sbatch_submission_job_runs_pending_submission(monkeypatch) -> Non
     await scheduler.sbatch_submission_job(settings)
 
     submit.assert_awaited_once_with(settings)
+
+
+@pytest.mark.asyncio
+async def test_sbatch_submission_job_logs_submit_failures(monkeypatch) -> None:
+    submit = AsyncMock(side_effect=RuntimeError("sbatch failed"))
+    exception = Mock()
+    monkeypatch.setattr(scheduler, "submit_pending_slurm_jobs", submit)
+    monkeypatch.setattr(scheduler.LOG, "exception", exception)
+    settings = _settings()
+
+    await scheduler.sbatch_submission_job(settings)
+
+    submit.assert_awaited_once_with(settings)
+    exception.assert_called_once_with("sbatch_submission_failed")

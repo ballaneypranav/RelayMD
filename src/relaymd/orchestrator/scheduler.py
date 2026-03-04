@@ -82,4 +82,7 @@ async def sbatch_submission_job(settings: OrchestratorSettings) -> None:
         await reap_dead_slurm_placeholders(settings)
     except Exception:  # noqa: BLE001
         LOG.warning("dead_slurm_placeholder_reap_failed", exc_info=True)
-    await submit_pending_slurm_jobs(settings)
+    try:
+        await submit_pending_slurm_jobs(settings)
+    except Exception:  # noqa: BLE001
+        LOG.exception("sbatch_submission_failed")

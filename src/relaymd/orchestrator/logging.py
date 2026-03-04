@@ -10,6 +10,33 @@ import structlog
 _CONFIGURED = False
 
 
+class _BrokenPipeSafePrintLogger:
+    def __init__(self, file) -> None:
+        self._logger = structlog.PrintLogger(file=file)
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._logger, name)
+        if not callable(attr):
+            return attr
+
+        def _safe(*args, **kwargs):
+            try:
+                return attr(*args, **kwargs)
+            except BrokenPipeError:
+                return None
+
+        return _safe
+
+
+class _BrokenPipeSafePrintLoggerFactory:
+    def __init__(self, file) -> None:
+        self._file = file
+
+    def __call__(self, *args: Any) -> _BrokenPipeSafePrintLogger:
+        _ = args
+        return _BrokenPipeSafePrintLogger(file=self._file)
+
+
 class _LoggingSettingsProtocol(Protocol):
     @property
     def relaymd_env(self) -> str: ...
@@ -79,7 +106,7 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(_log_level(settings)),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        logger_factory=_BrokenPipeSafePrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,
     )
     _CONFIGURED = True
