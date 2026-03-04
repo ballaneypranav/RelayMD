@@ -90,23 +90,26 @@ class AxiomSenderThread(threading.Thread):
 
 
 _AXIOM_THREAD: AxiomSenderThread | None = None
+_AXIOM_THREAD_LOCK = threading.Lock()
 
 
 def get_axiom_thread(axiom_token: str, dataset: str) -> AxiomSenderThread:
     global _AXIOM_THREAD
-    if _AXIOM_THREAD is None or not _AXIOM_THREAD.is_alive():
-        _AXIOM_THREAD = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
-        _AXIOM_THREAD.start()
-        atexit.register(_cleanup_axiom_thread)
-    return _AXIOM_THREAD
+    with _AXIOM_THREAD_LOCK:
+        if _AXIOM_THREAD is None or not _AXIOM_THREAD.is_alive():
+            _AXIOM_THREAD = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
+            _AXIOM_THREAD.start()
+            atexit.register(_cleanup_axiom_thread)
+        return _AXIOM_THREAD
 
 
 def _cleanup_axiom_thread() -> None:
     global _AXIOM_THREAD
-    if _AXIOM_THREAD is not None:
-        _AXIOM_THREAD.stop()
-        _AXIOM_THREAD.join(timeout=2.0)
-        _AXIOM_THREAD = None
+    with _AXIOM_THREAD_LOCK:
+        if _AXIOM_THREAD is not None:
+            _AXIOM_THREAD.stop()
+            _AXIOM_THREAD.join(timeout=2.0)
+            _AXIOM_THREAD = None
 
 
 class AxiomProcessor:

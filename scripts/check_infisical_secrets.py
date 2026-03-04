@@ -54,9 +54,6 @@ def main() -> int:
             environment=INFISICAL_ENVIRONMENT,
             secret_path=INFISICAL_SECRET_PATH,
         )
-        secret_values = manager.fetch_mapped_secrets(
-            required={name: name for name in EXPECTED_SECRETS}
-        )
     except Exception as exc:  # noqa: BLE001
         print(
             "Infisical auth failed. Check INFISICAL_CLIENT_ID and "
@@ -67,6 +64,9 @@ def main() -> int:
         raise SystemExit(1) from exc
 
     try:
+        secret_values = manager.fetch_mapped_secrets(
+            required={name: name for name in EXPECTED_SECRETS}
+        )
         for name in EXPECTED_SECRETS:
             secret_value = secret_values[name]
             if not secret_value:

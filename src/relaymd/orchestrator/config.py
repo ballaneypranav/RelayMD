@@ -273,15 +273,7 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
     return ClientSettings, InfisicalClient, GetSecretOptions
 
 
-def _needs_infisical_secret_hydration(settings: OrchestratorSettings) -> bool:
-    _ = settings
-    return True
-
-
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
-    if not _needs_infisical_secret_hydration(settings):
-        return settings
-
     has_slurm = len(settings.slurm_cluster_configs) > 0
     has_salad = bool(
         settings.salad_api_key

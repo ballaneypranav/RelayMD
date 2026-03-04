@@ -70,8 +70,8 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    axiom_token = active_settings.axiom_token
-    if axiom_token.strip():
+    axiom_token = active_settings.axiom_token.strip()
+    if axiom_token:
         from relaymd.axiom_logging import AxiomProcessor
 
         processors.append(

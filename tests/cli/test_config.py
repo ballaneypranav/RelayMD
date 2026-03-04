@@ -50,7 +50,7 @@ def test_relaymd_cli_timeout_alias_env(monkeypatch) -> None:
     assert settings.orchestrator_timeout_seconds == 45
 
 
-def test_b2_env_aliases_override_yaml_values(monkeypatch, tmp_path) -> None:
+def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
     (cwd_dir / "relaymd-config.yaml").write_text(
@@ -196,7 +196,7 @@ def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> No
     ]
 
 
-def test_load_settings_env_values_win_over_infisical(monkeypatch) -> None:
+def test_load_settings_infisical_values_win_over_env(monkeypatch) -> None:
     monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-relay-token")
