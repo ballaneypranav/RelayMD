@@ -114,8 +114,8 @@ class WorkerRuntimeSettings(BaseSettings):
             "RELAYMD_WORKER_IDLE_POLL_MAX_SECONDS",
         ),
     )
-    axiom_token: str | None = Field(
-        default=None,
+    axiom_token: str = Field(
+        default="",
         validation_alias=AliasChoices(
             "axiom_token",
             "AXIOM_TOKEN",

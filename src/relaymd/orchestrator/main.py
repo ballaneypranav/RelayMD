@@ -207,10 +207,11 @@ def _check_for_warnings(settings: OrchestratorSettings) -> list[str]:
         if has_slurm or has_salad:
             warn_msg = (
                 "INFISICAL_TOKEN is missing. Automatic worker provisioning "
-                "(SLURM/Salad) is disabled. Provide a token to enable background provisioning."
+                "(SLURM/Salad) requires an Infisical token. Terminating."
             )
-            LOG.warning("missing_infisical_token", message=warn_msg)
-            warnings.append(warn_msg)
+            LOG.error("missing_infisical_token", message=warn_msg)
+            print(f"\nFATAL: {warn_msg}\n", file=sys.stderr)
+            sys.exit(1)
     return warnings
 
 
@@ -299,14 +300,11 @@ def create_app(
     return app
 
 
-app = create_app()
-
-
 def start() -> None:
     if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
         uvicorn.main(
-            args=["relaymd.orchestrator.main:app", *sys.argv[1:]],
+            args=["relaymd.orchestrator.main:create_app", "--factory", *sys.argv[1:]],
             prog_name="relaymd-orchestrator",
         )
         return
-    uvicorn.run("relaymd.orchestrator.main:app", host="0.0.0.0", port=8000)
+    uvicorn.run("relaymd.orchestrator.main:create_app", factory=True, host="0.0.0.0", port=8000)

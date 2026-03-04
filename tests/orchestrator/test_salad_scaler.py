@@ -23,8 +23,10 @@ async def app_with_db(settings: OrchestratorSettings):
 
 def _salad_settings() -> OrchestratorSettings:
     return OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
+        infisical_token="test:fake",
         salad_api_key="salad-key",
         salad_org="org",
         salad_project="project",
@@ -96,6 +98,7 @@ async def test_scale_down_to_zero_when_queue_is_empty() -> None:
 @pytest.mark.asyncio
 async def test_skips_salad_api_when_api_key_unset() -> None:
     settings = OrchestratorSettings(
+        axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         salad_api_key=None,

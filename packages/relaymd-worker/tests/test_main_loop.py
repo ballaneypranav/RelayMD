@@ -58,6 +58,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
     )
     runtime_settings = WorkerRuntimeSettings(
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
@@ -88,6 +89,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     )
 
     runtime_settings = WorkerRuntimeSettings(
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="runtime-token",
     )
@@ -95,6 +97,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     assert captured["cf_bearer_token"] == "runtime-token"
 
     runtime_settings = WorkerRuntimeSettings(
+        axiom_token="test",
         cf_worker_url="https://cf.example",
         cf_bearer_token="",
     )
@@ -140,6 +143,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            axiom_token="test",
         ),
     )
 
@@ -275,6 +279,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            axiom_token="test",
         ),
     )
 
@@ -668,6 +673,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=25,
+        axiom_token="test",
     )
     monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
 
@@ -779,6 +785,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=600,
+        axiom_token="test",
     )
     monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
 

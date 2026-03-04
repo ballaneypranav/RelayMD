@@ -56,8 +56,12 @@ dev = [
     "pyright",
     "pyinstaller",
     "openapi-python-client",
+    "pytest-env",
     "mkdocs-material",
 ]
+
+[tool.pytest_env]
+AXIOM_TOKEN = "test-token"
 
 [tool.ruff]
 line-length = 100

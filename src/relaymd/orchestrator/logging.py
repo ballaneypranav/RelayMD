@@ -21,14 +21,14 @@ class _LoggingSettingsProtocol(Protocol):
     def relaymd_log_format(self) -> str: ...
 
     @property
-    def axiom_token(self) -> str | None: ...
+    def axiom_token(self) -> str: ...
 
     @property
     def axiom_dataset(self) -> str: ...
 
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
-    return orjson.dumps(event_dict).decode("utf-8")
+    return orjson.dumps(event_dict, default=str).decode("utf-8")
 
 
 def _log_level(settings: _LoggingSettingsProtocol) -> int:
@@ -59,16 +59,20 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    axiom_token = getattr(settings, "axiom_token", None)
-    if axiom_token:
-        from relaymd.axiom_logging import AxiomProcessor
-
-        processors.append(
-            AxiomProcessor(
-                axiom_token=axiom_token,
-                dataset=settings.axiom_dataset,
-            )
+    axiom_token = settings.axiom_token
+    if not axiom_token.strip():
+        raise RuntimeError(
+            "AXIOM_TOKEN is required but missing or empty. "
+            "Ensure it is set via AXIOM_TOKEN env var or Infisical."
         )
+    from relaymd.axiom_logging import AxiomProcessor
+
+    processors.append(
+        AxiomProcessor(
+            axiom_token=axiom_token,
+            dataset=settings.axiom_dataset,
+        )
+    )
 
     processors.append(renderer)
 

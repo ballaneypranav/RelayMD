@@ -5,12 +5,12 @@
 # Path to the SQLite database file. Use an absolute path on a stable filesystem.
 database_url: sqlite+aiosqlite:////home/USER/relaymd/relaymd.db
 
-# API token that workers and the CLI use to authenticate with the orchestrator.
-# Can also be set via RELAYMD_API_TOKEN env var to keep it out of the file.
-api_token: change-me
+# API token is sourced from Infisical at runtime.
+# Do not set local overrides; provide only INFISICAL_TOKEN.
+# api_token: ""
 
 # Infisical bootstrap token injected into sbatch scripts for workers.
-# Prefer setting this via INFISICAL_TOKEN env var.
+# This is the only secret expected from environment/config input.
 infisical_token: ""
 
 # Tailscale settings for the orchestrator.
@@ -20,12 +20,10 @@ infisical_token: ""
 # current IP via DNS instead of a hardcoded address.
 # tailscale_hostname: relaymd-orchestrator  # default; override via RELAYMD_TAILSCALE_HOSTNAME
 # tailscale_socket: ~/.tailscale/tailscaled.sock  # default; set via RELAYMD_TAILSCALE_SOCKET
-# tailscale_auth_key: ""  # set via TAILSCALE_AUTH_KEY or RELAYMD_TAILSCALE_AUTH_KEY
+# tailscale_auth_key: ""  # sourced from Infisical
 
-# Optional registry auth for Apptainer docker:// pulls (e.g. private GHCR).
-# Can also be sourced from Infisical path /RelayMD as:
-# - APPTAINER_DOCKER_USERNAME
-# - APPTAINER_DOCKER_PASSWORD
+# Registry credentials are not injected via the SLURM template.
+# Prefer cluster-native auth or prebuilt/public images for docker:// pulls.
 apptainer_docker_username: ""
 apptainer_docker_password: ""
 

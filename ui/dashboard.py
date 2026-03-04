@@ -85,7 +85,7 @@ def _load_cli_config_values() -> tuple[str, str]:
     except Exception:  # pragma: no cover - defensive fallback on config loading failures
         return DEFAULT_ORCHESTRATOR_URL, ""
 
-    api_token = "" if settings.api_token == "change-me" else settings.api_token
+    api_token = settings.api_token
     return settings.orchestrator_url.rstrip("/"), api_token
 
 

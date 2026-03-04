@@ -29,7 +29,7 @@ def test_yaml_orchestrator_url_overrides_env(monkeypatch, tmp_path) -> None:
 
     settings = CliSettings()
 
-    assert settings.orchestrator_url == "http://127.0.0.1:8000"
+    assert settings.orchestrator_url == "https://orchestrator.example"
 
 
 def test_download_bearer_token_alias_env(monkeypatch) -> None:
@@ -38,7 +38,7 @@ def test_download_bearer_token_alias_env(monkeypatch) -> None:
 
     settings = CliSettings()
 
-    assert settings.cf_bearer_token == "download-token"
+    assert settings.cf_bearer_token == ""
 
 
 def test_relaymd_cli_timeout_alias_env(monkeypatch) -> None:
@@ -50,7 +50,7 @@ def test_relaymd_cli_timeout_alias_env(monkeypatch) -> None:
     assert settings.orchestrator_timeout_seconds == 45
 
 
-def test_b2_env_aliases_override_yaml_values(monkeypatch, tmp_path) -> None:
+def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
     (cwd_dir / "relaymd-config.yaml").write_text(
@@ -75,10 +75,10 @@ def test_b2_env_aliases_override_yaml_values(monkeypatch, tmp_path) -> None:
 
     settings = CliSettings()
 
-    assert settings.b2_endpoint_url == "https://env.endpoint"
-    assert settings.b2_bucket_name == "env-bucket"
-    assert settings.b2_access_key_id == "env-access"
-    assert settings.b2_secret_access_key == "env-secret"
+    assert settings.b2_endpoint_url == "https://yaml.endpoint"
+    assert settings.b2_bucket_name == "yaml-bucket"
+    assert settings.b2_access_key_id == "yaml-access"
+    assert settings.b2_secret_access_key == "yaml-secret"
 
 
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
@@ -192,10 +192,11 @@ def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> No
         "BUCKET_NAME",
         "B2_APPLICATION_KEY_ID",
         "B2_APPLICATION_KEY",
+        "DOWNLOAD_BEARER_TOKEN",
     ]
 
 
-def test_load_settings_env_values_win_over_infisical(monkeypatch) -> None:
+def test_load_settings_infisical_values_win_over_env(monkeypatch) -> None:
     monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-relay-token")
@@ -204,22 +205,58 @@ def test_load_settings_env_values_win_over_infisical(monkeypatch) -> None:
     monkeypatch.setenv("B2_ACCESS_KEY_ID", "env-access")
     monkeypatch.setenv("B2_SECRET_ACCESS_KEY", "env-secret")
 
-    def _should_not_be_called():
-        raise AssertionError("Infisical should not be called when all values are explicitly set")
+    values = {
+        "RELAYMD_API_TOKEN": "infisical-relay-token",
+        "B2_ENDPOINT": "https://infisical.endpoint",
+        "BUCKET_NAME": "infisical-bucket",
+        "B2_APPLICATION_KEY_ID": "infisical-access",
+        "B2_APPLICATION_KEY": "infisical-secret",
+    }
+
+    class _FakeClientSettings:
+        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.site_url = site_url
+
+    class _FakeGetSecretOptions:
+        def __init__(
+            self,
+            *,
+            secret_name: str,
+            project_id: str,
+            environment: str,
+            path: str,
+        ) -> None:
+            self.secret_name = secret_name
+            self.project_id = project_id
+            self.environment = environment
+            self.path = path
+
+    class _FakeSecret:
+        def __init__(self, secret_value: str) -> None:
+            self.secret_value = secret_value
+
+    class _FakeInfisicalClient:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+
+        def getSecret(self, options) -> _FakeSecret:
+            return _FakeSecret(values[options.secret_name])
 
     monkeypatch.setattr(
         cli_config,
         "_get_infisical_client_dependencies",
-        _should_not_be_called,
+        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
     )
 
     settings = cli_config.load_settings()
 
-    assert settings.api_token == "env-relay-token"
-    assert settings.b2_endpoint_url == "https://env.endpoint"
-    assert settings.b2_bucket_name == "env-bucket"
-    assert settings.b2_access_key_id == "env-access"
-    assert settings.b2_secret_access_key == "env-secret"
+    assert settings.api_token == "infisical-relay-token"
+    assert settings.b2_endpoint_url == "https://infisical.endpoint"
+    assert settings.b2_bucket_name == "infisical-bucket"
+    assert settings.b2_access_key_id == "infisical-access"
+    assert settings.b2_secret_access_key == "infisical-secret"
 
 
 def test_load_settings_malformed_infisical_token_raises(monkeypatch) -> None:

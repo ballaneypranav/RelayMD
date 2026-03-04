@@ -28,7 +28,7 @@ fi
 export PATH="$ROOT_DIR/.venv/bin:$PATH"
 
 PYTHONPATH="$ROOT_DIR/src:$ROOT_DIR/packages/relaymd-core/src${PYTHONPATH:+:$PYTHONPATH}" \
-  "$VENV_PYTHON" -c "import json; from pathlib import Path; from relaymd.orchestrator.main import create_app; Path('$SCHEMA_PATH').write_text(json.dumps(create_app(start_background_tasks=False).openapi(), indent=2), encoding='utf-8')"
+  "$VENV_PYTHON" -c "import json; from pathlib import Path; from relaymd.orchestrator.config import OrchestratorSettings; from relaymd.orchestrator.main import create_app; settings = OrchestratorSettings(api_token='schema-export-token', axiom_token='schema-export-token'); app = create_app(settings=settings, start_background_tasks=False); Path('$SCHEMA_PATH').write_text(json.dumps(app.openapi(), indent=2), encoding='utf-8')"
 
 rm -rf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR"

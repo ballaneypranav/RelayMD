@@ -41,7 +41,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
     monkeypatch.delenv("RELAYMD_INFISICAL_TOKEN", raising=False)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
     assert settings.api_token == "yaml-token"
@@ -74,7 +74,7 @@ def test_missing_yaml_path_is_non_fatal(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:///./relaymd.db"
 
@@ -85,9 +85,9 @@ def test_env_secret_overrides_yaml_value(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-token")
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
-    assert settings.api_token == "env-token"
+    assert settings.api_token == "yaml-token"
 
 
 def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
@@ -97,9 +97,9 @@ def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.setenv("API_TOKEN", "env-token")
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
-    assert settings.api_token == "env-token"
+    assert settings.api_token == ""
 
 
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
@@ -116,7 +116,7 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(orchestrator_config, "DEFAULT_RELAYMD_CONFIG_PATH", str(home_config))
     monkeypatch.chdir(cwd_dir)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "cwd-token"
 
@@ -134,7 +134,7 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.chdir(cwd_dir)
 
-    settings = OrchestratorSettings()
+    settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "explicit-token"
 
@@ -228,6 +228,11 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
         encoding="utf-8",
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+    monkeypatch.delenv("AXIOM_TOKEN", raising=False)
+    monkeypatch.delenv("RELAYMD_AXIOM_TOKEN", raising=False)
+    monkeypatch.delenv("TAILSCALE_AUTH_KEY", raising=False)
     monkeypatch.delenv("APPTAINER_DOCKER_USERNAME", raising=False)
     monkeypatch.delenv("SINGULARITY_DOCKER_USERNAME", raising=False)
     monkeypatch.delenv("GHCR_USERNAME", raising=False)
@@ -238,8 +243,7 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
 
     values = {
         "RELAYMD_API_TOKEN": "relaymd-token",
-        "APPTAINER_DOCKER_USERNAME": "gh-user",
-        "APPTAINER_DOCKER_PASSWORD": "gh-pass",
+        "AXIOM_TOKEN": "axiom-test-token",
         "TAILSCALE_AUTH_KEY": "tskey-auth-test",
     }
     secret_calls: list[str] = []
@@ -284,25 +288,26 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
 
     settings = orchestrator_config.load_settings()
 
-    assert settings.api_token == "yaml-token"
-    assert settings.apptainer_docker_username == "gh-user"
-    assert settings.apptainer_docker_password == "gh-pass"
+    assert settings.api_token == "relaymd-token"
+    assert settings.axiom_token == "axiom-test-token"
+    assert settings.apptainer_docker_username == ""
+    assert settings.apptainer_docker_password == ""
+    assert settings.tailscale_auth_key == "tskey-auth-test"
     assert secret_calls == [
         "RELAYMD_API_TOKEN",
-        "APPTAINER_DOCKER_USERNAME",
-        "APPTAINER_DOCKER_PASSWORD",
+        "AXIOM_TOKEN",
         "TAILSCALE_AUTH_KEY",
     ]
 
 
-def test_load_settings_skips_infisical_when_registry_credentials_not_needed(
-    monkeypatch, tmp_path
-) -> None:
+def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "\n".join(
             [
                 "api_token: yaml-token",
+                "axiom_token: yaml-axiom-token",
+                "tailscale_auth_key: tskey-sif-test",
                 "infisical_token: client-id:client-secret",
                 "slurm_cluster_configs:",
                 "  - name: gilbreth-a30",
@@ -318,18 +323,56 @@ def test_load_settings_skips_infisical_when_registry_credentials_not_needed(
         encoding="utf-8",
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
 
-    def _should_not_be_called():
-        raise AssertionError("Infisical should not be called for sif-backed clusters")
+    values = {
+        "RELAYMD_API_TOKEN": "relaymd-token",
+        "AXIOM_TOKEN": "axiom-token",
+        "TAILSCALE_AUTH_KEY": "tskey-infisical",
+    }
+
+    class _FakeClientSettings:
+        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.site_url = site_url
+
+    class _FakeGetSecretOptions:
+        def __init__(
+            self,
+            *,
+            secret_name: str,
+            project_id: str,
+            environment: str,
+            path: str,
+        ) -> None:
+            self.secret_name = secret_name
+            self.project_id = project_id
+            self.environment = environment
+            self.path = path
+
+    class _FakeSecret:
+        def __init__(self, secret_value: str) -> None:
+            self.secret_value = secret_value
+
+    class _FakeInfisicalClient:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+
+        def getSecret(self, options) -> _FakeSecret:
+            return _FakeSecret(values[options.secret_name])
 
     monkeypatch.setattr(
         orchestrator_config,
         "_get_infisical_client_dependencies",
-        _should_not_be_called,
+        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
     )
 
     settings = orchestrator_config.load_settings()
 
-    assert settings.api_token == "yaml-token"
+    assert settings.api_token == "relaymd-token"
+    assert settings.axiom_token == "axiom-token"
+    assert settings.tailscale_auth_key == "tskey-infisical"
     assert settings.apptainer_docker_username == ""
     assert settings.apptainer_docker_password == ""

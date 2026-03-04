@@ -6,13 +6,14 @@ from __future__ import annotations
 import os
 import sys
 
-from infisical_client import ClientSettings, InfisicalClient
-from infisical_client.schemas import GetSecretOptions
+from relaymd.secret_management import InfisicalSecretManager
 
 INFISICAL_BASE_URL = os.environ.get("INFISICAL_BASE_URL", "https://app.infisical.com")
 INFISICAL_ENVIRONMENT = os.environ.get("INFISICAL_ENVIRONMENT", "production")
 INFISICAL_SECRET_PATH = os.environ.get("INFISICAL_SECRET_PATH", "/RelayMD")
+DEFAULT_INFISICAL_PROJECT_ID = "dcf29082-7972-4bca-be58-363f6ad969c0"
 EXPECTED_SECRETS = [
+    "AXIOM_TOKEN",
     "B2_APPLICATION_KEY",
     "B2_APPLICATION_KEY_ID",
     "B2_ENDPOINT",
@@ -21,6 +22,13 @@ EXPECTED_SECRETS = [
     "RELAYMD_ORCHESTRATOR_URL",
     "TAILSCALE_AUTH_KEY",
 ]
+
+
+def _get_infisical_client_dependencies():
+    from infisical_client import ClientSettings, InfisicalClient
+    from infisical_client.schemas import GetSecretOptions
+
+    return ClientSettings, InfisicalClient, GetSecretOptions
 
 
 def get_required_env(name: str) -> str:
@@ -34,15 +42,17 @@ def get_required_env(name: str) -> str:
 def main() -> int:
     client_id = get_required_env("INFISICAL_CLIENT_ID")
     client_secret = get_required_env("INFISICAL_CLIENT_SECRET")
-    project_id = os.environ.get("INFISICAL_PROJECT_ID", "dcf29082-7972-4bca-be58-363f6ad969c0")
+    project_id = os.environ.get("INFISICAL_PROJECT_ID", DEFAULT_INFISICAL_PROJECT_ID)
+    machine_token = f"{client_id}:{client_secret}"
 
     try:
-        client = InfisicalClient(
-            settings=ClientSettings(
-                client_id=client_id,
-                client_secret=client_secret,
-                site_url=INFISICAL_BASE_URL,
-            )
+        manager = InfisicalSecretManager(
+            machine_token=machine_token,
+            dependency_loader=_get_infisical_client_dependencies,
+            base_url=INFISICAL_BASE_URL,
+            workspace_id=project_id,
+            environment=INFISICAL_ENVIRONMENT,
+            secret_path=INFISICAL_SECRET_PATH,
         )
     except Exception as exc:  # noqa: BLE001
         print(
@@ -54,15 +64,11 @@ def main() -> int:
         raise SystemExit(1) from exc
 
     try:
+        secret_values = manager.fetch_mapped_secrets(
+            required={name: name for name in EXPECTED_SECRETS}
+        )
         for name in EXPECTED_SECRETS:
-            secret_value = client.getSecret(
-                GetSecretOptions(
-                    secret_name=name,
-                    project_id=project_id,
-                    environment=INFISICAL_ENVIRONMENT,
-                    path=INFISICAL_SECRET_PATH,
-                )
-            ).secret_value
+            secret_value = secret_values[name]
             if not secret_value:
                 print(f"Secret {name} is empty", file=sys.stderr)
                 raise SystemExit(1)

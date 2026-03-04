@@ -29,7 +29,12 @@ def up(
         raise typer.Exit(code=1) from exc
 
     try:
-        uvicorn.run("relaymd.orchestrator.main:app", host=host, port=port)
+        uvicorn.run(
+            "relaymd.orchestrator.main:create_app",
+            host=host,
+            port=port,
+            factory=True,
+        )
     except ModuleNotFoundError as exc:
         if exc.name and exc.name.startswith("relaymd.orchestrator"):
             typer.echo(
