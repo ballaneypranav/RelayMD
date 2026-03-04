@@ -31,12 +31,29 @@ def relaymd_settings_sources(
 ) -> tuple[PydanticBaseSettingsSource, ...]:
     yaml_source = YamlConfigSettingsSource(settings_cls, yaml_file=config_paths)
     _drop_yaml_keys_with_env_overrides(yaml_source=yaml_source, env_override_map=env_override_map)
+    allowed_fields: set[str] = set(env_override_map.keys())
+    for env_keys in env_override_map.values():
+        allowed_fields.update(env_keys)
+    env_source = _FilteredEnvSettingsSource(
+        settings_cls,
+        allowed_fields=allowed_fields,
+    )
     return (
         init_settings,
         yaml_source,
-        EnvSettingsSource(settings_cls),
+        env_source,
         DefaultSettingsSource(settings_cls),
     )
+
+
+class _FilteredEnvSettingsSource(EnvSettingsSource):
+    def __init__(self, settings_cls: type[BaseSettings], allowed_fields: set[str]) -> None:
+        super().__init__(settings_cls)
+        self._allowed_fields = allowed_fields
+
+    def __call__(self) -> dict[str, object]:
+        values = super().__call__()
+        return {k: v for k, v in values.items() if k in self._allowed_fields}
 
 
 def _drop_yaml_keys_with_env_overrides(

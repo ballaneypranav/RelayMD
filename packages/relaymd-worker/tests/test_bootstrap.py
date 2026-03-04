@@ -43,6 +43,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bootstrap, "_wait_for_peer_reachable", Mock())
 
     values = {
+        "AXIOM_TOKEN": "axiom-token",
         "B2_APPLICATION_KEY_ID": "key-id",
         "B2_APPLICATION_KEY": "key-secret",
         "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",
@@ -77,7 +78,8 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.settings.client_id == "client-id"
     assert client.settings.client_secret == "client-secret"
     assert client.settings.site_url == "https://app.infisical.com"
-    assert [call[0] for call in client.calls] == [
+    assert set(call[0] for call in client.calls) == {
+        "AXIOM_TOKEN",
         "B2_APPLICATION_KEY_ID",
         "B2_APPLICATION_KEY",
         "B2_ENDPOINT",
@@ -86,7 +88,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "TAILSCALE_AUTH_KEY",
         "RELAYMD_API_TOKEN",
         "RELAYMD_ORCHESTRATOR_URL",
-    ]
+    }
     joined.assert_called_once_with("tskey-ephemeral", "worker-a")
 
 
@@ -99,6 +101,7 @@ def test_run_bootstrap_missing_optional_download_bearer_token_uses_empty_default
     monkeypatch.setattr(bootstrap, "_wait_for_peer_reachable", Mock())
 
     values = {
+        "AXIOM_TOKEN": "axiom-token",
         "B2_APPLICATION_KEY_ID": "key-id",
         "B2_APPLICATION_KEY": "key-secret",
         "B2_ENDPOINT": "https://s3.us-east-005.backblazeb2.com",

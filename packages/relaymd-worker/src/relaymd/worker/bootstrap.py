@@ -16,6 +16,7 @@ from infisical_client import ClientSettings, InfisicalClient
 from infisical_client.schemas import GetSecretOptions
 from pydantic import BaseModel
 
+from relaymd.secret_management import WorkerSecretManager
 from relaymd.worker.logging import get_logger
 
 INFISICAL_BASE_URL = "https://app.infisical.com"
@@ -397,6 +398,12 @@ def _parse_infisical_machine_token(raw_token: str | None) -> tuple[str, str]:
     return client_id, client_secret
 
 
+def _get_infisical_client_dependencies() -> tuple[
+    type[ClientSettings], type[InfisicalClient], type[GetSecretOptions]
+]:
+    return ClientSettings, InfisicalClient, GetSecretOptions
+
+
 def join_tailnet(auth_key: str, hostname: str) -> None:
     global _TAILSCALED_PROCESS
     global _TAILSCALE_RUNTIME_DIR_PATH
@@ -465,45 +472,38 @@ def join_tailnet(auth_key: str, hostname: str) -> None:
 
 def run_bootstrap() -> WorkerConfig:
     machine_token = os.getenv("INFISICAL_TOKEN")
-    client_id, client_secret = _parse_infisical_machine_token(machine_token)
+    if machine_token is None:
+        raise RuntimeError(
+            "INFISICAL_TOKEN is required and must be in the format <client_id>:<client_secret>"
+        )
+    _parse_infisical_machine_token(machine_token)
 
     try:
-        client = InfisicalClient(
-            settings=ClientSettings(
-                client_id=client_id,
-                client_secret=client_secret,
-                site_url=INFISICAL_BASE_URL,
-            )
+        secret_manager = WorkerSecretManager(
+            machine_token=machine_token,
+            dependency_loader=_get_infisical_client_dependencies,
+            base_url=INFISICAL_BASE_URL,
+            workspace_id=INFISICAL_WORKSPACE_ID,
+            environment=INFISICAL_ENVIRONMENT,
+            secret_path=INFISICAL_SECRET_PATH,
         )
+        secret_values = secret_manager.fetch_bootstrap_values()
 
-        def get(name: str) -> str:
-            return client.getSecret(
-                GetSecretOptions(
-                    secret_name=name,
-                    project_id=INFISICAL_WORKSPACE_ID,
-                    environment=INFISICAL_ENVIRONMENT,
-                    path=INFISICAL_SECRET_PATH,
-                )
-            ).secret_value
-
-        def get_optional(name: str) -> str:
-            try:
-                return get(name)
-            except Exception:  # noqa: BLE001
-                return ""
-
+        axiom_token = secret_values["axiom_token"]
         config = WorkerConfig(
-            b2_application_key_id=get("B2_APPLICATION_KEY_ID"),
-            b2_application_key=get("B2_APPLICATION_KEY"),
-            b2_endpoint=get("B2_ENDPOINT"),
-            bucket_name=get("BUCKET_NAME"),
-            download_bearer_token=get_optional("DOWNLOAD_BEARER_TOKEN"),
-            tailscale_auth_key=get("TAILSCALE_AUTH_KEY"),
-            relaymd_api_token=get("RELAYMD_API_TOKEN"),
-            relaymd_orchestrator_url=get("RELAYMD_ORCHESTRATOR_URL"),
+            b2_application_key_id=secret_values["b2_application_key_id"],
+            b2_application_key=secret_values["b2_application_key"],
+            b2_endpoint=secret_values["b2_endpoint"],
+            bucket_name=secret_values["bucket_name"],
+            download_bearer_token=secret_values.get("download_bearer_token", ""),
+            tailscale_auth_key=secret_values["tailscale_auth_key"],
+            relaymd_api_token=secret_values["relaymd_api_token"],
+            relaymd_orchestrator_url=secret_values["relaymd_orchestrator_url"],
         )
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to bootstrap worker from Infisical") from exc
+
+    os.environ.setdefault("AXIOM_TOKEN", axiom_token)
 
     hostname = os.getenv("HOSTNAME", "relaymd-worker")
     join_tailnet(config.tailscale_auth_key, hostname)

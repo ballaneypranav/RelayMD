@@ -25,6 +25,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS,
     DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS,
 )
+from relaymd.secret_management import OrchestratorSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
@@ -103,8 +104,8 @@ class ClusterConfig(BaseModel):
 class OrchestratorSettings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./relaymd.db"
     api_token: str = Field(
-        default="change-me",
-        validation_alias=AliasChoices("api_token", "RELAYMD_API_TOKEN", "API_TOKEN"),
+        default="",
+        validation_alias=AliasChoices("api_token"),
     )
     heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS
     heartbeat_timeout_multiplier: float = DEFAULT_HEARTBEAT_TIMEOUT_MULTIPLIER
@@ -124,29 +125,10 @@ class OrchestratorSettings(BaseSettings):
     worker_idle_poll_max_seconds: int = 600
     infisical_token: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "infisical_token", "INFISICAL_TOKEN", "RELAYMD_INFISICAL_TOKEN"
-        ),
+        validation_alias=AliasChoices("infisical_token", "INFISICAL_TOKEN"),
     )
-    apptainer_docker_username: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "apptainer_docker_username",
-            "APPTAINER_DOCKER_USERNAME",
-            "SINGULARITY_DOCKER_USERNAME",
-            "GHCR_USERNAME",
-        ),
-    )
-    apptainer_docker_password: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "apptainer_docker_password",
-            "APPTAINER_DOCKER_PASSWORD",
-            "SINGULARITY_DOCKER_PASSWORD",
-            "GHCR_PAT",
-            "GHCR_TOKEN",
-        ),
-    )
+    apptainer_docker_username: str = Field(default="")
+    apptainer_docker_password: str = Field(default="")
     slurm_cluster_configs: list[ClusterConfig] = []
     salad_api_key: str | None = None
     salad_org: str | None = None
@@ -162,18 +144,14 @@ class OrchestratorSettings(BaseSettings):
         validation_alias=AliasChoices("tailscale_socket", "RELAYMD_TAILSCALE_SOCKET"),
     )
     axiom_token: str = Field(
-        validation_alias=AliasChoices("axiom_token", "AXIOM_TOKEN", "RELAYMD_AXIOM_TOKEN"),
+        default="",
+        validation_alias=AliasChoices("axiom_token"),
     )
     axiom_dataset: str = Field(
         default="relaymd",
         validation_alias=AliasChoices("axiom_dataset", "AXIOM_DATASET", "RELAYMD_AXIOM_DATASET"),
     )
-    tailscale_auth_key: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "tailscale_auth_key", "TAILSCALE_AUTH_KEY", "RELAYMD_TAILSCALE_AUTH_KEY"
-        ),
-    )
+    tailscale_auth_key: str = Field(default="")
     tailscale_hostname: str = Field(
         default="relaymd-orchestrator",
         validation_alias=AliasChoices("tailscale_hostname", "RELAYMD_TAILSCALE_HOSTNAME"),
@@ -235,26 +213,13 @@ class OrchestratorSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
-                "api_token": ("RELAYMD_API_TOKEN", "API_TOKEN"),
-                "infisical_token": ("INFISICAL_TOKEN", "RELAYMD_INFISICAL_TOKEN"),
-                "apptainer_docker_username": (
-                    "APPTAINER_DOCKER_USERNAME",
-                    "SINGULARITY_DOCKER_USERNAME",
-                    "GHCR_USERNAME",
-                ),
-                "apptainer_docker_password": (
-                    "APPTAINER_DOCKER_PASSWORD",
-                    "SINGULARITY_DOCKER_PASSWORD",
-                    "GHCR_PAT",
-                    "GHCR_TOKEN",
-                ),
+                "infisical_token": ("INFISICAL_TOKEN",),
                 "salad_api_key": ("SALAD_API_KEY",),
                 "salad_org": ("SALAD_ORG",),
                 "salad_project": ("SALAD_PROJECT",),
                 "salad_container_group": ("SALAD_CONTAINER_GROUP",),
                 "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
                 "sbatch_submit_timeout_seconds": ("SBATCH_SUBMIT_TIMEOUT_SECONDS",),
-                "axiom_token": ("AXIOM_TOKEN",),
                 "axiom_dataset": ("AXIOM_DATASET",),
             },
             config_paths=cls.config_paths(),
@@ -262,24 +227,37 @@ class OrchestratorSettings(BaseSettings):
 
 
 def load_settings() -> OrchestratorSettings:
-    import os
-
-    settings = OrchestratorSettings(axiom_token=os.environ.get("AXIOM_TOKEN", "fallback"))
-    return _hydrate_settings_from_infisical(settings)
-
-
-def _parse_infisical_machine_token(raw_token: str) -> tuple[str, str]:
-    if ":" not in raw_token:
+    settings = OrchestratorSettings()
+    if not settings.infisical_token.strip():
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected format <client_id>:<client_secret>"
+            "INFISICAL_TOKEN is required. RelayMD secret values are sourced from Infisical."
         )
 
-    client_id, client_secret = raw_token.split(":", 1)
-    if not client_id or not client_secret:
+    settings = _hydrate_settings_from_infisical(settings)
+
+    missing = []
+    if not settings.api_token.strip():
+        missing.append("RELAYMD_API_TOKEN")
+    if not settings.axiom_token.strip():
+        missing.append("AXIOM_TOKEN")
+
+    has_slurm = len(settings.slurm_cluster_configs) > 0
+    has_salad = bool(
+        settings.salad_api_key
+        and settings.salad_org
+        and settings.salad_project
+        and settings.salad_container_group
+    )
+    if (has_slurm or has_salad) and not settings.tailscale_auth_key.strip():
+        missing.append("TAILSCALE_AUTH_KEY")
+
+    if missing:
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected non-empty <client_id>:<client_secret>"
+            "Missing required configuration properties after secret hydration. "
+            f"Please ensure Infisical is properly configured for: {', '.join(missing)}"
         )
-    return client_id, client_secret
+
+    return settings
 
 
 def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any]]:
@@ -296,74 +274,37 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 
 def _needs_infisical_secret_hydration(settings: OrchestratorSettings) -> bool:
-    if settings.api_token.strip() in {"", "change-me"}:
-        return True
-
-    uses_registry_image = any(cluster.image_uri for cluster in settings.slurm_cluster_configs)
-    if not uses_registry_image:
-        return False
-    if not settings.apptainer_docker_username.strip():
-        return True
-    return bool(not settings.apptainer_docker_password.strip())
+    _ = settings
+    return True
 
 
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
-    if not settings.infisical_token.strip():
-        return settings
     if not _needs_infisical_secret_hydration(settings):
         return settings
 
-    ClientSettings, InfisicalClient, GetSecretOptions = _get_infisical_client_dependencies()
-    client_id, client_secret = _parse_infisical_machine_token(settings.infisical_token)
-
+    has_slurm = len(settings.slurm_cluster_configs) > 0
+    has_salad = bool(
+        settings.salad_api_key
+        and settings.salad_org
+        and settings.salad_project
+        and settings.salad_container_group
+    )
     try:
-        client = InfisicalClient(
-            settings=ClientSettings(
-                client_id=client_id,
-                client_secret=client_secret,
-                site_url=INFISICAL_BASE_URL,
-            )
+        secret_manager = OrchestratorSecretManager(
+            machine_token=settings.infisical_token,
+            dependency_loader=_get_infisical_client_dependencies,
+            base_url=INFISICAL_BASE_URL,
+            workspace_id=INFISICAL_WORKSPACE_ID,
+            environment=INFISICAL_ENVIRONMENT,
+            secret_path=INFISICAL_SECRET_PATH,
         )
-
-        def get(name: str) -> str:
-            return client.getSecret(
-                GetSecretOptions(
-                    secret_name=name,
-                    project_id=INFISICAL_WORKSPACE_ID,
-                    environment=INFISICAL_ENVIRONMENT,
-                    path=INFISICAL_SECRET_PATH,
-                )
-            ).secret_value
-
-        infisical_values = {
-            "api_token": get("RELAYMD_API_TOKEN"),
-            "apptainer_docker_username": get("APPTAINER_DOCKER_USERNAME"),
-            "apptainer_docker_password": get("APPTAINER_DOCKER_PASSWORD"),
-            "tailscale_auth_key": get("TAILSCALE_AUTH_KEY"),
-        }
+        infisical_values = secret_manager.fetch_settings_values(
+            include_tailscale_auth_key=(has_slurm or has_salad)
+        )
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to load orchestrator settings from Infisical") from exc
 
-    updates: dict[str, str] = {}
-    if settings.api_token.strip() in {"", "change-me"} and infisical_values["api_token"].strip():
-        updates["api_token"] = infisical_values["api_token"]
-
-    uses_registry_image = any(cluster.image_uri for cluster in settings.slurm_cluster_configs)
-    if uses_registry_image:
-        if (
-            not settings.apptainer_docker_username.strip()
-            and infisical_values["apptainer_docker_username"].strip()
-        ):
-            updates["apptainer_docker_username"] = infisical_values["apptainer_docker_username"]
-        if (
-            not settings.apptainer_docker_password.strip()
-            and infisical_values["apptainer_docker_password"].strip()
-        ):
-            updates["apptainer_docker_password"] = infisical_values["apptainer_docker_password"]
-
-    if not settings.tailscale_auth_key.strip() and infisical_values["tailscale_auth_key"].strip():
-        updates["tailscale_auth_key"] = infisical_values["tailscale_auth_key"]
-
+    updates = {k: v for k, v in infisical_values.items() if v.strip()}
     if not updates:
         return settings
     return settings.model_copy(update=updates)

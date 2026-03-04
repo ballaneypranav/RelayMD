@@ -15,6 +15,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
     DEFAULT_ORCHESTRATOR_URL,
 )
+from relaymd.secret_management import CliSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
@@ -34,40 +35,28 @@ class CliSettings(BaseSettings):
         ),
     )
     api_token: str = Field(
-        default="change-me",
-        validation_alias=AliasChoices("api_token", "RELAYMD_API_TOKEN", "API_TOKEN"),
+        default="",
+        validation_alias=AliasChoices("api_token"),
     )
     infisical_token: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "infisical_token",
-            "INFISICAL_TOKEN",
-            "RELAYMD_INFISICAL_TOKEN",
-        ),
+        validation_alias=AliasChoices("infisical_token", "INFISICAL_TOKEN"),
     )
     b2_endpoint_url: str = Field(
         default="",
-        validation_alias=AliasChoices("b2_endpoint_url", "B2_ENDPOINT_URL", "B2_ENDPOINT"),
+        validation_alias=AliasChoices("b2_endpoint_url"),
     )
     b2_bucket_name: str = Field(
         default="",
-        validation_alias=AliasChoices("b2_bucket_name", "B2_BUCKET_NAME", "BUCKET_NAME"),
+        validation_alias=AliasChoices("b2_bucket_name"),
     )
     b2_access_key_id: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "b2_access_key_id",
-            "B2_ACCESS_KEY_ID",
-            "B2_APPLICATION_KEY_ID",
-        ),
+        validation_alias=AliasChoices("b2_access_key_id"),
     )
     b2_secret_access_key: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "b2_secret_access_key",
-            "B2_SECRET_ACCESS_KEY",
-            "B2_APPLICATION_KEY",
-        ),
+        validation_alias=AliasChoices("b2_secret_access_key"),
     )
     cf_worker_url: str = Field(
         default=DEFAULT_CF_WORKER_URL,
@@ -75,11 +64,7 @@ class CliSettings(BaseSettings):
     )
     cf_bearer_token: str = Field(
         default="",
-        validation_alias=AliasChoices(
-            "cf_bearer_token",
-            "CF_BEARER_TOKEN",
-            "DOWNLOAD_BEARER_TOKEN",
-        ),
+        validation_alias=AliasChoices("cf_bearer_token"),
     )
     orchestrator_timeout_seconds: float = Field(
         default=DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
@@ -113,14 +98,9 @@ class CliSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
-                "api_token": ("RELAYMD_API_TOKEN", "API_TOKEN"),
-                "infisical_token": ("INFISICAL_TOKEN", "RELAYMD_INFISICAL_TOKEN"),
-                "b2_endpoint_url": ("B2_ENDPOINT_URL", "B2_ENDPOINT"),
-                "b2_bucket_name": ("B2_BUCKET_NAME", "BUCKET_NAME"),
-                "b2_access_key_id": ("B2_ACCESS_KEY_ID", "B2_APPLICATION_KEY_ID"),
-                "b2_secret_access_key": ("B2_SECRET_ACCESS_KEY", "B2_APPLICATION_KEY"),
+                "infisical_token": ("INFISICAL_TOKEN",),
+                "orchestrator_url": ("RELAYMD_ORCHESTRATOR_URL",),
                 "cf_worker_url": ("CF_WORKER_URL",),
-                "cf_bearer_token": ("CF_BEARER_TOKEN", "DOWNLOAD_BEARER_TOKEN"),
                 "orchestrator_timeout_seconds": (
                     "ORCHESTRATOR_TIMEOUT_SECONDS",
                     "RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS",
@@ -132,21 +112,32 @@ class CliSettings(BaseSettings):
 
 def load_settings() -> CliSettings:
     settings = CliSettings()
-    return _hydrate_settings_from_infisical(settings)
-
-
-def _parse_infisical_machine_token(raw_token: str) -> tuple[str, str]:
-    if ":" not in raw_token:
+    if not settings.infisical_token.strip():
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected format <client_id>:<client_secret>"
+            "INFISICAL_TOKEN is required. RelayMD secret values are sourced from Infisical."
         )
 
-    client_id, client_secret = raw_token.split(":", 1)
-    if not client_id or not client_secret:
+    settings = _hydrate_settings_from_infisical(settings)
+
+    missing = []
+    if not settings.api_token.strip():
+        missing.append("RELAYMD_API_TOKEN")
+    if not settings.b2_endpoint_url.strip():
+        missing.append("B2_ENDPOINT")
+    if not settings.b2_bucket_name.strip():
+        missing.append("BUCKET_NAME")
+    if not settings.b2_access_key_id.strip():
+        missing.append("B2_APPLICATION_KEY_ID")
+    if not settings.b2_secret_access_key.strip():
+        missing.append("B2_APPLICATION_KEY")
+
+    if missing:
         raise RuntimeError(
-            "INFISICAL_TOKEN is malformed; expected non-empty <client_id>:<client_secret>"
+            "Missing required configuration properties after secret hydration. "
+            f"Please ensure Infisical is properly configured for: {', '.join(missing)}"
         )
-    return client_id, client_secret
+
+    return settings
 
 
 def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any]]:
@@ -163,52 +154,24 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 
 def _needs_infisical_secret_hydration(settings: CliSettings) -> bool:
-    if settings.api_token.strip() in {"", "change-me"}:
-        return True
-    if not settings.b2_endpoint_url.strip():
-        return True
-    if not settings.b2_bucket_name.strip():
-        return True
-    if not settings.b2_access_key_id.strip():
-        return True
-    return bool(not settings.b2_secret_access_key.strip())
+    _ = settings
+    return True
 
 
 def _hydrate_settings_from_infisical(settings: CliSettings) -> CliSettings:
-    if not settings.infisical_token.strip():
-        return settings
     if not _needs_infisical_secret_hydration(settings):
         return settings
 
-    ClientSettings, InfisicalClient, GetSecretOptions = _get_infisical_client_dependencies()
-    client_id, client_secret = _parse_infisical_machine_token(settings.infisical_token)
-
     try:
-        client = InfisicalClient(
-            settings=ClientSettings(
-                client_id=client_id,
-                client_secret=client_secret,
-                site_url=INFISICAL_BASE_URL,
-            )
+        secret_manager = CliSecretManager(
+            machine_token=settings.infisical_token,
+            dependency_loader=_get_infisical_client_dependencies,
+            base_url=INFISICAL_BASE_URL,
+            workspace_id=INFISICAL_WORKSPACE_ID,
+            environment=INFISICAL_ENVIRONMENT,
+            secret_path=INFISICAL_SECRET_PATH,
         )
-
-        def get(name: str) -> str:
-            return client.getSecret(
-                GetSecretOptions(
-                    secret_name=name,
-                    project_id=INFISICAL_WORKSPACE_ID,
-                    environment=INFISICAL_ENVIRONMENT,
-                    path=INFISICAL_SECRET_PATH,
-                )
-            ).secret_value
-
-        infisical_values = {
-            "api_token": get("RELAYMD_API_TOKEN"),
-            "b2_endpoint_url": get("B2_ENDPOINT"),
-            "b2_bucket_name": get("BUCKET_NAME"),
-            "b2_access_key_id": get("B2_APPLICATION_KEY_ID"),
-            "b2_secret_access_key": get("B2_APPLICATION_KEY"),
-        }
+        infisical_values = secret_manager.fetch_settings_values()
     except Exception as exc:  # noqa: BLE001
         msg = str(exc)
         if "Invalid credentials" in msg or "invalid credentials" in msg:
@@ -219,21 +182,7 @@ def _hydrate_settings_from_infisical(settings: CliSettings) -> CliSettings:
             ) from exc
         raise RuntimeError(f"Failed to load CLI settings from Infisical: {msg}") from exc
 
-    updates: dict[str, str] = {}
-    if settings.api_token.strip() in {"", "change-me"} and infisical_values["api_token"].strip():
-        updates["api_token"] = infisical_values["api_token"]
-    if not settings.b2_endpoint_url.strip() and infisical_values["b2_endpoint_url"].strip():
-        updates["b2_endpoint_url"] = infisical_values["b2_endpoint_url"]
-    if not settings.b2_bucket_name.strip() and infisical_values["b2_bucket_name"].strip():
-        updates["b2_bucket_name"] = infisical_values["b2_bucket_name"]
-    if not settings.b2_access_key_id.strip() and infisical_values["b2_access_key_id"].strip():
-        updates["b2_access_key_id"] = infisical_values["b2_access_key_id"]
-    if (
-        not settings.b2_secret_access_key.strip()
-        and infisical_values["b2_secret_access_key"].strip()
-    ):
-        updates["b2_secret_access_key"] = infisical_values["b2_secret_access_key"]
-
+    updates = {k: v for k, v in infisical_values.items() if v.strip()}
     if not updates:
         return settings
     return settings.model_copy(update=updates)
