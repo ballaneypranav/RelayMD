@@ -26,12 +26,15 @@ class InfisicalSecretManager:
 
     @staticmethod
     def parse_machine_token(raw_token: str) -> tuple[str, str]:
+        raw_token = raw_token.strip()
         if ":" not in raw_token:
             raise RuntimeError(
                 "INFISICAL_TOKEN is malformed; expected format <client_id>:<client_secret>"
             )
 
         client_id, client_secret = raw_token.split(":", 1)
+        client_id = client_id.strip()
+        client_secret = client_secret.strip()
         if not client_id or not client_secret:
             raise RuntimeError(
                 "INFISICAL_TOKEN is malformed; expected non-empty <client_id>:<client_secret>"

@@ -294,7 +294,14 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
             include_tailscale_auth_key=(has_slurm or has_salad)
         )
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Failed to load orchestrator settings from Infisical") from exc
+        msg = str(exc)
+        if "Invalid credentials" in msg or "invalid credentials" in msg:
+            raise RuntimeError(
+                "Infisical authentication failed: the token in 'infisical_token' is invalid "
+                "or expired. Rotate your machine identity token in the Infisical dashboard "
+                "and update INFISICAL_TOKEN."
+            ) from exc
+        raise RuntimeError(f"Failed to load orchestrator settings from Infisical: {msg}") from exc
 
     updates = {k: v for k, v in infisical_values.items() if v.strip()}
     if not updates:
