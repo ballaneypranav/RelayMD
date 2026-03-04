@@ -37,6 +37,7 @@ nav:
     - Scheduling: scheduling.md
     - API Schema: api-schema.md
   - Implementation Internals:
+    - Security Internals: secrets.md
     - Tech Stack: tech-stack.md
     - Orchestrator: orchestrator-internals.md
     - Worker: worker-internals.md
