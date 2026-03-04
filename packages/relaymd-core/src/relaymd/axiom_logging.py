@@ -91,15 +91,18 @@ class AxiomSenderThread(threading.Thread):
 
 _AXIOM_THREAD: AxiomSenderThread | None = None
 _AXIOM_THREAD_LOCK = threading.Lock()
+_AXIOM_CLEANUP_REGISTERED = False
 
 
 def get_axiom_thread(axiom_token: str, dataset: str) -> AxiomSenderThread:
-    global _AXIOM_THREAD
+    global _AXIOM_THREAD, _AXIOM_CLEANUP_REGISTERED
     with _AXIOM_THREAD_LOCK:
         if _AXIOM_THREAD is None or not _AXIOM_THREAD.is_alive():
             _AXIOM_THREAD = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
             _AXIOM_THREAD.start()
-            atexit.register(_cleanup_axiom_thread)
+            if not _AXIOM_CLEANUP_REGISTERED:
+                atexit.register(_cleanup_axiom_thread)
+                _AXIOM_CLEANUP_REGISTERED = True
         return _AXIOM_THREAD
 
 
