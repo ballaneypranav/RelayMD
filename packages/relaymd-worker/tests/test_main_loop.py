@@ -143,6 +143,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            axiom_token="test",
         ),
     )
 
@@ -278,6 +279,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            axiom_token="test",
         ),
     )
 
@@ -671,6 +673,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=25,
+        axiom_token="test",
     )
     monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
 
@@ -782,6 +785,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=600,
+        axiom_token="test",
     )
     monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
 

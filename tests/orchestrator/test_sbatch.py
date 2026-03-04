@@ -161,17 +161,15 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="client-id:client-secret",
-        apptainer_docker_username="gh-user",
-        apptainer_docker_password="gh-pass",
     )
 
     await submit_slurm_job(cluster, settings)
 
     rendered = captured["script"]
-    assert "export APPTAINER_DOCKER_USERNAME='gh-user'" in rendered
-    assert "export APPTAINER_DOCKER_PASSWORD='gh-pass'" in rendered
-    assert 'export SINGULARITY_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME}"' in rendered
-    assert 'export SINGULARITY_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD}"' in rendered
+    assert "APPTAINER_DOCKER_USERNAME" not in rendered
+    assert "APPTAINER_DOCKER_PASSWORD" not in rendered
+    assert "SINGULARITY_DOCKER_USERNAME" not in rendered
+    assert "SINGULARITY_DOCKER_PASSWORD" not in rendered
     # docker URI must appear in the flock/pull block, not on the exec line.
     assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
     assert '"${_APPTAINER_IMAGE}" python -m relaymd.worker' in rendered
@@ -270,16 +268,12 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         infisical_token="tok$HOME`date`'abc\\def",
-        apptainer_docker_username="gh$USER'name",
-        apptainer_docker_password="gh'pa$$",
     )
 
     await submit_slurm_job(cluster, settings)
 
     rendered = captured["script"]
     assert "export INFISICAL_BOOTSTRAP_TOKEN='tok$HOME`date`'\"'\"'abc\\def'" in rendered
-    assert "export APPTAINER_DOCKER_USERNAME='gh$USER'\"'\"'name'" in rendered
-    assert "export APPTAINER_DOCKER_PASSWORD='gh'\"'\"'pa$$'" in rendered
 
 
 @pytest.mark.asyncio

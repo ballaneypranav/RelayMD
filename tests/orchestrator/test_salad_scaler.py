@@ -26,6 +26,7 @@ def _salad_settings() -> OrchestratorSettings:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
+        infisical_token="test:fake",
         salad_api_key="salad-key",
         salad_org="org",
         salad_project="project",

@@ -17,6 +17,7 @@ class LoggingSettings(BaseSettings):
     relaymd_log_level: str = "INFO"
     relaymd_log_format: Literal["auto", "json", "console"] = "auto"
     axiom_token: str = Field(
+        default="",
         validation_alias=AliasChoices(
             "axiom_token",
             "AXIOM_TOKEN",
@@ -51,7 +52,7 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
     if _CONFIGURED:
         return
 
-    active_settings = settings or LoggingSettings(axiom_token="test")
+    active_settings = settings or LoggingSettings()
     renderer: structlog.types.Processor
     if active_settings.relaymd_log_format == "console" or (
         active_settings.relaymd_log_format == "auto"
@@ -69,8 +70,8 @@ def configure_logging(settings: LoggingSettings | None = None) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    axiom_token = getattr(active_settings, "axiom_token", None)
-    if axiom_token:
+    axiom_token = active_settings.axiom_token
+    if axiom_token.strip():
         from relaymd.axiom_logging import AxiomProcessor
 
         processors.append(

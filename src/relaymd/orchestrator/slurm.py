@@ -40,14 +40,6 @@ def _render_sbatch_script(
         wall_time=cluster.wall_time,
         apptainer_image=cluster.apptainer_image,
         infisical_token_shell_quoted=_shell_single_quote(settings.infisical_token),
-        apptainer_docker_username=settings.apptainer_docker_username,
-        apptainer_docker_password=settings.apptainer_docker_password,
-        apptainer_docker_username_shell_quoted=_shell_single_quote(
-            settings.apptainer_docker_username
-        ),
-        apptainer_docker_password_shell_quoted=_shell_single_quote(
-            settings.apptainer_docker_password
-        ),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
         worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,
@@ -68,14 +60,6 @@ def _render_sbatch_script(
         ),
         worker_platform="hpc",
         log_directory=cluster.log_directory,
-        axiom_token=settings.axiom_token,
-        axiom_token_shell_quoted=_shell_single_quote(settings.axiom_token)
-        if settings.axiom_token
-        else None,
-        axiom_dataset=settings.axiom_dataset,
-        axiom_dataset_shell_quoted=_shell_single_quote(settings.axiom_dataset)
-        if settings.axiom_dataset
-        else None,
     )
 
 

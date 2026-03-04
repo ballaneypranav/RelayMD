@@ -305,7 +305,18 @@ def _run_assigned_job(
 
 
 def run_worker(config: WorkerConfig) -> None:
-    runtime_settings = WorkerRuntimeSettings(axiom_token="test")
+    import sys
+
+    runtime_settings = WorkerRuntimeSettings()
+    if not runtime_settings.axiom_token.strip():
+        LOG.error(
+            "axiom_token_missing",
+            message=(
+                "AXIOM_TOKEN is required but not set. "
+                "Set it via AXIOM_TOKEN env var or ensure Infisical is reachable during bootstrap."
+            ),
+        )
+        sys.exit(1)
     storage = _build_storage_client(config, runtime_settings)
     orchestrator_url = config.relaymd_orchestrator_url.rstrip("/")
 

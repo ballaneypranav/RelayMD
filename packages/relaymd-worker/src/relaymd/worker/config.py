@@ -115,6 +115,7 @@ class WorkerRuntimeSettings(BaseSettings):
         ),
     )
     axiom_token: str = Field(
+        default="",
         validation_alias=AliasChoices(
             "axiom_token",
             "AXIOM_TOKEN",
