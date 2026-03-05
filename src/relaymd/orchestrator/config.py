@@ -103,6 +103,10 @@ class ClusterConfig(BaseModel):
 
 class OrchestratorSettings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./relaymd.db"
+    log_directory: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("log_directory", "RELAYMD_LOG_DIRECTORY"),
+    )
     api_token: str = Field(
         default="",
         validation_alias=AliasChoices("api_token"),

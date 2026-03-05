@@ -12,6 +12,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
         "\n".join(
             [
                 "database_url: sqlite+aiosqlite:////tmp/relaymd.db",
+                "log_directory: /tmp/relaymd-logs",
                 "api_token: yaml-token",
                 "infisical_token: yaml-infisical",
                 "heartbeat_timeout_multiplier: 2.5",
@@ -44,6 +45,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
+    assert settings.log_directory == "/tmp/relaymd-logs"
     assert settings.api_token == "yaml-token"
     assert settings.infisical_token == "yaml-infisical"
     assert settings.heartbeat_timeout_multiplier == 2.5
