@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
+from pathlib import Path
 from typing import Any, Protocol
 
 import orjson
@@ -53,6 +55,31 @@ class _LoggingSettingsProtocol(Protocol):
     @property
     def axiom_dataset(self) -> str: ...
 
+    @property
+    def log_directory(self) -> str | None: ...
+
+
+class _JsonFileProcessor:
+    def __init__(self, file_path: Path) -> None:
+        self._file_path = file_path
+        self._lock = threading.Lock()
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def __call__(
+        self,
+        _logger: Any,
+        _method_name: str,
+        event_dict: dict[str, Any],
+    ) -> dict[str, Any]:
+        try:
+            line = _orjson_dumps(event_dict)
+            with self._lock, self._file_path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.write("\n")
+        except OSError:
+            pass
+        return event_dict
+
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
     return orjson.dumps(event_dict, default=str).decode("utf-8")
@@ -85,6 +112,10 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
     ]
+
+    if settings.log_directory and settings.log_directory.strip():
+        log_file_path = Path(settings.log_directory).expanduser() / "orchestrator.log.jsonl"
+        processors.append(_JsonFileProcessor(log_file_path))
 
     axiom_token = settings.axiom_token
     if not axiom_token.strip():
