@@ -287,6 +287,55 @@ async def test_submit_slurm_job_nonzero_exit_exposes_submission_context(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            _ = input
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=2,
+        sif_path="/shared/relaymd.sif",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        log_directory=str(tmp_path),
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    scripts = sorted((tmp_path / "slurm").glob("*.sbatch"))
+    assert len(scripts) == 1
+    content = scripts[0].read_text(encoding="utf-8")
+    assert "#SBATCH --partition=gpu" in content
+    assert "#SBATCH --account=lab-account" in content
+
+
+@pytest.mark.asyncio
 async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
@@ -586,12 +635,12 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
                 "sbatch submission failed: rc=1, stderr=sbatch: error: QOSMinGRES",
                 stage="nonzero_exit",
                 cluster_name=cluster.name,
-                partition=cluster.partition,
+                partition="gpu",
                 account=cluster.account,
                 qos=cluster.qos,
                 gres=cluster.slurm_gres,
-                nodes=cluster.nodes,
-                ntasks=cluster.ntasks,
+                nodes=1,
+                ntasks=1,
                 wall_time=cluster.wall_time,
                 memory=cluster.memory,
                 memory_per_gpu=cluster.memory_per_gpu,
@@ -604,6 +653,7 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
                 return_code=1,
                 stdout="",
                 stderr="sbatch: error: QOSMinGRES",
+                local_script_path="/tmp/relaymd-logs/slurm/gilbreth.sbatch",
             )
         return "77777"
 

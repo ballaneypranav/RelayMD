@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
 
 import structlog
 from jinja2 import Environment, PackageLoader
@@ -34,6 +37,7 @@ class SlurmSubmissionError(RuntimeError):
         return_code: int | None,
         stdout: str | None,
         stderr: str | None,
+        local_script_path: str | None,
     ) -> None:
         super().__init__(message)
         self.stage = stage
@@ -56,6 +60,7 @@ class SlurmSubmissionError(RuntimeError):
         self.return_code = return_code
         self.stdout = stdout
         self.stderr = stderr
+        self.local_script_path = local_script_path
 
     @property
     def submission_target(self) -> str:
@@ -84,6 +89,7 @@ class SlurmSubmissionError(RuntimeError):
             "return_code": self.return_code,
             "stdout": self.stdout,
             "stderr": self.stderr,
+            "local_script_path": self.local_script_path,
         }
 
 
@@ -95,6 +101,7 @@ def _build_submission_context(
     return_code: int | None = None,
     stdout: str | None = None,
     stderr: str | None = None,
+    local_script_path: str | None = None,
     stage: str,
 ) -> dict[str, object]:
     return {
@@ -118,6 +125,7 @@ def _build_submission_context(
         "return_code": return_code,
         "stdout": stdout,
         "stderr": stderr,
+        "local_script_path": local_script_path,
     }
 
 
@@ -175,6 +183,24 @@ def _render_sbatch_script(
     )
 
 
+def _write_sbatch_script_to_disk(
+    *,
+    cluster: ClusterConfig,
+    settings: OrchestratorSettings,
+    rendered_script: str,
+) -> str | None:
+    if not settings.log_directory or not settings.log_directory.strip():
+        return None
+
+    base_dir = Path(settings.log_directory).expanduser() / "slurm"
+    base_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+    filename = f"{cluster.name}-{timestamp}-{uuid4().hex[:8]}.sbatch"
+    script_path = base_dir / filename
+    script_path.write_text(rendered_script, encoding="utf-8")
+    return str(script_path)
+
+
 async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSettings) -> str:
     rendered = _render_sbatch_script(
         cluster,
@@ -183,6 +209,11 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
 
     logger = structlog.get_logger(__name__)
     logger.debug("Submitting job script:\n%s", rendered)
+    local_script_path = _write_sbatch_script_to_disk(
+        cluster=cluster,
+        settings=settings,
+        rendered_script=rendered,
+    )
 
     command = [
         "ssh",
@@ -224,6 +255,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
                 cluster,
                 command=command,
                 timeout_seconds=settings.sbatch_submit_timeout_seconds,
+                local_script_path=local_script_path,
                 stage="timeout",
             ),
         ) from exc
@@ -239,6 +271,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
                 return_code=process.returncode,
                 stdout=stdout_text,
                 stderr=stderr_text,
+                local_script_path=local_script_path,
                 stage="nonzero_exit",
             ),
         )
@@ -252,6 +285,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
                 command=command,
                 timeout_seconds=settings.sbatch_submit_timeout_seconds,
                 return_code=process.returncode,
+                local_script_path=local_script_path,
                 stage="empty_output",
             ),
         )
