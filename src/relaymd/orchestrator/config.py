@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field, model_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -38,8 +38,10 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 class ClusterConfig(BaseModel):
     name: str
-    partition: str | list[str]
+    partition: str
     account: str
+    extends: str | None = None
+    is_template: bool = False
     ssh_host: str
     ssh_username: str
     ssh_key_file: str | None = None
@@ -161,38 +163,101 @@ class OrchestratorSettings(BaseSettings):
         validation_alias=AliasChoices("tailscale_hostname", "RELAYMD_TAILSCALE_HOSTNAME"),
     )
 
-    @model_validator(mode="after")
-    def _expand_cluster_partitions(self) -> OrchestratorSettings:
-        expanded_configs: list[ClusterConfig] = []
-        for config in self.slurm_cluster_configs:
-            partitions: list[str]
-            if isinstance(config.partition, list):
-                partitions = [p.strip() for p in config.partition]
+    @field_validator("slurm_cluster_configs", mode="before")
+    @classmethod
+    def _resolve_slurm_cluster_configs(
+        cls, raw_cluster_configs: Any
+    ) -> list[dict[str, Any]] | list[ClusterConfig]:
+        if not isinstance(raw_cluster_configs, list):
+            return raw_cluster_configs
+
+        by_name: dict[str, dict[str, Any]] = {}
+        cluster_order: list[str] = []
+
+        for index, raw_cluster in enumerate(raw_cluster_configs):
+            if isinstance(raw_cluster, ClusterConfig):
+                cluster_name = raw_cluster.name
+                raw_cluster_dict = raw_cluster.model_dump()
+            elif isinstance(raw_cluster, dict):
+                cluster_name_value = raw_cluster.get("name")
+                if not isinstance(cluster_name_value, str) or not cluster_name_value.strip():
+                    raise ValueError(
+                        f"slurm_cluster_configs[{index}].name must be a non-empty string"
+                    )
+                cluster_name = cluster_name_value.strip()
+                raw_cluster_dict = dict(raw_cluster)
+                raw_cluster_dict["name"] = cluster_name
             else:
-                partitions = [p.strip() for p in config.partition.split(",")]
-
-            # Filter out empty strings from the list
-            partitions = [p for p in partitions if p]
-
-            if len(partitions) <= 1:
-                # Normalize singlular partition to string for template rendering
-                if partitions:
-                    config.partition = partitions[0]
-                expanded_configs.append(config)
-                continue
-
-            # Expand into multiple configs
-            for partition in partitions:
-                new_config = config.model_copy(
-                    update={
-                        "name": f"{config.name}-{partition}",
-                        "partition": partition,
-                    }
+                raw_type_name = type(raw_cluster).__name__
+                raise ValueError(
+                    f"slurm_cluster_configs[{index}] must be a mapping, got {raw_type_name}"
                 )
-                expanded_configs.append(new_config)
 
-        self.slurm_cluster_configs = expanded_configs
-        return self
+            if cluster_name in by_name:
+                raise ValueError(f"duplicate slurm cluster config name: {cluster_name}")
+
+            by_name[cluster_name] = raw_cluster_dict
+            cluster_order.append(cluster_name)
+
+        resolved: dict[str, dict[str, Any]] = {}
+        resolution_stack: list[str] = []
+        resolving: set[str] = set()
+
+        def _resolve(name: str) -> dict[str, Any]:
+            if name in resolved:
+                return resolved[name]
+            if name in resolving:
+                cycle_start = resolution_stack.index(name)
+                cycle = " -> ".join([*resolution_stack[cycle_start:], name])
+                raise ValueError(f"cycle detected in slurm cluster inheritance: {cycle}")
+
+            resolving.add(name)
+            resolution_stack.append(name)
+            raw_cluster = by_name[name]
+            extends_raw = raw_cluster.get("extends")
+            merged: dict[str, Any] = {}
+            has_parent = False
+            if extends_raw is not None:
+                has_parent = True
+                if not isinstance(extends_raw, str) or not extends_raw.strip():
+                    raise ValueError(
+                        f"slurm_cluster_configs[{name}].extends must be a non-empty string when set"
+                    )
+                parent_name = extends_raw.strip()
+                if parent_name not in by_name:
+                    raise ValueError(
+                        f"slurm cluster '{name}' extends unknown cluster '{parent_name}'"
+                    )
+                merged.update(_resolve(parent_name))
+                raw_cluster = dict(raw_cluster)
+                raw_cluster["extends"] = parent_name
+
+            merged.update(raw_cluster)
+            merged["name"] = name
+            if has_parent and "is_template" not in raw_cluster:
+                merged["is_template"] = False
+
+            partition = merged.get("partition")
+            if isinstance(partition, list):
+                raise ValueError(
+                    "slurm cluster "
+                    f"'{name}' has invalid partition list; "
+                    "partition must be a single string"
+                )
+
+            resolution_stack.pop()
+            resolving.remove(name)
+            resolved[name] = merged
+            return merged
+
+        runtime_clusters: list[dict[str, Any]] = []
+        for cluster_name in cluster_order:
+            cluster = _resolve(cluster_name)
+            if cluster.get("is_template", False):
+                continue
+            runtime_clusters.append(cluster)
+
+        return runtime_clusters
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

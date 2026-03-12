@@ -130,13 +130,10 @@ def _build_submission_context(
     local_script_path: str | None = None,
     stage: str,
 ) -> _SubmissionContext:
-    partition = (
-        cluster.partition if isinstance(cluster.partition, str) else ",".join(cluster.partition)
-    )
     return {
         "stage": stage,
         "cluster_name": cluster.name,
-        "partition": partition,
+        "partition": cluster.partition,
         "account": cluster.account,
         "qos": cluster.qos,
         "gres": cluster.slurm_gres,
