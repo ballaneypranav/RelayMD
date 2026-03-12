@@ -4,7 +4,8 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from typing import NamedTuple
+from uuid import UUID, uuid4
 
 import structlog
 from sqlmodel import col, select
@@ -18,6 +19,12 @@ from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 logger = structlog.get_logger(__name__)
 
 SubmitSlurmJobFn = Callable[[ClusterConfig, OrchestratorSettings], Awaitable[str]]
+
+
+class SlurmProviderJobStatus(NamedTuple):
+    provider_state: str
+    provider_state_raw: str
+    provider_reason: str | None
 
 
 def _cluster_submission_log_fields(cluster: ClusterConfig) -> dict[str, object]:
@@ -50,15 +57,56 @@ def pending_slurm_job_marker(cluster_name: str, slurm_job_id: str) -> str:
     return slurm_provider_id(cluster_name, slurm_job_id)
 
 
-async def _query_live_slurm_job_ids(cluster: ClusterConfig, job_ids: list[str]) -> set[str]:
-    """Ask squeue which of the given raw SLURM job IDs are still alive (PD or R).
+def _normalize_slurm_state(raw_state: str) -> str:
+    normalized = raw_state.strip().upper()
+    if normalized in {"PD", "PENDING", "CONFIGURING", "CF"}:
+        return "pending"
+    if normalized in {"R", "RUNNING"}:
+        return "running"
+    if normalized in {"CG", "COMPLETING"}:
+        return "completing"
+    return "unknown"
 
-    Returns the set of IDs that squeue reports; an empty set means none are alive
-    OR squeue is not available (non-HPC environments).  Errors are swallowed so
-    that the reaper never crashes the scheduler.
+
+def _parse_squeue_output(stdout_text: str) -> dict[str, SlurmProviderJobStatus]:
+    statuses: dict[str, SlurmProviderJobStatus] = {}
+    for raw_line in stdout_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        job_id: str
+        raw_state: str
+        reason: str | None
+        parts = line.split("|", 2)
+        if len(parts) == 3:
+            job_id, raw_state, reason_text = (part.strip() for part in parts)
+            reason = reason_text if reason_text not in {"", "(null)", "None"} else None
+        else:
+            # Legacy/defensive fallback if output includes only IDs.
+            job_id, raw_state, reason = line, "UNKNOWN", None
+
+        if not job_id:
+            continue
+
+        statuses[job_id] = SlurmProviderJobStatus(
+            provider_state=_normalize_slurm_state(raw_state),
+            provider_state_raw=raw_state,
+            provider_reason=reason,
+        )
+    return statuses
+
+
+async def _query_live_slurm_job_statuses(
+    cluster: ClusterConfig, job_ids: list[str]
+) -> dict[str, SlurmProviderJobStatus]:
+    """Ask squeue for status of the given raw SLURM job IDs.
+
+    Returns a mapping keyed by job ID. Empty mapping means no jobs are alive OR
+    squeue is unavailable. Errors are swallowed so the reaper never crashes.
     """
     if not job_ids:
-        return set()
+        return {}
 
     command = [
         "ssh",
@@ -77,7 +125,7 @@ async def _query_live_slurm_job_ids(cluster: ClusterConfig, job_ids: list[str]) 
             "--jobs",
             ",".join(job_ids),
             "--noheader",
-            "--format=%i",
+            "--format=%i|%T|%r",
         ]
     )
 
@@ -89,14 +137,10 @@ async def _query_live_slurm_job_ids(cluster: ClusterConfig, job_ids: list[str]) 
         )
         with suppress(Exception):
             stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30.0)
-            return {
-                line.strip()
-                for line in stdout.decode("utf-8", errors="replace").splitlines()
-                if line.strip()
-            }
+            return _parse_squeue_output(stdout.decode("utf-8", errors="replace"))
     except Exception:  # noqa: BLE001
         pass
-    return set()
+    return {}
 
 
 class SlurmProvisioningService:
@@ -181,6 +225,7 @@ class SlurmProvisioningService:
             vram_gb=0,
             status=WorkerStatus.queued,
             provider_id=slurm_provider_id(cluster.name, raw_slurm_id),
+            provider_state="submitted",
             last_heartbeat=now,
             registered_at=now,
         )
@@ -228,7 +273,8 @@ async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
         return 0
 
     cluster_configs = {c.name: c for c in settings.slurm_cluster_configs}
-    dead_placeholders: list[Worker] = []
+    dead_placeholders: list[tuple[Worker, str | None, str | None, str | None]] = []
+    live_updates: dict[UUID, SlurmProviderJobStatus] = {}
 
     for cluster_name, raw_id_dict in cluster_to_raw_ids.items():
         cluster_config = cluster_configs.get(cluster_name)
@@ -240,25 +286,45 @@ async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
                 cluster_name=cluster_name,
                 placeholder_count=len(raw_id_dict),
             )
-            dead_placeholders.extend(raw_id_dict.values())
+            for raw_id, placeholder in raw_id_dict.items():
+                dead_placeholders.append((placeholder, "gone", "CLUSTER_CONFIG_MISSING", raw_id))
             continue
 
         raw_ids = list(raw_id_dict.keys())
-        live_job_ids = await _query_live_slurm_job_ids(cluster_config, raw_ids)
+        live_statuses = await _query_live_slurm_job_statuses(cluster_config, raw_ids)
 
         for raw_id, p in raw_id_dict.items():
-            if raw_id not in live_job_ids:
-                dead_placeholders.append(p)
+            status = live_statuses.get(raw_id)
+            if status is None:
+                dead_placeholders.append((p, "gone", "GONE", raw_id))
+                continue
+            live_updates[p.id] = status
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    async with sessionmaker() as session:
+        for worker_id, status in live_updates.items():
+            fresh = await session.get(Worker, worker_id)
+            if fresh is None:
+                continue
+            fresh.provider_state = status.provider_state
+            fresh.provider_state_raw = status.provider_state_raw
+            fresh.provider_reason = status.provider_reason
+            fresh.provider_last_checked_at = now
+            session.add(fresh)
+        await session.commit()
 
     if not dead_placeholders:
         return 0
 
     async with sessionmaker() as session:
-        for placeholder in dead_placeholders:
+        for placeholder, state, raw_state, raw_id in dead_placeholders:
             logger.info(
                 "reaping_dead_slurm_placeholder",
                 provider_id=placeholder.provider_id,
                 worker_id=str(placeholder.id),
+                provider_state=state,
+                provider_state_raw=raw_state,
+                slurm_job_id=raw_id,
             )
             fresh = await session.get(Worker, placeholder.id)
             if fresh is not None:
