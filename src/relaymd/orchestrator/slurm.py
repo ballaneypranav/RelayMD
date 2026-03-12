@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypedDict
 from uuid import uuid4
 
 import structlog
@@ -23,8 +25,8 @@ class SlurmSubmissionError(RuntimeError):
         account: str,
         qos: str | None,
         gres: str,
-        nodes: int,
-        ntasks: int,
+        nodes: int | None,
+        ntasks: int | None,
         wall_time: str,
         memory: str | None,
         memory_per_gpu: str | None,
@@ -93,6 +95,30 @@ class SlurmSubmissionError(RuntimeError):
         }
 
 
+class _SubmissionContext(TypedDict):
+    stage: str
+    cluster_name: str
+    partition: str
+    account: str
+    qos: str | None
+    gres: str
+    nodes: int | None
+    ntasks: int | None
+    wall_time: str
+    memory: str | None
+    memory_per_gpu: str | None
+    ssh_host: str
+    ssh_username: str
+    ssh_port: int
+    ssh_key_file: str | None
+    command: list[str]
+    timeout_seconds: float
+    return_code: int | None
+    stdout: str | None
+    stderr: str | None
+    local_script_path: str | None
+
+
 def _build_submission_context(
     cluster: ClusterConfig,
     *,
@@ -103,11 +129,16 @@ def _build_submission_context(
     stderr: str | None = None,
     local_script_path: str | None = None,
     stage: str,
-) -> dict[str, object]:
+) -> _SubmissionContext:
+    partition = (
+        cluster.partition
+        if isinstance(cluster.partition, str)
+        else ",".join(cluster.partition)
+    )
     return {
         "stage": stage,
         "cluster_name": cluster.name,
-        "partition": cluster.partition,
+        "partition": partition,
         "account": cluster.account,
         "qos": cluster.qos,
         "gres": cluster.slurm_gres,
@@ -197,8 +228,16 @@ def _write_sbatch_script_to_disk(
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
     filename = f"{cluster.name}-{timestamp}-{uuid4().hex[:8]}.sbatch"
     script_path = base_dir / filename
-    script_path.write_text(rendered_script, encoding="utf-8")
+    script_path.write_text(_redact_sbatch_script_for_disk(rendered_script), encoding="utf-8")
     return str(script_path)
+
+
+def _redact_sbatch_script_for_disk(rendered_script: str) -> str:
+    return re.sub(
+        r"(?m)^(export INFISICAL_BOOTSTRAP_TOKEN=).*$",
+        r"\1'[REDACTED]'",
+        rendered_script,
+    )
 
 
 async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSettings) -> str:

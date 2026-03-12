@@ -141,6 +141,17 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     assert settings.api_token == "explicit-token"
 
 
+def test_relaymd_log_directory_env_is_loaded(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("log_directory: /tmp/from-yaml\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("RELAYMD_LOG_DIRECTORY", "/tmp/from-env")
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.log_directory == "/tmp/from-env"
+
+
 def test_cluster_config_supports_registry_image_uri() -> None:
     cluster = ClusterConfig(
         name="test",

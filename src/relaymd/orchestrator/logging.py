@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -69,10 +70,10 @@ class _JsonFileProcessor:
         self,
         _logger: Any,
         _method_name: str,
-        event_dict: dict[str, Any],
-    ) -> dict[str, Any]:
+        event_dict: MutableMapping[str, Any],
+    ) -> MutableMapping[str, Any]:
         try:
-            line = _orjson_dumps(event_dict)
+            line = _orjson_dumps(dict(event_dict))
             with self._lock, self._file_path.open("a", encoding="utf-8") as handle:
                 handle.write(line)
                 handle.write("\n")
@@ -114,7 +115,8 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
     ]
 
     if settings.log_directory and settings.log_directory.strip():
-        log_file_path = Path(settings.log_directory).expanduser() / "orchestrator.log.jsonl"
+        log_directory = settings.log_directory.strip()
+        log_file_path = Path(log_directory).expanduser() / "orchestrator.log.jsonl"
         processors.append(_JsonFileProcessor(log_file_path))
 
     axiom_token = settings.axiom_token

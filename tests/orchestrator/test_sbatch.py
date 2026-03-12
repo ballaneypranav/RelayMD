@@ -333,6 +333,8 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
     content = scripts[0].read_text(encoding="utf-8")
     assert "#SBATCH --partition=gpu" in content
     assert "#SBATCH --account=lab-account" in content
+    assert "client-id:client-secret" not in content
+    assert "export INFISICAL_BOOTSTRAP_TOKEN='[REDACTED]'" in content
 
 
 @pytest.mark.asyncio
@@ -686,3 +688,96 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
     assert kwargs["submission_target"] == "test-user@gilbreth-host:22"
     assert kwargs["stderr"] == "sbatch: error: QOSMinGRES"
     assert kwargs["stage"] == "nonzero_exit"
+
+
+@pytest.mark.asyncio
+async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
+    monkeypatch,
+) -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="gilbreth",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="gilbreth-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+                max_pending_jobs=3,
+            ),
+            ClusterConfig(
+                name="anvil",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="anvil-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+                max_pending_jobs=3,
+            ),
+        ],
+    )
+
+    async def fake_submit_cluster_if_needed(self, *, cluster: ClusterConfig) -> bool:
+        now = datetime.now(UTC).replace(tzinfo=None)
+        if cluster.name == "gilbreth":
+            self._session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model=cluster.gpu_type,
+                    gpu_count=cluster.gpu_count,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:bad",
+                    last_heartbeat=now,
+                    registered_at=now,
+                )
+            )
+            raise RuntimeError("boom")
+
+        self._session.add(
+            Worker(
+                platform=Platform.hpc,
+                gpu_model=cluster.gpu_type,
+                gpu_count=cluster.gpu_count,
+                vram_gb=0,
+                status=WorkerStatus.queued,
+                provider_id="anvil:good",
+                last_heartbeat=now,
+                registered_at=now,
+            )
+        )
+        await self._session.commit()
+        return True
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.SlurmProvisioningService.submit_cluster_if_needed",
+        fake_submit_cluster_if_needed,
+    )
+
+    async with app_client(settings):
+        async with get_sessionmaker()() as session:
+            session.add(
+                Job(
+                    title="queued-job",
+                    input_bundle_path="jobs/1/input/bundle.tar.gz",
+                    status=JobStatus.queued,
+                )
+            )
+            await session.commit()
+
+        submitted_count = await submit_pending_slurm_jobs(settings)
+
+        async with get_sessionmaker()() as session:
+            workers = (await session.exec(select(Worker))).all()
+
+    assert submitted_count == 1
+    assert len(workers) == 1
+    assert workers[0].provider_id == "anvil:good"
