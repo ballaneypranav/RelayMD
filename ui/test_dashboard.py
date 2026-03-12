@@ -70,6 +70,7 @@ def test_build_workers_dataframe_marks_stale_workers() -> None:
         "platform",
         "gpu",
         "provider_id",
+        "provider_state",
         "uptime",
         "last_heartbeat",
         "current_job",
@@ -101,6 +102,7 @@ def test_build_workers_dataframe_marks_provisioning_workers() -> None:
     assert len(df) == 1
     assert df.loc[0, "status"] == "provisioning"
     assert df.loc[0, "provider_id"] == "gilbreth:12345"
+    assert df.loc[0, "provider_state"] == "-"
 
 
 def test_resolve_runtime_settings_uses_cli_config_when_env_is_missing(
