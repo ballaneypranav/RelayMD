@@ -57,6 +57,10 @@ class WorkerLifecycleService:
                 existing.gpu_model = payload.gpu_model
                 existing.gpu_count = payload.gpu_count
                 existing.last_heartbeat = _utcnow_naive()
+                existing.provider_state = None
+                existing.provider_state_raw = None
+                existing.provider_reason = None
+                existing.provider_last_checked_at = None
                 self._session.add(existing)
                 await self._session.commit()
                 await self._session.refresh(existing)

@@ -23,6 +23,12 @@ class Worker(SQLModel, table=True):
     #   Salad     : "<salad-machine-id>"              (TBD)
     # NULL on workers registered without an associated provisioning event.
     provider_id: str | None = None
+    # Lightweight provider-side status for queued/provisioning workers.
+    # These fields are populated by periodic control-plane checks (e.g. squeue).
+    provider_state: str | None = None
+    provider_state_raw: str | None = None
+    provider_reason: str | None = None
+    provider_last_checked_at: datetime | None = None
     last_heartbeat: datetime = Field(default_factory=utcnow_naive)
     registered_at: datetime = Field(default_factory=utcnow_naive)
 
@@ -46,4 +52,8 @@ class WorkerRead(SQLModel):
     vram_gb: int
     status: WorkerStatus
     provider_id: str | None = None
+    provider_state: str | None = None
+    provider_state_raw: str | None = None
+    provider_reason: str | None = None
+    provider_last_checked_at: datetime | None = None
     last_heartbeat: datetime

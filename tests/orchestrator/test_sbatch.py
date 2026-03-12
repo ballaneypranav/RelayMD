@@ -16,6 +16,10 @@ from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
+from relaymd.orchestrator.services.slurm_provisioning_service import (
+    _normalize_slurm_state,
+    _parse_squeue_output,
+)
 from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
 
@@ -454,7 +458,40 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
     worker = workers[0]
     assert worker.provider_id == "gilbreth:44444"
     assert worker.status == WorkerStatus.queued
+    assert worker.provider_state == "submitted"
     assert worker.last_heartbeat >= datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
+
+
+def test_parse_squeue_output_and_state_mapping() -> None:
+    statuses = _parse_squeue_output(
+        "11111|PENDING|Priority\n22222|RUNNING|None\n33333|COMPLETING|\n"
+    )
+
+    assert statuses["11111"].provider_state == "pending"
+    assert statuses["11111"].provider_state_raw == "PENDING"
+    assert statuses["11111"].provider_reason == "Priority"
+
+    assert statuses["22222"].provider_state == "running"
+    assert statuses["22222"].provider_state_raw == "RUNNING"
+    assert statuses["22222"].provider_reason is None
+
+    assert statuses["33333"].provider_state == "completing"
+    assert statuses["33333"].provider_state_raw == "COMPLETING"
+    assert statuses["33333"].provider_reason is None
+
+
+@pytest.mark.parametrize(
+    ("raw_state", "expected"),
+    [
+        ("PD", "pending"),
+        ("CONFIGURING", "pending"),
+        ("R", "running"),
+        ("CG", "completing"),
+        ("SUSPENDED", "unknown"),
+    ],
+)
+def test_normalize_slurm_state(raw_state: str, expected: str) -> None:
+    assert _normalize_slurm_state(raw_state) == expected
 
 
 @pytest.mark.asyncio
@@ -528,7 +565,7 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
         "--jobs",
         "11111,22222",
         "--noheader",
-        "--format=%i",
+        "--format=%i|%T|%r",
     ]
 
 
@@ -549,7 +586,7 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
             returncode = 0
 
             async def communicate(self):
-                return b"33333\n", b""
+                return b"33333|RUNNING|None\n", b""
 
         return FakeProc()
 
@@ -581,7 +618,12 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
             remaining = (await session.exec(select(Worker))).all()
 
     assert len(remaining) == 1
-    assert remaining[0].provider_id == "gilbreth:33333"
+    kept = remaining[0]
+    assert kept.provider_id == "gilbreth:33333"
+    assert kept.provider_state == "running"
+    assert kept.provider_state_raw == "RUNNING"
+    assert kept.provider_reason is None
+    assert kept.provider_last_checked_at is not None
     assert command_args == [
         "ssh",
         "-q",
@@ -592,7 +634,7 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
         "--jobs",
         "33333",
         "--noheader",
-        "--format=%i",
+        "--format=%i|%T|%r",
     ]
 
 
