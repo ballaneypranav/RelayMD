@@ -50,7 +50,7 @@ def test_configure_logging_strips_log_directory_before_path_build(
         def __call__(self, _logger, _method_name, event_dict):
             return event_dict
 
-    orchestrator_logging._CONFIGURED = False
+    monkeypatch.setattr(orchestrator_logging, "_CONFIGURED", False)
     monkeypatch.setattr(orchestrator_logging, "_JsonFileProcessor", DummyJsonFileProcessor)
     monkeypatch.setattr("relaymd.axiom_logging.AxiomProcessor", DummyAxiomProcessor)
     monkeypatch.setattr(orchestrator_logging.structlog, "configure", lambda **_: None)
@@ -67,4 +67,3 @@ def test_configure_logging_strips_log_directory_before_path_build(
     orchestrator_logging.configure_logging(settings)
 
     assert captured["file_path"] == tmp_path / "orchestrator.log.jsonl"
-    orchestrator_logging._CONFIGURED = False

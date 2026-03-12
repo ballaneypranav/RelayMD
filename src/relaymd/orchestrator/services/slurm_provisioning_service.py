@@ -292,8 +292,16 @@ async def submit_pending_slurm_jobs(
             try:
                 submitted = await service.submit_cluster_if_needed(cluster=cluster)
             except SlurmSubmissionError as exc:
-                with suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:  # noqa: BLE001
+                    logger.exception(
+                        "slurm_cluster_submission_rollback_failed",
+                        error=str(rollback_exc),
+                        original_error=str(exc),
+                        **_cluster_submission_log_fields(cluster),
+                    )
+                    raise
                 logger.error(
                     "slurm_cluster_submission_failed",
                     error=str(exc),
@@ -301,8 +309,16 @@ async def submit_pending_slurm_jobs(
                 )
                 continue
             except Exception as exc:  # noqa: BLE001
-                with suppress(Exception):
+                try:
                     await session.rollback()
+                except Exception as rollback_exc:  # noqa: BLE001
+                    logger.exception(
+                        "slurm_cluster_submission_rollback_failed",
+                        error=str(rollback_exc),
+                        original_error=str(exc),
+                        **_cluster_submission_log_fields(cluster),
+                    )
+                    raise
                 logger.exception(
                     "slurm_cluster_submission_unexpected_error",
                     error=str(exc),
