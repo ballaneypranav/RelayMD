@@ -131,9 +131,7 @@ def _build_submission_context(
     stage: str,
 ) -> _SubmissionContext:
     partition = (
-        cluster.partition
-        if isinstance(cluster.partition, str)
-        else ",".join(cluster.partition)
+        cluster.partition if isinstance(cluster.partition, str) else ",".join(cluster.partition)
     )
     return {
         "stage": stage,
