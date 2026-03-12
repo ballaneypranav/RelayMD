@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 
 from relaymd.orchestrator import config as orchestrator_config
@@ -389,3 +391,192 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
     assert settings.tailscale_auth_key == "tskey-infisical"
     assert settings.apptainer_docker_username == ""
     assert settings.apptainer_docker_password == ""
+
+
+def test_slurm_cluster_partition_must_be_singular_string() -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        slurm_cluster_configs=cast(
+            Any,
+            [
+                {
+                    "name": "gilbreth-a30",
+                    "partition": "a30",
+                    "account": "my-account",
+                    "ssh_host": "host1",
+                    "ssh_username": "user1",
+                    "sif_path": "/shared/containers/relaymd.sif",
+                }
+            ],
+        ),
+    )
+
+    assert settings.slurm_cluster_configs[0].partition == "a30"
+
+
+def test_slurm_cluster_partition_list_is_rejected() -> None:
+    with pytest.raises(ValueError, match="invalid partition list"):
+        OrchestratorSettings(
+            axiom_token="test",
+            slurm_cluster_configs=cast(
+                Any,
+                [
+                    {
+                        "name": "gilbreth",
+                        "partition": ["a30", "a100"],
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    }
+                ],
+            ),
+        )
+
+
+def test_slurm_cluster_inheritance_child_overrides_parent() -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        slurm_cluster_configs=cast(
+            Any,
+            [
+                {
+                    "name": "gilbreth-template",
+                    "is_template": True,
+                    "partition": "a30",
+                    "account": "base-account",
+                    "ssh_host": "base-host",
+                    "ssh_username": "base-user",
+                    "qos": "standby",
+                    "sif_path": "/shared/containers/base.sif",
+                },
+                {
+                    "name": "gilbreth-a100",
+                    "extends": "gilbreth-template",
+                    "partition": "a100-80gb",
+                    "account": "override-account",
+                    "ssh_host": "override-host",
+                },
+            ],
+        ),
+    )
+
+    assert settings.slurm_cluster_configs == [
+        ClusterConfig(
+            name="gilbreth-a100",
+            extends="gilbreth-template",
+            is_template=False,
+            partition="a100-80gb",
+            account="override-account",
+            ssh_host="override-host",
+            ssh_username="base-user",
+            qos="standby",
+            sif_path="/shared/containers/base.sif",
+        )
+    ]
+
+
+def test_slurm_cluster_templates_are_excluded_from_runtime_clusters() -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        slurm_cluster_configs=cast(
+            Any,
+            [
+                {
+                    "name": "gilbreth-template",
+                    "is_template": True,
+                    "partition": "a30",
+                    "account": "base-account",
+                    "ssh_host": "base-host",
+                    "ssh_username": "base-user",
+                    "sif_path": "/shared/containers/base.sif",
+                },
+                {
+                    "name": "gilbreth-a30",
+                    "extends": "gilbreth-template",
+                    "partition": "a30",
+                },
+            ],
+        ),
+    )
+
+    assert [cluster.name for cluster in settings.slurm_cluster_configs] == ["gilbreth-a30"]
+
+
+def test_slurm_cluster_inheritance_unknown_parent_fails_fast() -> None:
+    with pytest.raises(ValueError, match="extends unknown cluster"):
+        OrchestratorSettings(
+            axiom_token="test",
+            slurm_cluster_configs=cast(
+                Any,
+                [
+                    {
+                        "name": "gilbreth-a30",
+                        "extends": "missing-template",
+                        "partition": "a30",
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    }
+                ],
+            ),
+        )
+
+
+def test_slurm_cluster_inheritance_cycle_fails_fast() -> None:
+    with pytest.raises(ValueError, match="cycle detected"):
+        OrchestratorSettings(
+            axiom_token="test",
+            slurm_cluster_configs=cast(
+                Any,
+                [
+                    {
+                        "name": "cluster-a",
+                        "extends": "cluster-b",
+                        "partition": "a30",
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    },
+                    {
+                        "name": "cluster-b",
+                        "extends": "cluster-a",
+                        "partition": "a100",
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    },
+                ],
+            ),
+        )
+
+
+def test_slurm_cluster_duplicate_names_fail_fast() -> None:
+    with pytest.raises(ValueError, match="duplicate slurm cluster config name"):
+        OrchestratorSettings(
+            axiom_token="test",
+            slurm_cluster_configs=cast(
+                Any,
+                [
+                    {
+                        "name": "cluster-a",
+                        "partition": "a30",
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    },
+                    {
+                        "name": "cluster-a",
+                        "partition": "a100",
+                        "account": "my-account",
+                        "ssh_host": "host1",
+                        "ssh_username": "user1",
+                        "sif_path": "/shared/containers/relaymd.sif",
+                    },
+                ],
+            ),
+        )
