@@ -1,17 +1,34 @@
 from __future__ import annotations
 
+from apscheduler.events import EVENT_JOB_ERROR, JobExecutionEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from relaymd.orchestrator.config import OrchestratorSettings
+from relaymd.orchestrator.logging import get_logger
 from relaymd.orchestrator.scheduler import (
     orphaned_job_requeue_once,
     sbatch_submission_job,
     stale_worker_reaper_job,
 )
 
+LOG = get_logger(__name__)
+
+
+def _log_scheduler_job_error(event: JobExecutionEvent) -> None:
+    if event.exception is None:
+        return
+
+    LOG.error(
+        "scheduler_job_failed",
+        job_id=event.job_id,
+        exception=str(event.exception),
+        traceback=event.traceback,
+    )
+
 
 def build_background_scheduler(settings: OrchestratorSettings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
+    scheduler.add_listener(_log_scheduler_job_error, EVENT_JOB_ERROR)
     scheduler.add_job(
         stale_worker_reaper_job,
         trigger="interval",

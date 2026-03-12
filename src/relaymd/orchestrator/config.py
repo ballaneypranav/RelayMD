@@ -103,6 +103,10 @@ class ClusterConfig(BaseModel):
 
 class OrchestratorSettings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./relaymd.db"
+    log_directory: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("log_directory", "RELAYMD_LOG_DIRECTORY"),
+    )
     api_token: str = Field(
         default="",
         validation_alias=AliasChoices("api_token"),
@@ -213,6 +217,7 @@ class OrchestratorSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
+                "log_directory": ("RELAYMD_LOG_DIRECTORY",),
                 "infisical_token": ("INFISICAL_TOKEN",),
                 "salad_api_key": ("SALAD_API_KEY",),
                 "salad_org": ("SALAD_ORG",),

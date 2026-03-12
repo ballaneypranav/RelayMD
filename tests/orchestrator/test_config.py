@@ -12,6 +12,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
         "\n".join(
             [
                 "database_url: sqlite+aiosqlite:////tmp/relaymd.db",
+                "log_directory: /tmp/relaymd-logs",
                 "api_token: yaml-token",
                 "infisical_token: yaml-infisical",
                 "heartbeat_timeout_multiplier: 2.5",
@@ -44,6 +45,7 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
+    assert settings.log_directory == "/tmp/relaymd-logs"
     assert settings.api_token == "yaml-token"
     assert settings.infisical_token == "yaml-infisical"
     assert settings.heartbeat_timeout_multiplier == 2.5
@@ -137,6 +139,17 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.api_token == "explicit-token"
+
+
+def test_relaymd_log_directory_env_is_loaded(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("log_directory: /tmp/from-yaml\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("RELAYMD_LOG_DIRECTORY", "/tmp/from-env")
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.log_directory == "/tmp/from-env"
 
 
 def test_cluster_config_supports_registry_image_uri() -> None:

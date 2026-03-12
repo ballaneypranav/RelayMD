@@ -2,12 +2,42 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
+from collections.abc import MutableMapping
+from pathlib import Path
 from typing import Any, Protocol
 
 import orjson
 import structlog
 
 _CONFIGURED = False
+
+
+class _BrokenPipeSafePrintLogger:
+    def __init__(self, file) -> None:
+        self._logger = structlog.PrintLogger(file=file)
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._logger, name)
+        if not callable(attr):
+            return attr
+
+        def _safe(*args, **kwargs):
+            try:
+                return attr(*args, **kwargs)
+            except BrokenPipeError:
+                return None
+
+        return _safe
+
+
+class _BrokenPipeSafePrintLoggerFactory:
+    def __init__(self, file) -> None:
+        self._file = file
+
+    def __call__(self, *args: Any) -> _BrokenPipeSafePrintLogger:
+        _ = args
+        return _BrokenPipeSafePrintLogger(file=self._file)
 
 
 class _LoggingSettingsProtocol(Protocol):
@@ -25,6 +55,31 @@ class _LoggingSettingsProtocol(Protocol):
 
     @property
     def axiom_dataset(self) -> str: ...
+
+    @property
+    def log_directory(self) -> str | None: ...
+
+
+class _JsonFileProcessor:
+    def __init__(self, file_path: Path) -> None:
+        self._file_path = file_path
+        self._lock = threading.Lock()
+        self._file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def __call__(
+        self,
+        _logger: Any,
+        _method_name: str,
+        event_dict: MutableMapping[str, Any],
+    ) -> MutableMapping[str, Any]:
+        try:
+            line = _orjson_dumps(dict(event_dict))
+            with self._lock, self._file_path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
+                handle.write("\n")
+        except OSError:
+            pass
+        return event_dict
 
 
 def _orjson_dumps(event_dict: dict[str, Any], **_: Any) -> str:
@@ -59,6 +114,11 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
         structlog.processors.format_exc_info,
     ]
 
+    if settings.log_directory and settings.log_directory.strip():
+        log_directory = settings.log_directory.strip()
+        log_file_path = Path(log_directory).expanduser() / "orchestrator.log.jsonl"
+        processors.append(_JsonFileProcessor(log_file_path))
+
     axiom_token = settings.axiom_token
     if not axiom_token.strip():
         raise RuntimeError(
@@ -79,7 +139,7 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(_log_level(settings)),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        logger_factory=_BrokenPipeSafePrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,
     )
     _CONFIGURED = True
