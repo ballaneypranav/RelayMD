@@ -99,11 +99,11 @@ def _parse_squeue_output(stdout_text: str) -> dict[str, SlurmProviderJobStatus]:
 
 async def _query_live_slurm_job_statuses(
     cluster: ClusterConfig, job_ids: list[str]
-) -> dict[str, SlurmProviderJobStatus]:
+) -> dict[str, SlurmProviderJobStatus] | None:
     """Ask squeue for status of the given raw SLURM job IDs.
 
-    Returns a mapping keyed by job ID. Empty mapping means no jobs are alive OR
-    squeue is unavailable. Errors are swallowed so the reaper never crashes.
+    Returns a mapping keyed by job ID. Empty mapping means no jobs are alive.
+    Returns None when squeue status could not be determined (timeout/error).
     """
     if not job_ids:
         return {}
@@ -125,22 +125,64 @@ async def _query_live_slurm_job_statuses(
             "--jobs",
             ",".join(job_ids),
             "--noheader",
-            "--format=%i|%T|%r",
+            "--format=%i\\|%T\\|%r",
         ]
     )
 
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        with suppress(Exception):
-            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=30.0)
+    max_attempts = 2
+    for attempt in range(1, max_attempts + 1):
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+            if process.returncode != 0:
+                logger.warning(
+                    "slurm_squeue_query_nonzero_exit",
+                    cluster_name=cluster.name,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    return_code=process.returncode,
+                    stderr=stderr.decode("utf-8", errors="replace").strip(),
+                    slurm_job_ids=job_ids,
+                    submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+                )
+                return None
             return _parse_squeue_output(stdout.decode("utf-8", errors="replace"))
-    except Exception:  # noqa: BLE001
-        pass
-    return {}
+        except TimeoutError:
+            if process is not None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+                with suppress(Exception):  # noqa: BLE001
+                    await asyncio.wait_for(process.communicate(), timeout=1.0)
+            logger.warning(
+                "slurm_squeue_query_timeout",
+                cluster_name=cluster.name,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                timeout_seconds=30.0,
+                slurm_job_ids=job_ids,
+                submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+            )
+            if attempt < max_attempts:
+                continue
+            return None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "slurm_squeue_query_failed",
+                cluster_name=cluster.name,
+                attempt=attempt,
+                max_attempts=max_attempts,
+                error=str(exc),
+                slurm_job_ids=job_ids,
+                submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+            )
+            return None
+
+    return None
 
 
 class SlurmProvisioningService:
@@ -231,6 +273,13 @@ class SlurmProvisioningService:
         )
         self._session.add(placeholder)
         await self._session.commit()
+        logger.info(
+            "slurm_cluster_submission_succeeded",
+            slurm_job_id=raw_slurm_id,
+            provider_id=placeholder.provider_id,
+            worker_id=str(placeholder.id),
+            **_cluster_submission_log_fields(cluster),
+        )
         return True
 
 
@@ -292,6 +341,13 @@ async def reap_dead_slurm_placeholders(settings: OrchestratorSettings) -> int:
 
         raw_ids = list(raw_id_dict.keys())
         live_statuses = await _query_live_slurm_job_statuses(cluster_config, raw_ids)
+        if live_statuses is None:
+            logger.warning(
+                "slurm_placeholder_reap_skipped_due_to_status_query_failure",
+                cluster_name=cluster_name,
+                placeholder_count=len(raw_id_dict),
+            )
+            continue
 
         for raw_id, p in raw_id_dict.items():
             status = live_statuses.get(raw_id)

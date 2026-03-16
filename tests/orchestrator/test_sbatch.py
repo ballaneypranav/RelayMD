@@ -188,6 +188,56 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=1,
+        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        apptainer_docker_username="gh-user",
+        apptainer_docker_password="gh-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "export APPTAINER_DOCKER_USERNAME='gh-user'" in rendered
+    assert "export APPTAINER_DOCKER_PASSWORD='gh-token'" in rendered
+    assert 'apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"' in rendered
+    assert "--docker-login" not in rendered
+
+
+@pytest.mark.asyncio
 async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None:
     kill_called = {"value": False}
 
@@ -462,6 +512,59 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
     assert worker.last_heartbeat >= datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=5)
 
 
+@pytest.mark.asyncio
+async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) -> None:
+    settings = _settings_with_cluster()
+
+    async def fake_submit(*args, **kwargs) -> str:
+        _ = (args, kwargs)
+        return "44444"
+
+    monkeypatch.setattr("relaymd.orchestrator.scheduler.submit_slurm_job", fake_submit)
+
+    info_log = patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.info")
+    with info_log as info_mock:
+        async with app_client(settings):
+            async with get_sessionmaker()() as session:
+                session.add(
+                    Job(
+                        title="queued-job",
+                        input_bundle_path="jobs/1/input/bundle.tar.gz",
+                        status=JobStatus.queued,
+                    )
+                )
+                await session.commit()
+
+            submitted_count = await submit_pending_slurm_jobs(settings)
+
+            async with get_sessionmaker()() as session:
+                worker = (await session.exec(select(Worker))).one()
+
+    assert submitted_count == 1
+    assert worker.provider_id == "gilbreth:44444"
+    info_mock.assert_any_call(
+        "slurm_cluster_submission_succeeded",
+        slurm_job_id="44444",
+        provider_id=worker.provider_id,
+        worker_id=str(worker.id),
+        cluster_name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        qos=None,
+        gres="gpu:a100:2",
+        nodes=None,
+        ntasks=None,
+        wall_time="3:30:00",
+        memory=None,
+        memory_per_gpu=None,
+        ssh_host="test-host",
+        ssh_username="test-user",
+        ssh_port=22,
+        ssh_key_file=None,
+        submission_target="test-user@test-host:22",
+    )
+
+
 def test_parse_squeue_output_and_state_mapping() -> None:
     statuses = _parse_squeue_output(
         "11111|PENDING|Priority\n22222|RUNNING|None\n33333|COMPLETING|\n"
@@ -565,7 +668,7 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
         "--jobs",
         "11111,22222",
         "--noheader",
-        "--format=%i|%T|%r",
+        "--format=%i\\|%T\\|%r",
     ]
 
 
@@ -634,8 +737,165 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
         "--jobs",
         "33333",
         "--noheader",
-        "--format=%i|%T|%r",
+        "--format=%i\\|%T\\|%r",
     ]
+
+
+@pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_retries_after_squeue_timeout(monkeypatch) -> None:
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+    timeout_state = {"count": 0}
+    warning_log = patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.warning")
+
+    async def fake_wait_for(awaitable, timeout):
+        if timeout == 30.0 and timeout_state["count"] == 0:
+            timeout_state["count"] += 1
+            if hasattr(awaitable, "close"):
+                awaitable.close()
+            raise TimeoutError
+        return await awaitable
+
+    async def fake_squeue_live(*args, **kwargs):
+        _ = (args, kwargs)
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b"33333|RUNNING|None\n", b""
+
+            def kill(self):
+                return None
+
+        return FakeProc()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_live,
+    )
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.wait_for",
+        fake_wait_for,
+    )
+
+    with warning_log as warning_mock:
+        async with app_client(settings):
+            async with get_sessionmaker()() as session:
+                session.add(
+                    Worker(
+                        platform=Platform.hpc,
+                        gpu_model="a100",
+                        gpu_count=2,
+                        vram_gb=0,
+                        status=WorkerStatus.queued,
+                        provider_id="gilbreth:33333",
+                        last_heartbeat=datetime(1970, 1, 1),
+                        registered_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+
+            reaped = await reap_dead_slurm_placeholders(settings)
+            assert reaped == 0
+
+            async with get_sessionmaker()() as session:
+                remaining = (await session.exec(select(Worker))).all()
+
+    assert timeout_state["count"] == 1
+    warning_mock.assert_any_call(
+        "slurm_squeue_query_timeout",
+        cluster_name="gilbreth",
+        attempt=1,
+        max_attempts=2,
+        timeout_seconds=30.0,
+        slurm_job_ids=["33333"],
+        submission_target="test-user@test-host:22",
+    )
+    assert len(remaining) == 1
+    assert remaining[0].provider_id == "gilbreth:33333"
+    assert remaining[0].provider_state == "running"
+
+
+@pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_skips_reap_after_squeue_timeout_retries(
+    monkeypatch,
+) -> None:
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+    warning_log = patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.warning")
+
+    async def fake_wait_for(awaitable, timeout):
+        if timeout == 30.0:
+            if hasattr(awaitable, "close"):
+                awaitable.close()
+            raise TimeoutError
+        return await awaitable
+
+    async def fake_squeue_noop(*args, **kwargs):
+        _ = (args, kwargs)
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self):
+                return b"", b""
+
+            def kill(self):
+                return None
+
+        return FakeProc()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_noop,
+    )
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.wait_for",
+        fake_wait_for,
+    )
+
+    with warning_log as warning_mock:
+        async with app_client(settings):
+            async with get_sessionmaker()() as session:
+                session.add(
+                    Worker(
+                        platform=Platform.hpc,
+                        gpu_model="a100",
+                        gpu_count=2,
+                        vram_gb=0,
+                        status=WorkerStatus.queued,
+                        provider_id="gilbreth:33333",
+                        last_heartbeat=datetime(1970, 1, 1),
+                        registered_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+
+            reaped = await reap_dead_slurm_placeholders(settings)
+            assert reaped == 0
+
+            async with get_sessionmaker()() as session:
+                remaining = (await session.exec(select(Worker))).all()
+
+    warning_mock.assert_any_call(
+        "slurm_squeue_query_timeout",
+        cluster_name="gilbreth",
+        attempt=2,
+        max_attempts=2,
+        timeout_seconds=30.0,
+        slurm_job_ids=["33333"],
+        submission_target="test-user@test-host:22",
+    )
+    warning_mock.assert_any_call(
+        "slurm_placeholder_reap_skipped_due_to_status_query_failure",
+        cluster_name="gilbreth",
+        placeholder_count=1,
+    )
+    assert len(remaining) == 1
+    assert remaining[0].provider_id == "gilbreth:33333"
 
 
 @pytest.mark.asyncio

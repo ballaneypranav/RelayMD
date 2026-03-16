@@ -31,6 +31,10 @@ set -euo pipefail
 
 export INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token_shell_quoted }}
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
+{% if apptainer_docker_login %}
+export APPTAINER_DOCKER_USERNAME={{ apptainer_docker_username_shell_quoted }}
+export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
+{% endif %}
 
 # Resolve the Apptainer image.  For docker:// URIs we pre-pull to a shared SIF
 # cache under ~/.apptainer/relaymd-sif-cache, using flock to serialise the
