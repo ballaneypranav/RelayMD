@@ -6,6 +6,13 @@ from typing import Any
 DependencyLoader = Callable[[], tuple[type[Any], type[Any], type[Any]]]
 
 
+class MissingRequiredSecretsError(RuntimeError):
+    def __init__(self, missing_secret_names: list[str]) -> None:
+        self.missing_secret_names = sorted(set(missing_secret_names))
+        missing = ", ".join(self.missing_secret_names)
+        super().__init__(f"Missing required Infisical secrets: {missing}")
+
+
 class InfisicalSecretManager:
     def __init__(
         self,
@@ -68,9 +75,16 @@ class InfisicalSecretManager:
         optional = optional or {}
         client, get_secret_options = self._build_client()
         resolved: dict[str, str] = {}
+        missing_required_secret_names: list[str] = []
 
         for field_name, secret_name in required.items():
-            resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
+            try:
+                resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
+            except Exception:  # noqa: BLE001
+                missing_required_secret_names.append(secret_name)
+
+        if missing_required_secret_names:
+            raise MissingRequiredSecretsError(missing_required_secret_names)
 
         for field_name, secret_name in optional.items():
             try:
@@ -86,6 +100,8 @@ class OrchestratorSecretManager(InfisicalSecretManager):
         required: dict[str, str] = {
             "api_token": "RELAYMD_API_TOKEN",
             "axiom_token": "AXIOM_TOKEN",
+            "apptainer_docker_username": "GHCR_USERNAME",
+            "apptainer_docker_password": "GHCR_PAT",
         }
         if include_tailscale_auth_key:
             required["tailscale_auth_key"] = "TAILSCALE_AUTH_KEY"

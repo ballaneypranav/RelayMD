@@ -25,7 +25,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS,
     DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS,
 )
-from relaymd.secret_management import OrchestratorSecretManager
+from relaymd.secret_management import MissingRequiredSecretsError, OrchestratorSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
@@ -363,6 +363,11 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
         infisical_values = secret_manager.fetch_settings_values(
             include_tailscale_auth_key=(has_slurm or has_salad)
         )
+    except MissingRequiredSecretsError as exc:
+        raise RuntimeError(
+            "Failed to load orchestrator settings from Infisical: "
+            f"{', '.join(exc.missing_secret_names)}"
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to load orchestrator settings from Infisical") from exc
 
