@@ -225,16 +225,78 @@ async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkey
         api_token="test-token",
         infisical_token="client-id:client-secret",
         apptainer_docker_username="gh-user",
-        apptainer_docker_password="gh-token",
+        apptainer_docker_password="  gh-token  ",
     )
 
     await submit_slurm_job(cluster, settings)
 
     rendered = captured["script"]
     assert "export APPTAINER_DOCKER_USERNAME='gh-user'" in rendered
-    assert "export APPTAINER_DOCKER_PASSWORD='gh-token'" in rendered
+    assert "export APPTAINER_DOCKER_PASSWORD='  gh-token  '" in rendered
     assert 'apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"' in rendered
     assert "--docker-login" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> None:
+    class FakeLogger:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        def debug(self, fmt: str, rendered: str) -> None:
+            _ = fmt
+            self.messages.append(rendered)
+
+    fake_logger = FakeLogger()
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            _ = input
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.structlog.get_logger",
+        lambda _: fake_logger,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=1,
+        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        wall_time="3:30:00",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        apptainer_docker_username="gh-user",
+        apptainer_docker_password="gh-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    assert len(fake_logger.messages) == 1
+    logged_script = fake_logger.messages[0]
+    assert "export INFISICAL_BOOTSTRAP_TOKEN='[REDACTED]'" in logged_script
+    assert "export APPTAINER_DOCKER_PASSWORD='[REDACTED]'" in logged_script
+    assert "client-id:client-secret" not in logged_script
+    assert "gh-token" not in logged_script
 
 
 @pytest.mark.asyncio

@@ -173,7 +173,7 @@ def _render_sbatch_script(
     settings: OrchestratorSettings,
 ) -> str:
     docker_username = settings.apptainer_docker_username.strip()
-    docker_password = settings.apptainer_docker_password.strip()
+    docker_password = settings.apptainer_docker_password
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
@@ -256,7 +256,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
     )
 
     logger = structlog.get_logger(__name__)
-    logger.debug("Submitting job script:\n%s", rendered)
+    logger.debug("Submitting job script:\n%s", _redact_sbatch_script_for_disk(rendered))
     local_script_path = _write_sbatch_script_to_disk(
         cluster=cluster,
         settings=settings,
