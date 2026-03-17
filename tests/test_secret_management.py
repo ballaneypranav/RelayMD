@@ -109,3 +109,16 @@ def test_fetch_mapped_secrets_reraises_optional_provider_failures() -> None:
             required={"required": "REQUIRED"},
             optional={"optional": "OPTIONAL"},
         )
+
+
+def test_fetch_mapped_secrets_reraises_optional_keyerror() -> None:
+    manager = _build_manager(
+        values={"REQUIRED": "value"},
+        errors={"OPTIONAL": KeyError("DOWNLOAD_BEARER_TOKEN")},
+    )
+
+    with pytest.raises(KeyError):
+        manager.fetch_mapped_secrets(
+            required={"required": "REQUIRED"},
+            optional={"optional": "OPTIONAL"},
+        )

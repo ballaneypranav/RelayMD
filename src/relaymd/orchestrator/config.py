@@ -394,6 +394,6 @@ def _image_uri_targets_ghcr(image_uri: str | None) -> bool:
         normalized_uri = f"docker://{normalized_uri}"
 
     parts = urlsplit(normalized_uri)
-    if parts.scheme.lower() != "docker":
+    if parts.scheme.lower() not in {"docker", "oras"}:
         return False
     return parts.netloc.lower() == "ghcr.io"

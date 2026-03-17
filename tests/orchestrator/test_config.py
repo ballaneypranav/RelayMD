@@ -562,6 +562,86 @@ def test_load_settings_does_not_require_ghcr_credentials_for_non_ghcr_image_uri(
     assert "GHCR_PAT" not in secret_calls
 
 
+def test_load_settings_requires_ghcr_credentials_for_oras_ghcr_image_uri(
+    monkeypatch, tmp_path
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "api_token: yaml-token",
+                "infisical_token: client-id:client-secret",
+                "slurm_cluster_configs:",
+                "  - name: ghcr-oras-cluster",
+                "    partition: gpu",
+                "    account: my-account",
+                "    gpu_type: a30",
+                "    ssh_host: test-host",
+                "    ssh_username: test-user",
+                "    gpu_count: 1",
+                "    image_uri: oras://ghcr.io/acme/relaymd-worker:latest",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
+    monkeypatch.delenv("API_TOKEN", raising=False)
+
+    values = {
+        "RELAYMD_API_TOKEN": "relaymd-token",
+        "AXIOM_TOKEN": "axiom-token",
+        "TAILSCALE_AUTH_KEY": "tskey-infisical",
+        "GHCR_USERNAME": "gh-user",
+    }
+
+    class _FakeClientSettings:
+        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.site_url = site_url
+
+    class _FakeGetSecretOptions:
+        def __init__(
+            self,
+            *,
+            secret_name: str,
+            project_id: str,
+            environment: str,
+            path: str,
+        ) -> None:
+            self.secret_name = secret_name
+            self.project_id = project_id
+            self.environment = environment
+            self.path = path
+
+    class _FakeSecret:
+        def __init__(self, secret_value: str) -> None:
+            self.secret_value = secret_value
+
+    class _FakeInfisicalClient:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+
+        def getSecret(self, options) -> _FakeSecret:
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
+
+    monkeypatch.setattr(
+        orchestrator_config,
+        "_get_infisical_client_dependencies",
+        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Failed to load orchestrator settings from Infisical: GHCR_PAT",
+    ):
+        orchestrator_config.load_settings()
+
+
 def test_slurm_cluster_partition_must_be_singular_string() -> None:
     settings = OrchestratorSettings(
         axiom_token="test",
