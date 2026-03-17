@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -345,8 +346,8 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
     has_slurm = len(settings.slurm_cluster_configs) > 0
-    has_registry_image = any(
-        bool(cluster.image_uri and cluster.image_uri.strip())
+    has_ghcr_registry_image = any(
+        _image_uri_targets_ghcr(cluster.image_uri)
         for cluster in settings.slurm_cluster_configs
     )
     has_salad = bool(
@@ -366,7 +367,7 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
         )
         infisical_values = secret_manager.fetch_settings_values(
             include_tailscale_auth_key=(has_slurm or has_salad),
-            include_registry_credentials=has_registry_image,
+            include_registry_credentials=has_ghcr_registry_image,
         )
     except MissingRequiredSecretsError as exc:
         raise RuntimeError(
@@ -380,3 +381,20 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
     if not updates:
         return settings
     return settings.model_copy(update=updates)
+
+
+def _image_uri_targets_ghcr(image_uri: str | None) -> bool:
+    if image_uri is None:
+        return False
+    raw_image_uri = image_uri.strip()
+    if not raw_image_uri:
+        return False
+
+    normalized_uri = raw_image_uri
+    if "://" not in normalized_uri:
+        normalized_uri = f"docker://{normalized_uri}"
+
+    parts = urlsplit(normalized_uri)
+    if parts.scheme.lower() != "docker":
+        return False
+    return parts.netloc.lower() == "ghcr.io"
