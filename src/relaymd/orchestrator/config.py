@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -25,7 +26,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS,
     DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS,
 )
-from relaymd.secret_management import OrchestratorSecretManager
+from relaymd.secret_management import MissingRequiredSecretsError, OrchestratorSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
@@ -345,6 +346,9 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
     has_slurm = len(settings.slurm_cluster_configs) > 0
+    has_ghcr_registry_image = any(
+        _image_uri_targets_ghcr(cluster.image_uri) for cluster in settings.slurm_cluster_configs
+    )
     has_salad = bool(
         settings.salad_api_key
         and settings.salad_org
@@ -361,8 +365,14 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
             secret_path=INFISICAL_SECRET_PATH,
         )
         infisical_values = secret_manager.fetch_settings_values(
-            include_tailscale_auth_key=(has_slurm or has_salad)
+            include_tailscale_auth_key=(has_slurm or has_salad),
+            include_registry_credentials=has_ghcr_registry_image,
         )
+    except MissingRequiredSecretsError as exc:
+        raise RuntimeError(
+            "Failed to load orchestrator settings from Infisical: "
+            f"{', '.join(exc.missing_secret_names)}"
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("Failed to load orchestrator settings from Infisical") from exc
 
@@ -370,3 +380,20 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
     if not updates:
         return settings
     return settings.model_copy(update=updates)
+
+
+def _image_uri_targets_ghcr(image_uri: str | None) -> bool:
+    if image_uri is None:
+        return False
+    raw_image_uri = image_uri.strip()
+    if not raw_image_uri:
+        return False
+
+    normalized_uri = raw_image_uri
+    if "://" not in normalized_uri:
+        normalized_uri = f"docker://{normalized_uri}"
+
+    parts = urlsplit(normalized_uri)
+    if parts.scheme.lower() not in {"docker", "oras"}:
+        return False
+    return parts.netloc.lower() == "ghcr.io"

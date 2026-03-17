@@ -6,6 +6,13 @@ from typing import Any
 DependencyLoader = Callable[[], tuple[type[Any], type[Any], type[Any]]]
 
 
+class MissingRequiredSecretsError(RuntimeError):
+    def __init__(self, missing_secret_names: list[str]) -> None:
+        self.missing_secret_names = sorted(set(missing_secret_names))
+        missing = ", ".join(self.missing_secret_names)
+        super().__init__(f"Missing required Infisical secrets: {missing}")
+
+
 class InfisicalSecretManager:
     def __init__(
         self,
@@ -59,6 +66,16 @@ class InfisicalSecretManager:
             )
         ).secret_value
 
+    @staticmethod
+    def _is_secret_not_found_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return (
+            "not found" in message
+            or "no secret found" in message
+            or "does not exist" in message
+            or "unable to find" in message
+        )
+
     def fetch_mapped_secrets(
         self,
         *,
@@ -68,25 +85,41 @@ class InfisicalSecretManager:
         optional = optional or {}
         client, get_secret_options = self._build_client()
         resolved: dict[str, str] = {}
+        missing_required_secret_names: list[str] = []
 
         for field_name, secret_name in required.items():
-            resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
+            try:
+                resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_secret_not_found_error(exc):
+                    raise
+                missing_required_secret_names.append(secret_name)
+
+        if missing_required_secret_names:
+            raise MissingRequiredSecretsError(missing_required_secret_names)
 
         for field_name, secret_name in optional.items():
             try:
                 resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_secret_not_found_error(exc):
+                    raise
                 continue
 
         return resolved
 
 
 class OrchestratorSecretManager(InfisicalSecretManager):
-    def fetch_settings_values(self, *, include_tailscale_auth_key: bool) -> dict[str, str]:
+    def fetch_settings_values(
+        self, *, include_tailscale_auth_key: bool, include_registry_credentials: bool
+    ) -> dict[str, str]:
         required: dict[str, str] = {
             "api_token": "RELAYMD_API_TOKEN",
             "axiom_token": "AXIOM_TOKEN",
         }
+        if include_registry_credentials:
+            required["apptainer_docker_username"] = "GHCR_USERNAME"
+            required["apptainer_docker_password"] = "GHCR_PAT"
         if include_tailscale_auth_key:
             required["tailscale_auth_key"] = "TAILSCALE_AUTH_KEY"
         return self.fetch_mapped_secrets(required=required)

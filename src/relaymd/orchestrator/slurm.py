@@ -172,6 +172,8 @@ def _render_sbatch_script(
     *,
     settings: OrchestratorSettings,
 ) -> str:
+    docker_username = settings.apptainer_docker_username.strip()
+    docker_password = settings.apptainer_docker_password
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
@@ -186,6 +188,13 @@ def _render_sbatch_script(
         wall_time=cluster.wall_time,
         apptainer_image=cluster.apptainer_image,
         infisical_token_shell_quoted=_shell_single_quote(settings.infisical_token),
+        apptainer_docker_login=bool(docker_username and docker_password),
+        apptainer_docker_username_shell_quoted=(
+            _shell_single_quote(docker_username) if docker_username else None
+        ),
+        apptainer_docker_password_shell_quoted=(
+            _shell_single_quote(docker_password) if docker_password else None
+        ),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
         worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,
@@ -228,10 +237,15 @@ def _write_sbatch_script_to_disk(
 
 
 def _redact_sbatch_script_for_disk(rendered_script: str) -> str:
-    return re.sub(
+    redacted = re.sub(
         r"(?m)^(export INFISICAL_BOOTSTRAP_TOKEN=).*$",
         r"\1'[REDACTED]'",
         rendered_script,
+    )
+    return re.sub(
+        r"(?m)^(export APPTAINER_DOCKER_PASSWORD=).*$",
+        r"\1'[REDACTED]'",
+        redacted,
     )
 
 
@@ -242,7 +256,7 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
     )
 
     logger = structlog.get_logger(__name__)
-    logger.debug("Submitting job script:\n%s", rendered)
+    logger.debug("Submitting job script:\n%s", _redact_sbatch_script_for_disk(rendered))
     local_script_path = _write_sbatch_script_to_disk(
         cluster=cluster,
         settings=settings,
