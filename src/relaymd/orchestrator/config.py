@@ -347,8 +347,7 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
     has_slurm = len(settings.slurm_cluster_configs) > 0
     has_ghcr_registry_image = any(
-        _image_uri_targets_ghcr(cluster.image_uri)
-        for cluster in settings.slurm_cluster_configs
+        _image_uri_targets_ghcr(cluster.image_uri) for cluster in settings.slurm_cluster_configs
     )
     has_salad = bool(
         settings.salad_api_key

@@ -171,7 +171,10 @@ def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> No
 
         def getSecret(self, options) -> _FakeSecret:
             secret_calls.append(options.secret_name)
-            return _FakeSecret(values[options.secret_name])
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
 
     monkeypatch.setattr(
         cli_config,
@@ -242,7 +245,10 @@ def test_load_settings_infisical_values_win_over_env(monkeypatch) -> None:
             self.settings = settings
 
         def getSecret(self, options) -> _FakeSecret:
-            return _FakeSecret(values[options.secret_name])
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
 
     monkeypatch.setattr(
         cli_config,
