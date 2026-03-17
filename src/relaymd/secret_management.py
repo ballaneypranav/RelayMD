@@ -66,6 +66,18 @@ class InfisicalSecretManager:
             )
         ).secret_value
 
+    @staticmethod
+    def _is_secret_not_found_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        if "secret" not in message:
+            return False
+        return (
+            "not found" in message
+            or "no secret found" in message
+            or "does not exist" in message
+            or "unable to find" in message
+        )
+
     def fetch_mapped_secrets(
         self,
         *,
@@ -80,7 +92,9 @@ class InfisicalSecretManager:
         for field_name, secret_name in required.items():
             try:
                 resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_secret_not_found_error(exc):
+                    raise
                 missing_required_secret_names.append(secret_name)
 
         if missing_required_secret_names:
@@ -89,20 +103,25 @@ class InfisicalSecretManager:
         for field_name, secret_name in optional.items():
             try:
                 resolved[field_name] = self._get_secret(client, get_secret_options, secret_name)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                if not self._is_secret_not_found_error(exc):
+                    raise
                 continue
 
         return resolved
 
 
 class OrchestratorSecretManager(InfisicalSecretManager):
-    def fetch_settings_values(self, *, include_tailscale_auth_key: bool) -> dict[str, str]:
+    def fetch_settings_values(
+        self, *, include_tailscale_auth_key: bool, include_registry_credentials: bool
+    ) -> dict[str, str]:
         required: dict[str, str] = {
             "api_token": "RELAYMD_API_TOKEN",
             "axiom_token": "AXIOM_TOKEN",
-            "apptainer_docker_username": "GHCR_USERNAME",
-            "apptainer_docker_password": "GHCR_PAT",
         }
+        if include_registry_credentials:
+            required["apptainer_docker_username"] = "GHCR_USERNAME"
+            required["apptainer_docker_password"] = "GHCR_PAT"
         if include_tailscale_auth_key:
             required["tailscale_auth_key"] = "TAILSCALE_AUTH_KEY"
         return self.fetch_mapped_secrets(required=required)
