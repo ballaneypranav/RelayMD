@@ -345,6 +345,10 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
     has_slurm = len(settings.slurm_cluster_configs) > 0
+    has_registry_image = any(
+        bool(cluster.image_uri and cluster.image_uri.strip())
+        for cluster in settings.slurm_cluster_configs
+    )
     has_salad = bool(
         settings.salad_api_key
         and settings.salad_org
@@ -361,7 +365,8 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
             secret_path=INFISICAL_SECRET_PATH,
         )
         infisical_values = secret_manager.fetch_settings_values(
-            include_tailscale_auth_key=(has_slurm or has_salad)
+            include_tailscale_auth_key=(has_slurm or has_salad),
+            include_registry_credentials=has_registry_image,
         )
     except MissingRequiredSecretsError as exc:
         raise RuntimeError(

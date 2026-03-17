@@ -349,8 +349,6 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
         "RELAYMD_API_TOKEN": "relaymd-token",
         "AXIOM_TOKEN": "axiom-token",
         "TAILSCALE_AUTH_KEY": "tskey-infisical",
-        "GHCR_USERNAME": "gh-user",
-        "GHCR_PAT": "gh-token",
     }
 
     class _FakeClientSettings:
@@ -382,7 +380,10 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
             self.settings = settings
 
         def getSecret(self, options) -> _FakeSecret:
-            return _FakeSecret(values[options.secret_name])
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
 
     monkeypatch.setattr(
         orchestrator_config,
@@ -395,8 +396,8 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
     assert settings.api_token == "relaymd-token"
     assert settings.axiom_token == "axiom-token"
     assert settings.tailscale_auth_key == "tskey-infisical"
-    assert settings.apptainer_docker_username == "gh-user"
-    assert settings.apptainer_docker_password == "gh-token"
+    assert settings.apptainer_docker_username == ""
+    assert settings.apptainer_docker_password == ""
 
 
 def test_load_settings_fails_when_required_registry_credentials_missing(
@@ -461,7 +462,10 @@ def test_load_settings_fails_when_required_registry_credentials_missing(
             self.settings = settings
 
         def getSecret(self, options) -> _FakeSecret:
-            return _FakeSecret(values[options.secret_name])
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
 
     monkeypatch.setattr(
         orchestrator_config,
