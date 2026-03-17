@@ -68,9 +68,9 @@ class InfisicalSecretManager:
 
     @staticmethod
     def _is_secret_not_found_error(exc: Exception) -> bool:
+        if isinstance(exc, KeyError):
+            return True
         message = str(exc).lower()
-        if "secret" not in message:
-            return False
         return (
             "not found" in message
             or "no secret found" in message
