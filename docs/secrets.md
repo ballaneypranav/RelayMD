@@ -8,6 +8,9 @@ secrets.
 Only one secret is expected to be externally provided:
 - `INFISICAL_TOKEN` (machine identity token, `<client_id>:<client_secret>`)
 
+`INFISICAL_TOKEN` must be present in the process environment and valid for the configured
+Infisical workspace/environment.
+
 All other secret values are fetched from Infisical during process startup or worker bootstrap.
 
 ## Secrets Stored in Infisical
@@ -32,7 +35,8 @@ Additional infra-level secrets (currently not consumed by core Python runtime):
 ### Orchestrator
 
 `src/relaymd/orchestrator/config.py` requires `INFISICAL_TOKEN` and hydrates required secrets
-from Infisical. Orchestrator startup fails fast when required hydrated values are missing.
+from Infisical. Orchestrator startup fails fast when the token is missing/invalid or when
+required hydrated values are missing.
 
 ### SLURM worker launch template
 
@@ -51,7 +55,9 @@ optional download bearer token, and Axiom token).
 ### CLI
 
 `src/relaymd/cli/config.py` requires `INFISICAL_TOKEN` and hydrates API + B2 secrets from
-Infisical before use. The optional download bearer token is also read from Infisical when present.
+Infisical before use. CLI startup fails fast when the token is missing/invalid or when required
+hydrated values are missing. The optional download bearer token is also read from Infisical when
+present.
 
 ## Security Notes
 
