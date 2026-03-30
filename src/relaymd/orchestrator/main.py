@@ -307,4 +307,4 @@ def start() -> None:
             prog_name="relaymd-orchestrator",
         )
         return
-    uvicorn.run("relaymd.orchestrator.main:create_app", factory=True, host="0.0.0.0", port=8000)
+    uvicorn.run("relaymd.orchestrator.main:create_app", factory=True, host="0.0.0.0", port=36158)

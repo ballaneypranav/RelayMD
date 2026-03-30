@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-DEFAULT_ORCHESTRATOR_URL = "http://localhost:8000"
+DEFAULT_ORCHESTRATOR_URL = "http://localhost:36158"
 DEFAULT_CF_WORKER_URL = "https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev"
 
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS = 60

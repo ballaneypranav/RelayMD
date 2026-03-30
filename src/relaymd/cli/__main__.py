@@ -16,7 +16,7 @@ orchestrator_app = typer.Typer(help="Orchestrator commands")
 @orchestrator_app.command()
 def up(
     host: str = typer.Option("0.0.0.0", help="Bind host"),
-    port: int = typer.Option(8000, help="Bind port"),
+    port: int = typer.Option(36158, help="Bind port"),
 ) -> None:
     """Start the RelayMD orchestrator."""
     try:

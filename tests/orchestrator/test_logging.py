@@ -67,3 +67,35 @@ def test_configure_logging_strips_log_directory_before_path_build(
     orchestrator_logging.configure_logging(settings)
 
     assert captured["file_path"] == tmp_path / "orchestrator.log.jsonl"
+
+
+def test_configure_logging_strips_axiom_token_before_processor_init(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class DummyAxiomProcessor:
+        def __init__(self, *, axiom_token: str, dataset: str) -> None:
+            captured["axiom_token"] = axiom_token
+            captured["dataset"] = dataset
+
+        def __call__(self, _logger, _method_name, event_dict):
+            return event_dict
+
+    monkeypatch.setattr(orchestrator_logging, "_CONFIGURED", False)
+    monkeypatch.setattr("relaymd.axiom_logging.AxiomProcessor", DummyAxiomProcessor)
+    monkeypatch.setattr(orchestrator_logging.structlog, "configure", lambda **_: None)
+
+    settings = _TestLoggingSettings(
+        relaymd_env="production",
+        relaymd_log_level="INFO",
+        relaymd_log_format="json",
+        axiom_token="  test-token  ",
+        axiom_dataset="relaymd",
+        log_directory=None,
+    )
+
+    orchestrator_logging.configure_logging(settings)
+
+    assert captured == {
+        "axiom_token": "test-token",
+        "dataset": "relaymd",
+    }

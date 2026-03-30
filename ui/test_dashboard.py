@@ -116,12 +116,12 @@ def test_resolve_runtime_settings_uses_cli_config_when_env_is_missing(
     monkeypatch.setattr(
         dashboard,
         "_load_cli_config_values",
-        lambda: ("http://config-orchestrator:8000", "config-api-token"),
+        lambda: ("http://config-orchestrator:36158", "config-api-token"),
     )
 
     orchestrator_url, api_token, refresh_interval_seconds = dashboard._resolve_runtime_settings()
 
-    assert orchestrator_url == "http://config-orchestrator:8000"
+    assert orchestrator_url == "http://config-orchestrator:36158"
     assert api_token == "config-api-token"
     assert refresh_interval_seconds == 30
 

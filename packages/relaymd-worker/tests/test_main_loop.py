@@ -55,7 +55,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         download_bearer_token="download-token",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     runtime_settings = WorkerRuntimeSettings(
         axiom_token="test",
@@ -85,7 +85,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
         download_bearer_token="",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
 
     runtime_settings = WorkerRuntimeSettings(
@@ -113,7 +113,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
         bucket_name="relaymd-bucket",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
 
     storage = Mock()
@@ -260,7 +260,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
         bucket_name="relaymd-bucket",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
 
     monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: Mock())
@@ -655,7 +655,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
         bucket_name="relaymd-bucket",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
 
     monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: Mock())
@@ -767,7 +767,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
         bucket_name="relaymd-bucket",
         tailscale_auth_key="tskey",
         relaymd_api_token="api-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
 
     monkeypatch.setattr("relaymd.worker.main._build_storage_client", lambda *_: Mock())

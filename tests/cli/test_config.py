@@ -19,7 +19,7 @@ def test_yaml_orchestrator_url_overrides_env(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
     (cwd_dir / "relaymd-config.yaml").write_text(
-        "orchestrator_url: http://127.0.0.1:8000\n",
+        "orchestrator_url: http://127.0.0.1:36158\n",
         encoding="utf-8",
     )
 

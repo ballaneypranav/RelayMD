@@ -31,7 +31,7 @@ RelayMD workers and orchestrator communicate only over the Tailscale tailnet. Wo
    ```
 4. Enable MagicDNS in the Tailscale admin console.
 5. Record the orchestrator stable MagicDNS hostname and set:
-   - `RELAYMD_ORCHESTRATOR_URL = http://<orchestrator-magicdns-hostname>:8000`
+   - `RELAYMD_ORCHESTRATOR_URL = http://<orchestrator-magicdns-hostname>:36158`
 6. Generate a reusable **ephemeral** auth key in Tailscale admin (use `tag:relaymd-worker` when ACL tags are enabled).
 7. Store the key and orchestrator URL in Infisical (`/RelayMD`, `prod`):
    - `TAILSCALE_AUTH_KEY`
@@ -44,7 +44,7 @@ Run from a test node joined with the ephemeral key:
 ```bash
 sudo tailscale up --auth-key "$TAILSCALE_AUTH_KEY"
 tailscale ping <orchestrator-magicdns-hostname>
-curl -i http://<orchestrator-magicdns-hostname>:8000/healthz
+curl -i http://<orchestrator-magicdns-hostname>:36158/healthz
 ```
 
 Expected result:
@@ -66,8 +66,8 @@ Health check warnings like the following can appear in userspace mode and are us
 If MagicDNS lookup fails in this environment, force resolution with the orchestrator's tailnet IP:
 
 ```bash
-curl -i --resolve <orchestrator-magicdns-hostname>:8000:<orchestrator-tailnet-ip> \
-  http://<orchestrator-magicdns-hostname>:8000/healthz
+curl -i --resolve <orchestrator-magicdns-hostname>:36158:<orchestrator-tailnet-ip> \
+  http://<orchestrator-magicdns-hostname>:36158/healthz
 ```
 
 ### ACL Guidance (Optional)

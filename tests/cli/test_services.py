@@ -7,6 +7,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from relaymd_api_client.errors import UnexpectedStatus
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_conflict import JobConflict
 from relaymd_api_client.models.job_read import JobRead
@@ -215,6 +216,28 @@ def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:
     )
 
     with pytest.raises(RuntimeError, match="Failed to parse create job response"):
+        SubmitService(_as_cli_context(context)).register_job(
+            title="train",
+            b2_key="jobs/a/input/bundle.tar.gz",
+        )
+
+
+def test_submit_service_register_job_surfaces_helpful_404_hint(monkeypatch) -> None:
+    context = _FakeContext()
+    context.settings = CliSettings(
+        api_token="test-token",
+        orchestrator_url="http://127.0.0.1:36158",
+        b2_endpoint_url="https://b2.example",
+        b2_bucket_name="relaymd-bucket",
+        b2_access_key_id="access",
+        b2_secret_access_key="secret",
+    )
+    monkeypatch.setattr(
+        "relaymd.cli.services.submit_service.create_job_jobs_post.sync",
+        Mock(side_effect=UnexpectedStatus(404, b'{"detail":"Not Found"}')),
+    )
+
+    with pytest.raises(RuntimeError, match="POST /jobs returned 404 from http://127.0.0.1:36158"):
         SubmitService(_as_cli_context(context)).register_job(
             title="train",
             b2_key="jobs/a/input/bundle.tar.gz",
