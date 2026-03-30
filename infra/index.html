@@ -1278,7 +1278,7 @@
 </span></code></pre></div></li>
 <li>Enable MagicDNS in the Tailscale admin console.</li>
 <li>Record the orchestrator stable MagicDNS hostname and set:</li>
-<li><code>RELAYMD_ORCHESTRATOR_URL = http://&lt;orchestrator-magicdns-hostname&gt;:8000</code></li>
+<li><code>RELAYMD_ORCHESTRATOR_URL = http://&lt;orchestrator-magicdns-hostname&gt;:36158</code></li>
 <li>Generate a reusable <strong>ephemeral</strong> auth key in Tailscale admin (use <code>tag:relaymd-worker</code> when ACL tags are enabled).</li>
 <li>Store the key and orchestrator URL in Infisical (<code>/RelayMD</code>, <code>prod</code>):</li>
 <li><code>TAILSCALE_AUTH_KEY</code></li>
@@ -1288,7 +1288,7 @@
 <p>Run from a test node joined with the ephemeral key:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>tailscale<span class="w"> </span>up<span class="w"> </span>--auth-key<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TAILSCALE_AUTH_KEY</span><span class="s2">&quot;</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>tailscale<span class="w"> </span>ping<span class="w"> </span>&lt;orchestrator-magicdns-hostname&gt;
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>curl<span class="w"> </span>-i<span class="w"> </span>http://&lt;orchestrator-magicdns-hostname&gt;:8000/healthz
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>curl<span class="w"> </span>-i<span class="w"> </span>http://&lt;orchestrator-magicdns-hostname&gt;:36158/healthz
 </span></code></pre></div>
 <p>Expected result:
 - HTTP status <code>200 OK</code> from <code>/healthz</code>.</p>
@@ -1301,8 +1301,8 @@
 - <code>getting OS base config is not supported</code>
 - <code>Tailscale failed to fetch the DNS configuration of your device</code></p>
 <p>If MagicDNS lookup fails in this environment, force resolution with the orchestrator's tailnet IP:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-i<span class="w"> </span>--resolve<span class="w"> </span>&lt;orchestrator-magicdns-hostname&gt;:8000:&lt;orchestrator-tailnet-ip&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>http://&lt;orchestrator-magicdns-hostname&gt;:8000/healthz
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-i<span class="w"> </span>--resolve<span class="w"> </span>&lt;orchestrator-magicdns-hostname&gt;:36158:&lt;orchestrator-tailnet-ip&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>http://&lt;orchestrator-magicdns-hostname&gt;:36158/healthz
 </span></code></pre></div>
 <h3 id="acl-guidance-optional">ACL Guidance (Optional)</h3>
 <p>If ACLs are enabled, restrict worker nodes to orchestrator-only access and block worker-to-worker communication.</p>
