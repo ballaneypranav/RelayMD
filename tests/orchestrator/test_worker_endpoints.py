@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -294,17 +295,20 @@ async def test_register_worker_with_provider_id_activates_matching_placeholder()
             placeholder_id = str(placeholder.id)
 
         # The real worker starts and registers with its full provider_id.
-        register_response = await client.post(
-            "/workers/register",
-            headers=headers,
-            json={
-                "platform": "hpc",
-                "gpu_model": "a100",
-                "gpu_count": 2,
-                "vram_gb": 80,
-                "provider_id": "gilbreth:99001",
-            },
-        )
+        with patch(
+            "relaymd.orchestrator.services.worker_lifecycle_service.logger.info"
+        ) as info_mock:
+            register_response = await client.post(
+                "/workers/register",
+                headers=headers,
+                json={
+                    "platform": "hpc",
+                    "gpu_model": "a100",
+                    "gpu_count": 2,
+                    "vram_gb": 80,
+                    "provider_id": "gilbreth:99001",
+                },
+            )
         assert register_response.status_code == 200
         returned_worker_id = register_response.json()["worker_id"]
 
@@ -322,6 +326,12 @@ async def test_register_worker_with_provider_id_activates_matching_placeholder()
         assert real_worker["status"] == "active"
         assert real_worker["vram_gb"] == 80  # updated from real GPU
         assert real_worker["provider_id"] == "gilbreth:99001"  # preserved
+        info_mock.assert_any_call(
+            "queued_placeholder_activated",
+            provider_id="gilbreth:99001",
+            worker_id=placeholder_id,
+            platform="hpc",
+        )
 
 
 @pytest.mark.asyncio

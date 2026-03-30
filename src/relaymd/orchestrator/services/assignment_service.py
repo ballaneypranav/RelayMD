@@ -3,12 +3,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import structlog
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, JobStatus, Worker, WorkerStatus
 
 from .job_transitions import JobTransitionService
+
+logger = structlog.get_logger(__name__)
 
 
 class AssignmentService:
@@ -51,6 +54,11 @@ class AssignmentService:
         ).first()
 
     async def assign_job_for_requesting_worker(self, *, requesting_worker_id: UUID) -> Job | None:
+        logger.info(
+            "job_assignment_started",
+            worker_id=str(requesting_worker_id),
+            assignment_mode="requesting",
+        )
         worker = await self._session.get(Worker, requesting_worker_id)
         if worker is None:
             return None
@@ -73,6 +81,13 @@ class AssignmentService:
         self._session.add(queued_job)
         await self._session.commit()
         await self._session.refresh(queued_job)
+        logger.info(
+            "job_assignment_succeeded",
+            assignment_mode="requesting",
+            job_id=str(queued_job.id),
+            worker_id=str(worker.id),
+            provider_id=worker.provider_id,
+        )
         return queued_job
 
     async def assign_next_job(self) -> tuple[Job, Worker] | None:
@@ -80,6 +95,10 @@ class AssignmentService:
         queued_job = await self._claim_next_queued_job()
         if queued_job is None:
             return None
+
+        logger.info(
+            "job_assignment_started", assignment_mode="scheduled", job_id=str(queued_job.id)
+        )
 
         busy_worker_ids = await self._busy_worker_ids()
         stale_cutoff = self._stale_cutoff()
@@ -100,6 +119,13 @@ class AssignmentService:
 
         available_workers = [w for w in workers if w.id not in busy_worker_ids]
         if not available_workers:
+            logger.info(
+                "job_assignment_skipped_no_idle_workers",
+                assignment_mode="scheduled",
+                job_id=str(queued_job.id),
+                busy_worker_count=len(busy_worker_ids),
+                fresh_worker_count=len(workers),
+            )
             return None
 
         selected_worker = available_workers[0]
@@ -107,4 +133,11 @@ class AssignmentService:
         self._session.add(queued_job)
         await self._session.commit()
         await self._session.refresh(queued_job)
+        logger.info(
+            "job_assignment_succeeded",
+            assignment_mode="scheduled",
+            job_id=str(queued_job.id),
+            worker_id=str(selected_worker.id),
+            provider_id=selected_worker.provider_id,
+        )
         return queued_job, selected_worker

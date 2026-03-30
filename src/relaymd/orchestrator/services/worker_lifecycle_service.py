@@ -48,9 +48,10 @@ class WorkerLifecycleService:
             ).first()
             if existing is not None:
                 logger.info(
-                    "activating_queued_placeholder",
+                    "queued_placeholder_activated",
                     provider_id=payload.provider_id,
                     worker_id=str(existing.id),
+                    platform=str(payload.platform),
                 )
                 existing.status = WorkerStatus.active
                 existing.vram_gb = payload.vram_gb
@@ -77,6 +78,12 @@ class WorkerLifecycleService:
         self._session.add(worker)
         await self._session.commit()
         await self._session.refresh(worker)
+        logger.info(
+            "worker_registered",
+            worker_id=str(worker.id),
+            provider_id=worker.provider_id,
+            platform=str(worker.platform),
+        )
         return worker
 
     async def heartbeat(self, worker_id: UUID) -> Worker | None:

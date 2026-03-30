@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -575,6 +575,18 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_submit_pending_jobs_logs_provisioning_skip_without_queued_jobs() -> None:
+    settings = _settings_with_cluster()
+
+    with patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.info") as info_mock:
+        async with app_client(settings):
+            submitted_count = await submit_pending_slurm_jobs(settings)
+
+    assert submitted_count == 0
+    info_mock.assert_any_call("provisioning_skipped_no_queued_jobs", cluster_name="gilbreth")
+
+
+@pytest.mark.asyncio
 async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) -> None:
     settings = _settings_with_cluster()
 
@@ -604,6 +616,24 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
 
     assert submitted_count == 1
     assert worker.provider_id == "gilbreth:44444"
+    info_mock.assert_any_call(
+        "provisioning_evaluated",
+        cluster_name="gilbreth",
+        job_id=ANY,
+        strategy="reactive",
+    )
+    info_mock.assert_any_call(
+        "slurm_submission_started",
+        cluster_name="gilbreth",
+        job_id=ANY,
+    )
+    info_mock.assert_any_call(
+        "placeholder_worker_created",
+        cluster_name="gilbreth",
+        job_id=ANY,
+        provider_id=worker.provider_id,
+        worker_id=str(worker.id),
+    )
     info_mock.assert_any_call(
         "slurm_cluster_submission_succeeded",
         slurm_job_id="44444",

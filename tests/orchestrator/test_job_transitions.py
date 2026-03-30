@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 from relaymd.models import Job, JobStatus
@@ -61,6 +62,17 @@ def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
 
     assert job.latest_checkpoint_path == "jobs/1/checkpoints/latest"
     assert isinstance(job.last_checkpoint_at, datetime)
+
+
+def test_checkpoint_allowed_in_active_states_logs_checkpoint_recorded() -> None:
+    service = JobTransitionService()
+    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=JobStatus.running)
+
+    with patch("relaymd.orchestrator.services.job_transitions.logger.info") as info_mock:
+        service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
+
+    info_mock.assert_called_once()
+    assert info_mock.call_args.args[0] == "checkpoint_recorded"
 
 
 @pytest.mark.parametrize(
