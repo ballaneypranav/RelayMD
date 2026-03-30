@@ -74,7 +74,7 @@ apptainer exec ${APPTAINER_FLAGS} "${RELAYMD_SIF_PATH}" /bin/bash -lc '
     --hostname='"${CONTAINER_HOSTNAME}"'
 
   curl --fail --silent --show-error \
-    "http://'"${ORCHESTRATOR_HOSTNAME}"':8000/healthz" \
+    "http://'"${ORCHESTRATOR_HOSTNAME}"':36158/healthz" \
     | tee "'"${LOG_FILE}"'"
 '
 

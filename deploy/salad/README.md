@@ -49,7 +49,7 @@ Optional runtime tuning env vars:
 Example check:
 
 ```bash
-curl -sS -H "X-API-Token: $RELAYMD_API_TOKEN" http://<orchestrator-host>:8000/workers
+curl -sS -H "X-API-Token: $RELAYMD_API_TOKEN" http://<orchestrator-host>:36158/workers
 ```
 
 ## Salad GPU Model String Capture (for W-158)

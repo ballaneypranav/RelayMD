@@ -9,7 +9,7 @@ import pandas as pd  # type: ignore[reportMissingImports]
 import streamlit as st  # type: ignore[reportMissingImports]
 from streamlit_autorefresh import st_autorefresh  # type: ignore[reportMissingImports]
 
-DEFAULT_ORCHESTRATOR_URL = "http://localhost:8000"
+DEFAULT_ORCHESTRATOR_URL = "http://localhost:36158"
 DEFAULT_REFRESH_INTERVAL_SECONDS = 30
 STALE_WORKER_SECONDS = 120
 REQUEST_TIMEOUT_SECONDS = 15.0

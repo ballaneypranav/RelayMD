@@ -51,7 +51,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "DOWNLOAD_BEARER_TOKEN": "download-token",
         "TAILSCALE_AUTH_KEY": "tskey-ephemeral",
         "RELAYMD_API_TOKEN": "relay-token",
-        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:8000",
+        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:36158",
     }
     created_clients: list[_FakeInfisicalClient] = []
 
@@ -72,7 +72,7 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         download_bearer_token="download-token",
         tailscale_auth_key="tskey-ephemeral",
         relaymd_api_token="relay-token",
-        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:8000",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     client = created_clients[0]
     assert client.settings.client_id == "client-id"
@@ -108,7 +108,7 @@ def test_run_bootstrap_missing_optional_download_bearer_token_uses_empty_default
         "BUCKET_NAME": "relaymd-bucket",
         "TAILSCALE_AUTH_KEY": "tskey-ephemeral",
         "RELAYMD_API_TOKEN": "relay-token",
-        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:8000",
+        "RELAYMD_ORCHESTRATOR_URL": "http://orchestrator.tail.ts.net:36158",
     }
 
     class _MissingOptionalClient(_FakeInfisicalClient):

@@ -16,7 +16,7 @@ infisical_token: ""
 # Tailscale settings for the orchestrator.
 # tailscale_hostname is used as the stable MagicDNS name for this orchestrator
 # node regardless of which login node it runs on.  Set RELAYMD_ORCHESTRATOR_URL
-# in Infisical to http://<tailscale_hostname>:8000 so workers always resolve the
+# in Infisical to http://<tailscale_hostname>:36158 so workers always resolve the
 # current IP via DNS instead of a hardcoded address.
 # tailscale_hostname: relaymd-orchestrator  # default; override via RELAYMD_TAILSCALE_HOSTNAME
 # tailscale_socket: ~/.tailscale/tailscaled.sock  # default; set via RELAYMD_TAILSCALE_SOCKET
@@ -118,7 +118,7 @@ salad_api_timeout_seconds: 10.0
 # CLI settings
 
 # Orchestrator base URL for relaymd CLI commands.
-orchestrator_url: http://localhost:8000
+orchestrator_url: http://localhost:36158
 
 # B2 S3-compatible endpoint used by relaymd submit for direct bundle uploads.
 b2_endpoint_url: https://s3.us-west-000.backblazeb2.com
