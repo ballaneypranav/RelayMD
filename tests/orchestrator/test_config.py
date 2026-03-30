@@ -83,7 +83,7 @@ def test_missing_yaml_path_is_non_fatal(monkeypatch, tmp_path) -> None:
     assert settings.database_url == "sqlite+aiosqlite:///./relaymd.db"
 
 
-def test_env_secret_overrides_yaml_value(monkeypatch, tmp_path) -> None:
+def test_yaml_value_not_overridden_by_unlisted_env_var(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("api_token: yaml-token\n", encoding="utf-8")
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
@@ -94,7 +94,7 @@ def test_env_secret_overrides_yaml_value(monkeypatch, tmp_path) -> None:
     assert settings.api_token == "yaml-token"
 
 
-def test_env_secret_overrides_yaml_alias_key(monkeypatch, tmp_path) -> None:
+def test_unregistered_env_and_yaml_alias_keys_are_ignored(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("RELAYMD_API_TOKEN: yaml-token\n", encoding="utf-8")
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))

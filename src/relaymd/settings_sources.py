@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from pydantic_settings import BaseSettings, EnvSettingsSource, YamlConfigSettingsSource
 from pydantic_settings.sources import DefaultSettingsSource, PydanticBaseSettingsSource
@@ -31,12 +32,9 @@ def relaymd_settings_sources(
 ) -> tuple[PydanticBaseSettingsSource, ...]:
     yaml_source = YamlConfigSettingsSource(settings_cls, yaml_file=config_paths)
     _drop_yaml_keys_with_env_overrides(yaml_source=yaml_source, env_override_map=env_override_map)
-    allowed_fields: set[str] = set(env_override_map.keys())
-    for env_keys in env_override_map.values():
-        allowed_fields.update(env_keys)
     env_source = _FilteredEnvSettingsSource(
         settings_cls,
-        allowed_fields=allowed_fields,
+        allowed_fields=set(env_override_map.keys()),
     )
     return (
         init_settings,
@@ -52,8 +50,19 @@ class _FilteredEnvSettingsSource(EnvSettingsSource):
         self._allowed_fields = allowed_fields
 
     def __call__(self) -> dict[str, object]:
-        values = super().__call__()
-        return {k: v for k, v in values.items() if k in self._allowed_fields}
+        values: dict[str, Any] = {}
+        for field_name in self._allowed_fields:
+            field = self.settings_cls.model_fields[field_name]
+            field_value, _, value_is_complex = self._get_resolved_field_value(field, field_name)
+            field_value = self.prepare_field_value(
+                field_name,
+                field,
+                field_value,
+                value_is_complex,
+            )
+            if field_value is not None:
+                values[field_name] = field_value
+        return values
 
 
 def _drop_yaml_keys_with_env_overrides(

@@ -153,15 +153,7 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
     return ClientSettings, InfisicalClient, GetSecretOptions
 
 
-def _needs_infisical_secret_hydration(settings: CliSettings) -> bool:
-    _ = settings
-    return True
-
-
 def _hydrate_settings_from_infisical(settings: CliSettings) -> CliSettings:
-    if not _needs_infisical_secret_hydration(settings):
-        return settings
-
     try:
         secret_manager = CliSecretManager(
             machine_token=settings.infisical_token,

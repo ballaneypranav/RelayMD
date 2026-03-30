@@ -119,8 +119,8 @@ def configure_logging(settings: _LoggingSettingsProtocol) -> None:
         log_file_path = Path(log_directory).expanduser() / "orchestrator.log.jsonl"
         processors.append(_JsonFileProcessor(log_file_path))
 
-    axiom_token = settings.axiom_token
-    if not axiom_token.strip():
+    axiom_token = settings.axiom_token.strip()
+    if not axiom_token:
         raise RuntimeError(
             "AXIOM_TOKEN is required but missing or empty. "
             "Ensure it is set via AXIOM_TOKEN env var or Infisical."
