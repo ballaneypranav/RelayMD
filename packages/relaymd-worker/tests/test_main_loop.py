@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import ANY, Mock
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from relaymd.worker.main import (
     BundleExecutionConfig,
     _build_storage_client,
     _run_assigned_job,
+    _upload_checkpoint,
     run_worker,
 )
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
@@ -548,6 +550,59 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     assert all(call.kwargs == {"timeout": 2.0} for call in shutdown_event.wait.call_args_list)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
+
+
+def test_upload_checkpoint_emits_success_events(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint.chk"
+    checkpoint.write_text("checkpoint-data", encoding="utf-8")
+    storage = Mock()
+    gateway = Mock()
+    logger = Mock()
+    context = cast(WorkerContext, SimpleNamespace(storage=storage, gateway=gateway))
+    job_id = uuid4()
+
+    uploaded_mtime = _upload_checkpoint(
+        context,
+        logger=logger,
+        checkpoint=checkpoint,
+        checkpoint_b2_key="jobs/x/checkpoints/latest",
+        job_id=job_id,
+    )
+
+    storage.upload_file.assert_called_once_with(checkpoint, "jobs/x/checkpoints/latest")
+    gateway.report_checkpoint.assert_called_once_with(
+        job_id=job_id,
+        checkpoint_path="jobs/x/checkpoints/latest",
+    )
+    assert uploaded_mtime == checkpoint.stat().st_mtime
+    assert [call.args[0] for call in logger.info.call_args_list] == [
+        "checkpoint_upload_started",
+        "checkpoint_upload_succeeded",
+        "checkpoint_report_succeeded",
+    ]
+
+
+def test_upload_checkpoint_emits_failure_event(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint.chk"
+    checkpoint.write_text("checkpoint-data", encoding="utf-8")
+    storage = Mock()
+    storage.upload_file.side_effect = RuntimeError("boom")
+    gateway = Mock()
+    logger = Mock()
+    context = cast(WorkerContext, SimpleNamespace(storage=storage, gateway=gateway))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _upload_checkpoint(
+            context,
+            logger=logger,
+            checkpoint=checkpoint,
+            checkpoint_b2_key="jobs/x/checkpoints/latest",
+            job_id=uuid4(),
+        )
+
+    logger.exception.assert_called_once()
+    assert logger.exception.call_args.args[0] == "checkpoint_upload_failed"
+    gateway.report_checkpoint.assert_not_called()
 
 
 def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_path: Path) -> None:

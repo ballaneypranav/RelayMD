@@ -242,12 +242,27 @@ class SlurmProvisioningService:
             )
         ).first()
         if queued_job is None:
+            logger.info("provisioning_skipped_no_queued_jobs", cluster_name=cluster.name)
             return False
+
+        logger.info(
+            "provisioning_evaluated",
+            cluster_name=cluster.name,
+            job_id=str(queued_job.id),
+            strategy=cluster.strategy,
+        )
 
         if cluster.strategy == "jit_threshold":
             now = datetime.now(UTC).replace(tzinfo=None)
             wait_time_hours = (now - queued_job.created_at).total_seconds() / 3600.0
             if wait_time_hours < cluster.jit_threshold_hours:
+                logger.info(
+                    "provisioning_skipped_jit_threshold_not_met",
+                    cluster_name=cluster.name,
+                    job_id=str(queued_job.id),
+                    wait_time_hours=round(wait_time_hours, 2),
+                    threshold_hours=cluster.jit_threshold_hours,
+                )
                 return False
 
             logger.info(
@@ -270,6 +285,12 @@ class SlurmProvisioningService:
                 )
             ).all()
             if active_hpc_workers:
+                logger.info(
+                    "provisioning_skipped_active_worker_exists",
+                    cluster_name=cluster.name,
+                    job_id=str(queued_job.id),
+                    active_worker_count=len(active_hpc_workers),
+                )
                 return False
 
         # Don't exceed max_pending_jobs queued placeholders for this cluster.
@@ -285,11 +306,26 @@ class SlurmProvisioningService:
             )
         ).all()
         if len(pending_workers) >= cluster.max_pending_jobs:
+            logger.info(
+                "provisioning_skipped_max_pending_reached",
+                cluster_name=cluster.name,
+                job_id=str(queued_job.id),
+                pending_worker_count=len(pending_workers),
+                max_pending_jobs=cluster.max_pending_jobs,
+            )
             return False
 
         if not self._settings.infisical_token:
+            logger.info(
+                "provisioning_skipped_missing_infisical_token",
+                cluster_name=cluster.name,
+                job_id=str(queued_job.id),
+            )
             return False
 
+        logger.info(
+            "slurm_submission_started", cluster_name=cluster.name, job_id=str(queued_job.id)
+        )
         raw_slurm_id = await self._submit_job(cluster, self._settings)
         now = datetime.now(UTC).replace(tzinfo=None)
         placeholder = Worker(
@@ -306,6 +342,13 @@ class SlurmProvisioningService:
         )
         self._session.add(placeholder)
         await self._session.commit()
+        logger.info(
+            "placeholder_worker_created",
+            cluster_name=cluster.name,
+            job_id=str(queued_job.id),
+            provider_id=placeholder.provider_id,
+            worker_id=str(placeholder.id),
+        )
         logger.info(
             "slurm_cluster_submission_succeeded",
             slurm_job_id=raw_slurm_id,

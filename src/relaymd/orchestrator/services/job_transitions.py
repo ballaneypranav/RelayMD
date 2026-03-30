@@ -2,10 +2,14 @@ from __future__ import annotations
 
 from uuid import UUID
 
+import structlog
+
 from relaymd.models import Job, JobStatus
 from relaymd.models.job import utcnow_naive
 
 from .errors import JobTransitionConflictError
+
+logger = structlog.get_logger(__name__)
 
 TERMINAL_JOB_STATUSES = {
     JobStatus.completed,
@@ -78,13 +82,24 @@ class JobTransitionService:
         return self._transition(job, JobStatus.running)
 
     def mark_job_completed(self, job: Job) -> Job:
-        return self._transition(job, JobStatus.completed)
+        updated_job = self._transition(job, JobStatus.completed)
+        logger.info(
+            "job_completed_reported", job_id=str(job.id), worker_id=str(job.assigned_worker_id)
+        )
+        return updated_job
 
     def mark_job_failed(self, job: Job) -> Job:
-        return self._transition(job, JobStatus.failed)
+        updated_job = self._transition(job, JobStatus.failed)
+        logger.info(
+            "job_failed_reported", job_id=str(job.id), worker_id=str(job.assigned_worker_id)
+        )
+        return updated_job
 
     def cancel_job(self, job: Job) -> Job:
-        return self._transition(job, JobStatus.cancelled, clear_assigned_worker=True)
+        worker_id = str(job.assigned_worker_id) if job.assigned_worker_id is not None else None
+        updated_job = self._transition(job, JobStatus.cancelled, clear_assigned_worker=True)
+        logger.info("job_cancelled", job_id=str(job.id), worker_id=worker_id)
+        return updated_job
 
     def requeue_in_place(self, job: Job) -> Job:
         return self._transition(job, JobStatus.queued, clear_assigned_worker=True)
@@ -104,6 +119,13 @@ class JobTransitionService:
         job.latest_checkpoint_path = checkpoint_path
         job.last_checkpoint_at = now
         job.updated_at = now
+        logger.info(
+            "checkpoint_recorded",
+            job_id=str(job.id),
+            worker_id=str(job.assigned_worker_id) if job.assigned_worker_id is not None else None,
+            latest_checkpoint_path=checkpoint_path,
+            last_checkpoint_at=now.isoformat(),
+        )
         return job
 
     def build_requeue_clone(self, job: Job) -> Job:

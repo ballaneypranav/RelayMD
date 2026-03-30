@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -16,6 +17,7 @@ from relaymd.orchestrator.services import JobTransitionConflictError, JobTransit
 from ._responses import job_transition_conflict_response
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
+logger = structlog.get_logger(__name__)
 
 
 @router.post("", response_model=JobRead)
@@ -34,6 +36,12 @@ async def create_job(
     session.add(job)
     await session.commit()
     await session.refresh(job)
+    logger.info(
+        "job_created",
+        job_id=str(job.id),
+        title=job.title,
+        input_bundle_path=job.input_bundle_path,
+    )
     return JobRead.model_validate(job)
 
 

@@ -44,6 +44,29 @@ def _parse_datetime(value: Any) -> datetime | None:
 
 def _format_duration(delta_seconds: float) -> str:
     total_seconds = max(int(delta_seconds), 0)
+    units = [
+        ("mo", 30 * 24 * 60 * 60),
+        ("d", 24 * 60 * 60),
+        ("h", 60 * 60),
+        ("m", 60),
+    ]
+
+    parts: list[str] = []
+    remainder = total_seconds
+    for suffix, unit_seconds in units:
+        value, remainder = divmod(remainder, unit_seconds)
+        if value > 0:
+            parts.append(f"{value}{suffix}")
+
+    if len(parts) >= 2:
+        return " ".join(parts[:2])
+    if len(parts) == 1:
+        if parts[0].endswith("m"):
+            return f"{parts[0]} {remainder}s"
+        if remainder > 0:
+            return f"{parts[0]} {remainder}s"
+        return parts[0]
+
     minutes, seconds = divmod(total_seconds, 60)
     return f"{minutes}m {seconds}s"
 

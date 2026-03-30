@@ -183,16 +183,49 @@ def _wait_for_final_checkpoint(
 def _upload_checkpoint(
     context: WorkerContext,
     *,
+    logger,
     checkpoint: Path,
     checkpoint_b2_key: str,
     job_id: UUID,
 ) -> float:
-    context.storage.upload_file(checkpoint, checkpoint_b2_key)
-    context.gateway.report_checkpoint(
-        job_id=job_id,
-        checkpoint_path=checkpoint_b2_key,
+    checkpoint_stat = checkpoint.stat()
+    logger.info(
+        "checkpoint_upload_started",
+        checkpoint_path=str(checkpoint),
+        checkpoint_b2_key=checkpoint_b2_key,
+        checkpoint_size_bytes=checkpoint_stat.st_size,
+        checkpoint_mtime=checkpoint_stat.st_mtime,
     )
-    return checkpoint.stat().st_mtime
+    try:
+        context.storage.upload_file(checkpoint, checkpoint_b2_key)
+        logger.info(
+            "checkpoint_upload_succeeded",
+            checkpoint_path=str(checkpoint),
+            checkpoint_b2_key=checkpoint_b2_key,
+            checkpoint_size_bytes=checkpoint_stat.st_size,
+            checkpoint_mtime=checkpoint_stat.st_mtime,
+        )
+        context.gateway.report_checkpoint(
+            job_id=job_id,
+            checkpoint_path=checkpoint_b2_key,
+        )
+        logger.info(
+            "checkpoint_report_succeeded",
+            checkpoint_path=str(checkpoint),
+            checkpoint_b2_key=checkpoint_b2_key,
+            checkpoint_size_bytes=checkpoint_stat.st_size,
+            checkpoint_mtime=checkpoint_stat.st_mtime,
+        )
+        return checkpoint_stat.st_mtime
+    except Exception:
+        logger.exception(
+            "checkpoint_upload_failed",
+            checkpoint_path=str(checkpoint),
+            checkpoint_b2_key=checkpoint_b2_key,
+            checkpoint_size_bytes=checkpoint_stat.st_size,
+            checkpoint_mtime=checkpoint_stat.st_mtime,
+        )
+        raise
 
 
 def _run_assigned_job(
@@ -243,6 +276,7 @@ def _run_assigned_job(
                     if final_checkpoint is not None:
                         last_uploaded_mtime = _upload_checkpoint(
                             context,
+                            logger=job_log,
                             checkpoint=final_checkpoint,
                             checkpoint_b2_key=checkpoint_b2_key,
                             job_id=assignment.job_id,
@@ -255,6 +289,7 @@ def _run_assigned_job(
                     for checkpoint in execution.iter_new_checkpoints():
                         last_uploaded_mtime = _upload_checkpoint(
                             context,
+                            logger=job_log,
                             checkpoint=checkpoint,
                             checkpoint_b2_key=checkpoint_b2_key,
                             job_id=assignment.job_id,
@@ -284,6 +319,7 @@ def _run_assigned_job(
                 if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
                     _upload_checkpoint(
                         context,
+                        logger=job_log,
                         checkpoint=final_checkpoint,
                         checkpoint_b2_key=checkpoint_b2_key,
                         job_id=assignment.job_id,
