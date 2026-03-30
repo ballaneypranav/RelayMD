@@ -42,6 +42,22 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
     assert df.loc[0, "time_since_checkpoint"] == "1m 15s"
 
 
+@pytest.mark.parametrize(
+    ("delta_seconds", "expected"),
+    [
+        (3, "0m 3s"),
+        (23 * 60 + 3, "23m 3s"),
+        (66 * 60 + 49, "1h 6m 49s"),
+        (25872 * 60 + 19, "17d 23h"),
+        ((30 * 24 * 60 + 25) * 60 + 11, "1mo 25m"),
+    ],
+)
+def test_format_duration_uses_larger_units(delta_seconds: int, expected: str) -> None:
+    dashboard = _import_dashboard_module()
+
+    assert dashboard._format_duration(delta_seconds) == expected
+
+
 def test_build_workers_dataframe_marks_stale_workers() -> None:
     dashboard = _import_dashboard_module()
     now = datetime(2026, 2, 24, 12, 0, 0, tzinfo=UTC)
