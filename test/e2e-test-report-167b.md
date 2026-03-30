@@ -93,7 +93,7 @@ jobs/2543fbb2-8ecc-4a6b-80d0-487da97d2130/checkpoints/latest
 - [x] Orchestrator DB `latest_checkpoint_path` is non-null after first upload
 - [x] `latest_checkpoint_path` is preserved on job completion
 - [x] Validation evidence captured with B2 listing, log excerpts, and timestamps
-- [ ] Commit message and PR include `fixes W-167b`
+- [ ] Commit message and PR include `fixes W-194`
 
 ## Issues Found
 

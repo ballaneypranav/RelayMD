@@ -233,8 +233,7 @@ def _run_assigned_job(
     context: WorkerContext,
     assignment: ApiJobAssigned,
 ) -> None:
-    worker_id = getattr(context.logger, "_context", {}).get("worker_id")
-    job_log = context.logger.bind(job_id=str(assignment.job_id), worker_id=worker_id)
+    job_log = context.logger.bind(job_id=str(assignment.job_id))
     checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
 
     with tempfile.TemporaryDirectory(prefix=f"relaymd-{assignment.job_id}-") as tmpdir:

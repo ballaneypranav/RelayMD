@@ -12,12 +12,15 @@ echo "writing ${checkpoint_file} ${iterations} times every ${sleep_seconds}s"
 write_checkpoint() {
   local iteration="$1"
   local timestamp
+  local checkpoint_tmp
   timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  cat > "${checkpoint_file}" <<EOF
+  checkpoint_tmp="${checkpoint_file}.tmp"
+  cat > "${checkpoint_tmp}" <<EOF
 iteration=${iteration}
 timestamp=${timestamp}
 hostname=${HOSTNAME:-unknown}
 EOF
+  mv "${checkpoint_tmp}" "${checkpoint_file}"
   echo "checkpoint write ${iteration}/${iterations}: ${timestamp}"
 }
 
