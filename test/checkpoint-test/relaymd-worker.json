@@ -1,0 +1,4 @@
+{
+  "command": ["bash", "run.sh"],
+  "checkpoint_glob_pattern": "*.chk"
+}
