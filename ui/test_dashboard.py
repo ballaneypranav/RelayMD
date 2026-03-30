@@ -47,7 +47,7 @@ def test_build_jobs_dataframe_includes_required_columns_and_computed_fields() ->
     [
         (3, "0m 3s"),
         (23 * 60 + 3, "23m 3s"),
-        (66 * 60 + 49, "1h 6m 49s"),
+        (66 * 60 + 49, "1h 6m"),
         (25872 * 60 + 19, "17d 23h"),
         ((30 * 24 * 60 + 25) * 60 + 11, "1mo 25m"),
     ],
