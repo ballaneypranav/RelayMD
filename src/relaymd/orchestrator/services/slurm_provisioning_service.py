@@ -27,6 +27,11 @@ class SlurmProviderJobStatus(NamedTuple):
     provider_reason: str | None
 
 
+def _squeue_stderr_has_invalid_job_id(stderr_text: str) -> bool:
+    normalized = stderr_text.strip().lower()
+    return "invalid job id specified" in normalized or "invalid job id" in normalized
+
+
 def _cluster_submission_log_fields(cluster: ClusterConfig) -> dict[str, object]:
     return {
         "cluster_name": cluster.name,
@@ -140,13 +145,41 @@ async def _query_live_slurm_job_statuses(
             )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
             if process.returncode != 0:
+                stderr_text = stderr.decode("utf-8", errors="replace").strip()
+                if _squeue_stderr_has_invalid_job_id(stderr_text):
+                    if len(job_ids) == 1:
+                        logger.info(
+                            "slurm_squeue_job_missing",
+                            cluster_name=cluster.name,
+                            slurm_job_id=job_ids[0],
+                            submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+                            stderr=stderr_text,
+                        )
+                        return {}
+
+                    recovered_statuses: dict[str, SlurmProviderJobStatus] = {}
+                    for job_id in job_ids:
+                        single_job_status = await _query_live_slurm_job_statuses(cluster, [job_id])
+                        if single_job_status is None:
+                            return None
+                        recovered_statuses.update(single_job_status)
+
+                    logger.info(
+                        "slurm_squeue_invalid_job_id_recovered_via_per_job_queries",
+                        cluster_name=cluster.name,
+                        requested_job_count=len(job_ids),
+                        recovered_live_job_count=len(recovered_statuses),
+                        submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
+                    )
+                    return recovered_statuses
+
                 logger.warning(
                     "slurm_squeue_query_nonzero_exit",
                     cluster_name=cluster.name,
                     attempt=attempt,
                     max_attempts=max_attempts,
                     return_code=process.returncode,
-                    stderr=stderr.decode("utf-8", errors="replace").strip(),
+                    stderr=stderr_text,
                     slurm_job_ids=job_ids,
                     submission_target=f"{cluster.ssh_username}@{cluster.ssh_host}:{cluster.ssh_port}",
                 )

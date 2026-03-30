@@ -804,6 +804,156 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
 
 
 @pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_recovers_from_mixed_invalid_job_ids(
+    monkeypatch,
+) -> None:
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+
+    async def fake_squeue_mixed(*args, **kwargs):
+        _ = kwargs
+        jobs = str(args[args.index("--jobs") + 1])
+
+        class FakeProc:
+            def __init__(self, returncode: int, stdout: bytes, stderr: bytes) -> None:
+                self.returncode = returncode
+                self._stdout = stdout
+                self._stderr = stderr
+
+            async def communicate(self):
+                return self._stdout, self._stderr
+
+        if jobs == "11111,22222":
+            return FakeProc(
+                1,
+                b"",
+                b"slurm_load_jobs error: Invalid job id specified",
+            )
+        if jobs == "11111":
+            return FakeProc(0, b"11111|RUNNING|None\n", b"")
+        if jobs == "22222":
+            return FakeProc(
+                1,
+                b"",
+                b"slurm_load_jobs error: Invalid job id specified",
+            )
+
+        raise AssertionError(f"unexpected squeue --jobs payload: {jobs}")
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_mixed,
+    )
+
+    async with app_client(settings):
+        async with get_sessionmaker()() as session:
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="a100",
+                    gpu_count=2,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:11111",
+                    last_heartbeat=datetime(1970, 1, 1),
+                    registered_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            session.add(
+                Worker(
+                    platform=Platform.hpc,
+                    gpu_model="a100",
+                    gpu_count=2,
+                    vram_gb=0,
+                    status=WorkerStatus.queued,
+                    provider_id="gilbreth:22222",
+                    last_heartbeat=datetime(1970, 1, 1),
+                    registered_at=datetime.now(UTC).replace(tzinfo=None),
+                )
+            )
+            await session.commit()
+
+        reaped = await reap_dead_slurm_placeholders(settings)
+        assert reaped == 1
+
+        async with get_sessionmaker()() as session:
+            remaining = (await session.exec(select(Worker))).all()
+
+    assert len(remaining) == 1
+    assert remaining[0].provider_id == "gilbreth:11111"
+    assert remaining[0].provider_state == "running"
+    assert remaining[0].provider_state_raw == "RUNNING"
+
+
+@pytest.mark.asyncio
+async def test_reap_dead_slurm_placeholders_skips_reap_after_generic_squeue_nonzero_exit(
+    monkeypatch,
+) -> None:
+    from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
+
+    settings = _settings_with_cluster()
+    warning_log = patch("relaymd.orchestrator.services.slurm_provisioning_service.logger.warning")
+
+    async def fake_squeue_nonzero(*args, **kwargs):
+        _ = (args, kwargs)
+
+        class FakeProc:
+            returncode = 1
+
+            async def communicate(self):
+                return b"", b"squeue: error: slurm controller temporarily unavailable"
+
+        return FakeProc()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service.asyncio.create_subprocess_exec",
+        fake_squeue_nonzero,
+    )
+
+    with warning_log as warning_mock:
+        async with app_client(settings):
+            async with get_sessionmaker()() as session:
+                session.add(
+                    Worker(
+                        platform=Platform.hpc,
+                        gpu_model="a100",
+                        gpu_count=2,
+                        vram_gb=0,
+                        status=WorkerStatus.queued,
+                        provider_id="gilbreth:33333",
+                        last_heartbeat=datetime(1970, 1, 1),
+                        registered_at=datetime.now(UTC).replace(tzinfo=None),
+                    )
+                )
+                await session.commit()
+
+            reaped = await reap_dead_slurm_placeholders(settings)
+            assert reaped == 0
+
+            async with get_sessionmaker()() as session:
+                remaining = (await session.exec(select(Worker))).all()
+
+    warning_mock.assert_any_call(
+        "slurm_squeue_query_nonzero_exit",
+        cluster_name="gilbreth",
+        attempt=1,
+        max_attempts=2,
+        return_code=1,
+        stderr="squeue: error: slurm controller temporarily unavailable",
+        slurm_job_ids=["33333"],
+        submission_target="test-user@test-host:22",
+    )
+    warning_mock.assert_any_call(
+        "slurm_placeholder_reap_skipped_due_to_status_query_failure",
+        cluster_name="gilbreth",
+        placeholder_count=1,
+    )
+    assert len(remaining) == 1
+    assert remaining[0].provider_id == "gilbreth:33333"
+
+
+@pytest.mark.asyncio
 async def test_reap_dead_slurm_placeholders_retries_after_squeue_timeout(monkeypatch) -> None:
     from relaymd.orchestrator.scheduler import reap_dead_slurm_placeholders
 
