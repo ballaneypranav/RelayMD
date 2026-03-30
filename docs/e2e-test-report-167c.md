@@ -132,7 +132,7 @@ That observation shows the job remained `assigned` for at least part of the reco
 - [x] `docs/e2e-test-report-167c.md` added with timeline and log excerpts from both workers
 - [ ] B2 key listing captured at each stage
 - [ ] Follow-up tickets filed for issues found
-- [ ] Commit message and PR include `fixes W-167c`
+- [ ] Commit message and PR include `fixes W-195`
 
 ## Issues Found
 
