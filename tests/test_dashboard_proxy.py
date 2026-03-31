@@ -23,7 +23,9 @@ async def test_dashboard_proxy_requires_basic_auth() -> None:
             password="secret",
         )
     )
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://proxy.test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://proxy.test"
+    ) as client:
         response = await client.get("/")
 
     assert response.status_code == 401
@@ -47,7 +49,9 @@ async def test_dashboard_proxy_forwards_authorized_requests() -> None:
         transport=ASGITransport(app=upstream),
     )
 
-    async with AsyncClient(transport=ASGITransport(app=proxy), base_url="http://proxy.test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=proxy), base_url="http://proxy.test"
+    ) as client:
         response = await client.get("/healthz", headers=_basic_auth("operator", "secret"))
 
     assert response.status_code == 200
@@ -63,7 +67,9 @@ async def test_dashboard_proxy_rejects_invalid_credentials() -> None:
             password="secret",
         )
     )
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://proxy.test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://proxy.test"
+    ) as client:
         response = await client.get("/workers", headers=_basic_auth("operator", "wrong"))
 
     assert response.status_code == 401
