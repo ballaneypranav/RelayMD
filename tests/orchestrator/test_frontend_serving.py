@@ -28,7 +28,9 @@ def make_settings() -> OrchestratorSettings:
 
 
 @pytest.mark.asyncio
-async def test_frontend_config_returns_non_secret_runtime_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_frontend_config_returns_non_secret_runtime_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("RELAYMD_REFRESH_INTERVAL_SECONDS", "12")
     monkeypatch.setenv("RELAYMD_FRONTEND_API_BASE_URL", "http://example.test/")
 

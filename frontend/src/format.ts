@@ -49,6 +49,7 @@ export function truncateUuid(value: string | null | undefined): string {
 }
 
 export interface JobRow {
+  id: string;
   job_id: string;
   title: string;
   status: string;
@@ -76,6 +77,7 @@ export function buildJobRows(rawJobs: JobRead[], now: Date): JobRow[] {
     const updatedAt = parseDate(job.updated_at);
 
     return {
+      id: job.id,
       job_id: truncateUuid(job.id),
       title: job.title || "-",
       status: job.status,
@@ -144,13 +146,35 @@ export function buildWorkerRows(rawWorkers: WorkerRead[], now: Date, rawJobs: Jo
 }
 
 export function toDelimited<T extends object>(rows: T[]): string {
+  return toSeparatedValues(rows, "\t");
+}
+
+export function toCsv<T extends object>(rows: T[]): string {
+  return toSeparatedValues(rows, ",");
+}
+
+function toSeparatedValues<T extends object>(rows: T[], separator: "\t" | ","): string {
   if (rows.length === 0) {
     return "";
   }
   const headers = Object.keys(rows[0]) as Array<keyof T>;
-  const lines = [headers.join("\t")];
+  const lines = [headers.map((header) => String(header)).join(separator)];
   for (const row of rows) {
-    lines.push(headers.map((header) => String(row[header] ?? "")).join("\t"));
+    lines.push(
+      headers
+        .map((header) => formatSeparatedValue(String(row[header] ?? ""), separator))
+        .join(separator),
+    );
   }
   return lines.join("\n") + "\n";
+}
+
+function formatSeparatedValue(value: string, separator: "\t" | ","): string {
+  if (separator === "\t") {
+    return value;
+  }
+  if (/[",\n]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+  return value;
 }

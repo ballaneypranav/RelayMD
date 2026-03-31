@@ -1,4 +1,4 @@
-import { buildJobRows, buildWorkerRows, formatDuration, toDelimited, truncateUuid } from "./format";
+import { buildJobRows, buildWorkerRows, formatDuration, toCsv, toDelimited, truncateUuid } from "./format";
 
 describe("format helpers", () => {
   it("formats duration using larger units", () => {
@@ -52,5 +52,9 @@ describe("format helpers", () => {
     expect(toDelimited([{ job_id: "abc", status: "assigned" }])).toBe(
       "job_id\tstatus\nabc\tassigned\n",
     );
+  });
+
+  it("renders CSV output", () => {
+    expect(toCsv([{ job_id: "abc", title: "a,b" }])).toBe('job_id,title\nabc,"a,b"\n');
   });
 });

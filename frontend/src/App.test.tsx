@@ -75,13 +75,15 @@ describe("App", () => {
 
     render(<App />);
 
+    fireEvent.click(screen.getByText("Settings"));
     fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
       target: { value: "secret-token" },
     });
     fireEvent.click(screen.getByText("Save token"));
 
-    await waitFor(() => expect(screen.getByText("protein-folding")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: /protein-folding/i })).toBeInTheDocument());
     expect(screen.getByText("Token saved locally for this browser.")).toBeInTheDocument();
+    expect(screen.getByText("Execution queue")).toBeInTheDocument();
   });
 
   it("shows offline state when dashboard data fails", async () => {
@@ -96,11 +98,40 @@ describe("App", () => {
     });
 
     render(<App />);
+    fireEvent.click(screen.getByText("Settings"));
     fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
       target: { value: "secret-token" },
     });
     fireEvent.click(screen.getByText("Save token"));
 
-    await waitFor(() => expect(screen.getByText("Orchestrator unreachable")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Orchestrator unreachable/)).toBeInTheDocument());
+  });
+
+  it("navigates between major views and clears token from settings", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByText("Workers"));
+    expect(screen.getByText("Fleet health")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Clusters"));
+    expect(screen.getByRole("heading", { name: "Provisioning targets" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Settings"));
+    fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
+      target: { value: "secret-token" },
+    });
+    fireEvent.click(screen.getByText("Save token"));
+    await waitFor(() =>
+      expect(screen.getByText("Token saved locally for this browser.")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByText("Settings"));
+    fireEvent.click(screen.getByText("Clear token"));
+    expect(screen.getByText(/Current state: missing/)).toBeInTheDocument();
   });
 });
