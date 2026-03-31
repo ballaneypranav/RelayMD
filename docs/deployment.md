@@ -60,6 +60,20 @@ tmux kill-session -t relaymd
 
 Logs are visible in the tmux session output.
 
+## Frontend Build
+
+The operator UI is a React app in `frontend/` served by the orchestrator on port `36158`.
+
+Build it before starting or restarting the orchestrator:
+
+```bash
+cd frontend
+npm --cache ./.npm install
+npm --cache ./.npm run build
+```
+
+Keep npm cache and build output inside the repo. `frontend/dist/` is generated locally and is not committed.
+
 ## Rollout Order
 
 Use this upgrade sequence for compatibility:

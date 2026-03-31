@@ -53,12 +53,12 @@ relaymd/
 │   ├── deployment.md          # Orchestrator deployment guide
 │   ├── hpc-notes.md           # Apptainer + Tailscale runbook
 │   └── storage-layout.md
-├── ui/                        # Streamlit monitoring dashboard
+├── frontend/                  # React operator dashboard served by FastAPI
 ├── Dockerfile                 # Worker container image
 └── pyproject.toml             # Root relaymd package + workspace config
 ```
 
-`relaymd-core` is the shared dependency layer: it carries only `relaymd.models` + `relaymd.storage`. The worker container installs `relaymd-core` + `relaymd-worker` only; it does not install `relaymd` (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A `uv` workspace at the repo root manages these three packages with one lockfile.
+`relaymd-core` is the shared dependency layer: it carries only `relaymd.models` + `relaymd.storage`. The worker container installs `relaymd-core` + `relaymd-worker` only; it does not install `relaymd` (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A `uv` workspace at the repo root manages these three packages with one lockfile. The frontend uses npm under `frontend/`, with cache and build output kept inside the repo.
 
 ---
 

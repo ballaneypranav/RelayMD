@@ -11,7 +11,9 @@ from typing import Any
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from relaymd.orchestrator import __version__
 from relaymd.orchestrator.background_scheduler import build_background_scheduler
@@ -24,6 +26,32 @@ from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_route
 from relaymd.orchestrator.routers.workers import router as workers_router
 
 LOG = get_logger(__name__)
+FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+SPA_EXCLUDED_PREFIXES = (
+    "jobs",
+    "workers",
+    "config",
+    "healthz",
+    "openapi.json",
+    "docs",
+    "redoc",
+)
+
+
+def _load_frontend_runtime_config() -> dict[str, Any]:
+    refresh_interval_seconds = int(os.getenv("RELAYMD_REFRESH_INTERVAL_SECONDS", "30"))
+    return {
+        "api_base_url": os.getenv("RELAYMD_FRONTEND_API_BASE_URL", "").rstrip("/"),
+        "refresh_interval_seconds": max(refresh_interval_seconds, 1),
+    }
+
+
+def _frontend_dist_dir() -> Path:
+    return FRONTEND_DIST_DIR
+
+
+def _frontend_index_path() -> Path:
+    return _frontend_dist_dir() / "index.html"
 
 
 async def _ensure_tailscale_running(
@@ -292,10 +320,46 @@ def create_app(
             "tailscale": ts_status,
         }
 
+    @app.get("/config/frontend")
+    async def frontend_config() -> dict[str, Any]:
+        return _load_frontend_runtime_config()
+
     app.include_router(workers_router)
     app.include_router(jobs_worker_router)
     app.include_router(jobs_operator_router)
     app.include_router(config_router)
+
+    frontend_dist_dir = _frontend_dist_dir()
+    assets_dir = frontend_dist_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+
+    @app.get("/")
+    async def frontend_index() -> FileResponse:
+        index_path = _frontend_index_path()
+        if not index_path.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="Frontend build missing. Run the frontend build before starting the UI.",
+            )
+        return FileResponse(index_path)
+
+    @app.get("/{full_path:path}")
+    async def frontend_spa_fallback(full_path: str) -> FileResponse:
+        if full_path.startswith(SPA_EXCLUDED_PREFIXES):
+            raise HTTPException(status_code=404, detail="Not found")
+
+        candidate = frontend_dist_dir / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+
+        index_path = _frontend_index_path()
+        if not index_path.is_file():
+            raise HTTPException(
+                status_code=503,
+                detail="Frontend build missing. Run the frontend build before starting the UI.",
+            )
+        return FileResponse(index_path)
 
     return app
 

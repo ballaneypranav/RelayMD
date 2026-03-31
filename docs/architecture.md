@@ -134,7 +134,7 @@ The orchestrator API is not reachable from the public internet. A node must be o
 | `cli/context-services` | Shared CLI context plus jobs/workers/submit service adapters |
 | `deploy/slurm/`    | SLURM job templates and cluster config                               |
 | `deploy/salad/`    | Salad Cloud container group configuration                            |
-| `ui/`              | Streamlit monitoring dashboard                                       |
+| `frontend/`        | React operator dashboard built by Vite and served by the orchestrator |
 
 ---
 
@@ -151,4 +151,3 @@ The orchestrator API is not reachable from the public internet. A node must be o
 **The bootstrap token is the only secret that needs external injection.** Everything else — B2 credentials, the Tailscale auth key, the RelayMD API token — is fetched from Infisical at runtime using that one token. On HPC, the bootstrap token is injected via SLURM's `--export` environment variable. On Salad Cloud, it is set in the container environment via the Salad dashboard.
 
 **The CLI binary is not the worker.** The `relaymd` binary lives on the login node and is used by the operator to submit and manage jobs. The Apptainer `.sif` container is a completely separate artifact that runs on compute nodes. They share library code (`relaymd-models`, `relaymd-storage`) but are independently built and deployed.
-

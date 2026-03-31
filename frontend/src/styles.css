@@ -1,0 +1,221 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #101828;
+  background: linear-gradient(180deg, #f6f8fb 0%, #edf2f7 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.7rem 1rem;
+  background: #0f766e;
+  color: white;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #d0d5dd;
+  color: #101828;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+input,
+select {
+  width: 100%;
+  border: 1px solid #d0d5dd;
+  border-radius: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: white;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.7rem;
+  border-bottom: 1px solid #e4e7ec;
+  text-align: left;
+  vertical-align: top;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  padding: 1.25rem;
+  background: #0b1728;
+  color: white;
+}
+
+.main-panel {
+  padding: 1.25rem;
+}
+
+.card,
+.metric-card,
+.banner {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e4e7ec;
+  border-radius: 1rem;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.06);
+}
+
+.card {
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.metric-card {
+  padding: 1rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.metric-card span,
+.muted,
+dt {
+  color: #475467;
+}
+
+.metric-card strong {
+  display: block;
+  font-size: 1.8rem;
+  margin-top: 0.2rem;
+}
+
+.button-row,
+.filter-row,
+.tab-row,
+.section-header {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.section-header {
+  justify-content: space-between;
+}
+
+.list-group {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.list-item {
+  text-align: left;
+}
+
+.banner {
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.banner.warning,
+.warning-panel {
+  background: #fff7e6;
+}
+
+.banner.error,
+.error-panel {
+  background: #fef3f2;
+}
+
+.banner.success {
+  background: #ecfdf3;
+}
+
+.tab {
+  background: #d0d5dd;
+  color: #101828;
+}
+
+.tab.active {
+  background: #155eef;
+  color: white;
+}
+
+.details-panel {
+  margin-top: 1rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.detail-grid dd {
+  margin: 0.3rem 0 0;
+  word-break: break-word;
+}
+
+.status-completed {
+  background: #d4edda;
+}
+
+.status-running {
+  background: #fff3cd;
+}
+
+.status-failed,
+.worker-stale {
+  background: #f8d7da;
+}
+
+.status-queued,
+.status-assigned,
+.status-cancelled {
+  background: #e9ecef;
+}
+
+.worker-provisioning {
+  background: #fff3cd;
+}
+
+pre {
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
