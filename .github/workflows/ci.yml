@@ -27,10 +27,9 @@ jobs:
             code:
               - 'packages/**'
               - 'tests/**'
-              - 'ui/**'
+              - 'frontend/**'
               - 'pyproject.toml'
               - 'uv.lock'
-              - 'ui/requirements.txt'
               - 'scripts/sync_workspace.sh'
             base_image:
               - 'Dockerfile.base'
@@ -65,7 +64,6 @@ jobs:
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
-      - run: uv pip install --python .venv/bin/python -r ui/requirements.txt
       - run: uv run pytest
       - name: Upload coverage report
         if: '!cancelled()'
