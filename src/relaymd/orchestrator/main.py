@@ -367,7 +367,7 @@ def create_app(
 
     @app.get("/{full_path:path}")
     async def frontend_spa_fallback(full_path: str) -> FileResponse:
-        if full_path.startswith(SPA_EXCLUDED_PREFIXES):
+        if full_path.split("/")[0] in SPA_EXCLUDED_PREFIXES:
             raise HTTPException(status_code=404, detail="Not found")
 
         candidate = _resolve_frontend_asset_path(frontend_dist_dir, full_path)

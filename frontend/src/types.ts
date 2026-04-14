@@ -31,7 +31,7 @@ export interface WorkerRead {
   provider_reason: string | null;
   provider_last_checked_at: string | null;
   last_heartbeat: string;
-  registered_at?: string;
+  registered_at: string;
 }
 
 export interface ClusterConfig {

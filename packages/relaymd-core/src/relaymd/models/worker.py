@@ -57,3 +57,4 @@ class WorkerRead(SQLModel):
     provider_reason: str | None = None
     provider_last_checked_at: datetime | None = None
     last_heartbeat: datetime
+    registered_at: datetime

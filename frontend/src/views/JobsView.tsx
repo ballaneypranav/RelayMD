@@ -109,7 +109,7 @@ export function JobsView({
                   return (
                     <tr
                       className={selectedJob?.id === backingJob?.id ? "row-active" : ""}
-                      key={`${row.job_id}-${row.title}-${row.status}`}
+                      key={row.id}
                     >
                       <td>
                         <button

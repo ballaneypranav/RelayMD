@@ -60,6 +60,7 @@ export interface JobRow {
 }
 
 export interface WorkerRow {
+  id: string;
   platform: string;
   gpu: string;
   provider_id: string;
@@ -133,6 +134,7 @@ export function buildWorkerRows(rawWorkers: WorkerRead[], now: Date, rawJobs: Jo
         : worker.gpu_model;
 
     return {
+      id: worker.id,
       platform: worker.platform,
       gpu,
       provider_id: worker.provider_id || "-",

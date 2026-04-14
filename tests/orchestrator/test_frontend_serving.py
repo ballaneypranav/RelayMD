@@ -100,6 +100,24 @@ async def test_api_prefixes_are_not_intercepted_by_spa_fallback(
     assert response.json()["detail"] == "Not found"
 
 
+@pytest.mark.asyncio
+async def test_spa_fallback_serves_index_for_paths_with_api_like_prefix(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A path whose first segment merely *starts with* an API prefix (e.g. /jobs-old/)
+    must still be served as the SPA, not rejected with 404."""
+    dist_dir = tmp_path / "frontend-dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text("<html><body>spa-shell</body></html>")
+    monkeypatch.setattr("relaymd.orchestrator.main.FRONTEND_DIST_DIR", dist_dir)
+
+    async with app_client(make_settings()) as client:
+        response = await client.get("/jobs-old/details")
+
+    assert response.status_code == 200
+    assert "spa-shell" in response.text
+
+
 def test_frontend_asset_resolution_rejects_path_traversal(tmp_path: Path) -> None:
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()

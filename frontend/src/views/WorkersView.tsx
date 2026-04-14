@@ -1,6 +1,7 @@
 import { StatusPill } from "../components/StatusPill";
 
 interface WorkerRow {
+  id: string;
   platform: string;
   gpu: string;
   provider_id: string;
@@ -56,7 +57,7 @@ export function WorkersView({
       ) : (
         <div className="worker-grid">
           {rows.map((worker) => (
-            <article className={`worker-card worker-${worker.status}`} key={`${worker.platform}-${worker.provider_id}-${worker.current_job}`}>
+            <article className={`worker-card worker-${worker.status}`} key={worker.id}>
               <div className="worker-card-head">
                 <div>
                   <p className="eyebrow">{worker.platform}</p>
