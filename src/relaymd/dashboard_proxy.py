@@ -23,6 +23,7 @@ HOP_BY_HOP_HEADERS = {
 @dataclass(frozen=True)
 class DashboardProxySettings:
     upstream_url: str
+    upstream_api_token: str
     username: str
     password: str
     timeout_seconds: float = 30.0
@@ -71,6 +72,8 @@ def create_dashboard_proxy_app(
         }
         forwarded_headers["x-forwarded-proto"] = request.url.scheme
         forwarded_headers["x-forwarded-host"] = request.headers.get("host", "")
+        forwarded_headers["x-api-token"] = settings.upstream_api_token
+        forwarded_headers["authorization"] = f"Bearer {settings.upstream_api_token}"
 
         async with httpx.AsyncClient(
             transport=transport,

@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
+
 interface StatusPillProps {
-  children: string;
+  children: ReactNode;
+  className?: string;
   tone?:
     | "queued"
     | "assigned"
@@ -12,6 +15,6 @@ interface StatusPillProps {
     | "provisioning";
 }
 
-export function StatusPill({ children, tone = "queued" }: StatusPillProps) {
-  return <span className={`status-pill tone-${tone}`}>{children}</span>;
+export function StatusPill({ children, className = "", tone = "queued" }: StatusPillProps) {
+  return <span className={`status-pill tone-${tone} ${className}`.trim()}>{children}</span>;
 }

@@ -73,6 +73,7 @@ For solo use, the recommended setup is:
 Start the proxy manually:
 
 ```bash
+export RELAYMD_API_TOKEN=<relaymd-api-token>
 export RELAYMD_DASHBOARD_USERNAME=<username>
 export RELAYMD_DASHBOARD_PASSWORD=<password>
 uv run relaymd orchestrator proxy
@@ -81,12 +82,15 @@ uv run relaymd orchestrator proxy
 Or via tmux:
 
 ```bash
+export RELAYMD_API_TOKEN=<relaymd-api-token>
 export RELAYMD_DASHBOARD_USERNAME=<username>
 export RELAYMD_DASHBOARD_PASSWORD=<password>
 ./deploy/tmux/start-dashboard-proxy.sh
 ```
 
 Then forward only `36159` in VS Code and open the forwarded URL. The browser will prompt for the basic-auth credentials before the dashboard is served.
+
+The proxy injects `RELAYMD_API_TOKEN` upstream, so the browser does not need to store or manually enter the RelayMD API token.
 
 This does not make the service impossible for other users on the same node to probe, but it prevents them from seeing the dashboard without the proxy credentials.
 

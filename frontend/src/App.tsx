@@ -3,8 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob } from "./api";
 import { AppShell } from "./components/AppShell";
 import { MetricStrip } from "./components/MetricStrip";
+import { StatusPill } from "./components/StatusPill";
 import { buildJobRows, buildWorkerRows, formatDuration, toCsv, toDelimited } from "./format";
-import { clearApiToken, loadApiToken, saveApiToken } from "./storage";
 import type { DashboardPayload, FrontendConfig, JobRead } from "./types";
 import { ClustersView } from "./views/ClustersView";
 import { JobsView } from "./views/JobsView";
@@ -32,14 +32,14 @@ function downloadText(filename: string, text: string, mime: string): void {
   URL.revokeObjectURL(url);
 }
 
-function useDashboardData(config: FrontendConfig | null, token: string) {
+function useDashboardData(config: FrontendConfig | null) {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [offlineSince, setOfflineSince] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!config || !token.trim()) {
+    if (!config) {
       setLoading(false);
       return;
     }
@@ -48,7 +48,7 @@ function useDashboardData(config: FrontendConfig | null, token: string) {
 
     const load = async () => {
       try {
-        const payload = await fetchDashboardData(config.api_base_url, token);
+        const payload = await fetchDashboardData(config.api_base_url);
         if (cancelled) {
           return;
         }
@@ -76,7 +76,7 @@ function useDashboardData(config: FrontendConfig | null, token: string) {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [config, token]);
+  }, [config]);
 
   return { data, error, loading, offlineSince, setData, setError };
 }
@@ -84,8 +84,6 @@ function useDashboardData(config: FrontendConfig | null, token: string) {
 export function App() {
   const [config, setConfig] = useState<FrontendConfig | null>(null);
   const [configError, setConfigError] = useState("");
-  const [tokenInput, setTokenInput] = useState(loadApiToken);
-  const [token, setToken] = useState(loadApiToken);
   const [activeView, setActiveView] = useState<ViewName>("jobs");
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
@@ -93,7 +91,7 @@ export function App() {
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
 
-  const { data, error, loading, offlineSince, setData, setError } = useDashboardData(config, token);
+  const { data, error, loading, offlineSince, setData, setError } = useDashboardData(config);
 
   useEffect(() => {
     void fetchFrontendConfig()
@@ -111,7 +109,10 @@ export function App() {
 
   const jobRows = useMemo(() => buildJobRows(jobs, now), [jobs, now]);
   const workerRows = useMemo(() => buildWorkerRows(workers, now, jobs), [workers, now, jobs]);
-  const availableStatuses = useMemo(() => Array.from(new Set(jobRows.map((job) => job.status))).sort(), [jobRows]);
+  const availableStatuses = useMemo(
+    () => Array.from(new Set(jobRows.map((job) => job.status))).sort(),
+    [jobRows],
+  );
 
   useEffect(() => {
     if (availableStatuses.length > 0 && selectedStatuses.length === 0) {
@@ -125,12 +126,6 @@ export function App() {
     }
   }, [jobs, selectedJobId]);
 
-  const filteredJobRows =
-    selectedStatuses.length > 0
-      ? jobRows.filter((job) => selectedStatuses.includes(job.status))
-      : jobRows;
-  const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? null;
-
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
     return counts;
@@ -139,36 +134,17 @@ export function App() {
   const activeWorkers = workers.filter((worker) => worker.status !== "queued").length;
   const provisioningWorkers = workers.filter((worker) => worker.status === "queued").length;
 
-  const saveToken = () => {
-    const trimmed = tokenInput.trim();
-    saveApiToken(trimmed);
-    setToken(trimmed);
-    setActionMessage(trimmed ? "Token saved locally for this browser." : "");
-    setActionError("");
-    if (trimmed) {
-      setActiveView("jobs");
-    }
-  };
-
-  const resetToken = () => {
-    clearApiToken();
-    setTokenInput("");
-    setToken("");
-    setData(null);
-    setActionMessage("");
-  };
-
   const handleCancel = async (job: JobRead) => {
     if (!config) {
       return;
     }
     try {
-      await cancelJob(config.api_base_url, token, job.id);
+      await cancelJob(config.api_base_url, job.id);
       setActionMessage("Job cancelled");
       setActionError("");
       setPendingCancelJob(null);
       setError("");
-      const payload = await fetchDashboardData(config.api_base_url, token);
+      const payload = await fetchDashboardData(config.api_base_url);
       setData(payload);
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
@@ -181,10 +157,10 @@ export function App() {
       return;
     }
     try {
-      const newJobId = await requeueJob(config.api_base_url, token, job.id);
+      const newJobId = await requeueJob(config.api_base_url, job.id);
       setActionMessage(`Re-queued as job ${newJobId}`);
       setActionError("");
-      const payload = await fetchDashboardData(config.api_base_url, token);
+      const payload = await fetchDashboardData(config.api_base_url);
       setData(payload);
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
@@ -200,7 +176,7 @@ export function App() {
     { id: "jobs", label: "Jobs", description: "Queue, detail, and actions" },
     { id: "workers", label: "Workers", description: "Fleet health and assignments" },
     { id: "clusters", label: "Clusters", description: "Provisioning targets" },
-    { id: "settings", label: "Settings", description: "Token and runtime config" },
+    { id: "settings", label: "Settings", description: "Proxy auth and runtime config" },
   ] satisfies Array<{ id: ViewName; label: string; description: string }>;
 
   const header = (
@@ -208,16 +184,24 @@ export function App() {
       <div>
         <p className="eyebrow">Operational Console</p>
         <h2>{navigation.find((item) => item.id === activeView)?.label}</h2>
-        <p className="header-copy">
-          Orchestrator: {config?.api_base_url || window.location.origin} | Refresh:{" "}
-          {config?.refresh_interval_seconds ?? "-"}s
-        </p>
       </div>
-      {!token ? (
-        <button className="secondary" onClick={() => setActiveView("settings")}>
-          Configure token
-        </button>
-      ) : null}
+      <div className="console-header-actions">
+        {health?.tailscale ? (
+          health.tailscale.connected ? (
+            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+              <StatusPill className="connection-pill" tone="completed">
+                CONNECTED
+              </StatusPill>
+            </button>
+          ) : (
+            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+              <StatusPill className="connection-pill" tone="failed">
+                Connection error
+              </StatusPill>
+            </button>
+          )
+        ) : null}
+      </div>
     </header>
   );
 
@@ -229,25 +213,8 @@ export function App() {
             {warning}
           </div>
         ))}
-        {health?.tailscale ? (
-          health.tailscale.connected ? (
-            <div className="banner success">
-              Tailscale connected:{" "}
-              {health.tailscale.hostname || health.tailscale.dns_name || health.tailscale.ip}
-            </div>
-          ) : (
-            <div className="banner error">
-              Tailscale not connected: {health.tailscale.error || "unknown error"}
-            </div>
-          )
-        ) : null}
         {actionMessage ? <div className="banner success">{actionMessage}</div> : null}
         {actionError ? <div className="banner error">{actionError}</div> : null}
-        {!token ? (
-          <div className="banner warning">
-            API token missing. Open Settings to store a token and enable dashboard data.
-          </div>
-        ) : null}
         {error && offlineSince ? (
           <div className="banner error">
             Orchestrator unreachable. Offline for {formatDuration((Date.now() - offlineSince) / 1000)}.
@@ -255,17 +222,38 @@ export function App() {
         ) : null}
       </section>
 
-      <MetricStrip
-        items={[
-          { label: "Queued", value: statusCounts.queued ?? 0 },
-          { label: "Running", value: statusCounts.running ?? 0, tone: "accent" },
-          { label: "Completed", value: statusCounts.completed ?? 0, tone: "success" },
-          { label: "Failed", value: statusCounts.failed ?? 0, tone: "danger" },
-          { label: "Cancelled", value: statusCounts.cancelled ?? 0 },
-          { label: "Active Workers", value: activeWorkers, tone: "accent" },
-          { label: "Provisioning", value: provisioningWorkers },
-        ]}
-      />
+      <section className="overview-groups" aria-label="System overview">
+        <section className="overview-group">
+          <div className="overview-group-header">
+            <p className="eyebrow">Jobs</p>
+            <h3>Job states</h3>
+          </div>
+          <MetricStrip
+            ariaLabel="Job metrics"
+            items={[
+              { label: "Queued", value: statusCounts.queued ?? 0 },
+              { label: "Running", value: statusCounts.running ?? 0, tone: "accent" },
+              { label: "Completed", value: statusCounts.completed ?? 0, tone: "success" },
+              { label: "Failed", value: statusCounts.failed ?? 0, tone: "danger" },
+              { label: "Cancelled", value: statusCounts.cancelled ?? 0 },
+            ]}
+          />
+        </section>
+
+        <section className="overview-group">
+          <div className="overview-group-header">
+            <p className="eyebrow">Workers</p>
+            <h3>Worker states</h3>
+          </div>
+          <MetricStrip
+            ariaLabel="Worker metrics"
+            items={[
+              { label: "Active", value: activeWorkers, tone: "accent" },
+              { label: "Provisioning", value: provisioningWorkers },
+            ]}
+          />
+        </section>
+      </section>
     </>
   );
 
@@ -283,7 +271,9 @@ export function App() {
             <div>
               <p className="eyebrow">Confirmation Required</p>
               <h2>Cancel {pendingCancelJob.title}?</h2>
-              <p className="panel-copy">This cannot be undone. Workers will stop on their next poll cycle.</p>
+              <p className="panel-copy">
+                This cannot be undone. Workers will stop on their next poll cycle.
+              </p>
             </div>
           </div>
           <div className="toolbar">
@@ -331,13 +321,8 @@ export function App() {
 
       {activeView === "settings" ? (
         <SettingsView
-          tokenInput={tokenInput}
-          tokenStored={Boolean(token)}
           apiBaseUrl={config?.api_base_url || window.location.origin}
           refreshIntervalSeconds={config?.refresh_interval_seconds ?? "-"}
-          onTokenChange={setTokenInput}
-          onSaveToken={saveToken}
-          onClearToken={resetToken}
         />
       ) : null}
     </AppShell>

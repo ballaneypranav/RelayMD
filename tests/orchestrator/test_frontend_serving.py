@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from relaymd.orchestrator.config import OrchestratorSettings
-from relaymd.orchestrator.main import create_app
+from relaymd.orchestrator.main import _resolve_frontend_asset_path, create_app
 
 
 @asynccontextmanager
@@ -32,17 +32,26 @@ async def test_frontend_config_returns_non_secret_runtime_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("RELAYMD_REFRESH_INTERVAL_SECONDS", "12")
-    monkeypatch.setenv("RELAYMD_FRONTEND_API_BASE_URL", "http://example.test/")
+    monkeypatch.setenv("RELAYMD_FRONTEND_API_BASE_URL", "http://127.0.0.1:36159/")
 
     async with app_client(make_settings()) as client:
         response = await client.get("/config/frontend")
 
     assert response.status_code == 200
     assert response.json() == {
-        "api_base_url": "http://example.test",
+        "api_base_url": "http://127.0.0.1:36159",
         "refresh_interval_seconds": 12,
     }
     assert "api_token" not in response.text
+
+
+def test_frontend_config_rejects_non_loopback_api_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("RELAYMD_FRONTEND_API_BASE_URL", "http://example.test")
+
+    with pytest.raises(ValueError, match="loopback-local"):
+        create_app(make_settings(), start_background_tasks=False)
 
 
 @pytest.mark.asyncio
@@ -89,3 +98,12 @@ async def test_api_prefixes_are_not_intercepted_by_spa_fallback(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Not found"
+
+
+def test_frontend_asset_resolution_rejects_path_traversal(tmp_path: Path) -> None:
+    dist_dir = tmp_path / "frontend-dist"
+    dist_dir.mkdir()
+    outside = tmp_path / "secret.txt"
+    outside.write_text("do not serve")
+
+    assert _resolve_frontend_asset_path(dist_dir, "../../secret.txt") is None

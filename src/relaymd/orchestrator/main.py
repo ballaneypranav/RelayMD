@@ -8,6 +8,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -40,8 +41,20 @@ SPA_EXCLUDED_PREFIXES = (
 
 def _load_frontend_runtime_config() -> dict[str, Any]:
     refresh_interval_seconds = int(os.getenv("RELAYMD_REFRESH_INTERVAL_SECONDS", "30"))
+    api_base_url = os.getenv("RELAYMD_FRONTEND_API_BASE_URL", "").rstrip("/")
+    if api_base_url:
+        parsed = urlparse(api_base_url)
+        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ValueError(
+                "RELAYMD_FRONTEND_API_BASE_URL must be empty or point to a loopback-local HTTP(S) "
+                "address so browser requests stay on the local proxy path."
+            )
     return {
-        "api_base_url": os.getenv("RELAYMD_FRONTEND_API_BASE_URL", "").rstrip("/"),
+        "api_base_url": api_base_url,
         "refresh_interval_seconds": max(refresh_interval_seconds, 1),
     }
 
@@ -52,6 +65,13 @@ def _frontend_dist_dir() -> Path:
 
 def _frontend_index_path() -> Path:
     return _frontend_dist_dir() / "index.html"
+
+
+def _resolve_frontend_asset_path(frontend_dist_dir: Path, full_path: str) -> Path | None:
+    candidate = (frontend_dist_dir / full_path).resolve()
+    if not candidate.is_relative_to(frontend_dist_dir.resolve()):
+        return None
+    return candidate
 
 
 async def _ensure_tailscale_running(
@@ -305,6 +325,7 @@ def create_app(
     app.state.settings = active_settings
     app.state.start_background_tasks = start_background_tasks
     app.state.warnings = _check_for_warnings(active_settings)
+    app.state.frontend_runtime_config = _load_frontend_runtime_config()
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -322,7 +343,7 @@ def create_app(
 
     @app.get("/config/frontend")
     async def frontend_config() -> dict[str, Any]:
-        return _load_frontend_runtime_config()
+        return app.state.frontend_runtime_config
 
     app.include_router(workers_router)
     app.include_router(jobs_worker_router)
@@ -349,7 +370,9 @@ def create_app(
         if full_path.startswith(SPA_EXCLUDED_PREFIXES):
             raise HTTPException(status_code=404, detail="Not found")
 
-        candidate = frontend_dist_dir / full_path
+        candidate = _resolve_frontend_asset_path(frontend_dist_dir, full_path)
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Not found")
         if candidate.is_file():
             return FileResponse(candidate)
 

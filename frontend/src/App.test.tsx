@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { App } from "./App";
 
@@ -20,10 +20,9 @@ function mockFetch(routes: Record<string, Response>) {
 describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
-    window.localStorage.clear();
   });
 
-  it("loads dashboard data after token save", async () => {
+  it("loads dashboard data through the proxy without a browser-held api token", async () => {
     mockFetch({
       "GET /config/frontend": new Response(
         JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
@@ -75,15 +74,15 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByText("Settings"));
-    fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
-      target: { value: "secret-token" },
-    });
-    fireEvent.click(screen.getByText("Save token"));
-
-    await waitFor(() => expect(screen.getByRole("button", { name: /protein-folding/i })).toBeInTheDocument());
-    expect(screen.getByText("Token saved locally for this browser.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /protein-folding/i })).toBeInTheDocument(),
+    );
     expect(screen.getByText("Execution queue")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CONNECTED" })).toBeInTheDocument();
+    expect(screen.getByText("Job states")).toBeInTheDocument();
+    expect(screen.getByText("Worker states")).toBeInTheDocument();
+    expect(screen.queryByText(/Orchestrator:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Refresh:/)).not.toBeInTheDocument();
   });
 
   it("shows offline state when dashboard data fails", async () => {
@@ -94,20 +93,17 @@ describe("App", () => {
       "GET /jobs": new Response("boom", { status: 503 }),
       "GET /workers": new Response(JSON.stringify([])),
       "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
-      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /healthz": new Response(
+        JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] }),
+      ),
     });
 
     render(<App />);
-    fireEvent.click(screen.getByText("Settings"));
-    fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
-      target: { value: "secret-token" },
-    });
-    fireEvent.click(screen.getByText("Save token"));
 
     await waitFor(() => expect(screen.getByText(/Orchestrator unreachable/)).toBeInTheDocument());
   });
 
-  it("navigates between major views and clears token from settings", async () => {
+  it("navigates between major views and shows proxy auth guidance in settings", async () => {
     mockFetch({
       "GET /config/frontend": new Response(
         JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
@@ -115,23 +111,58 @@ describe("App", () => {
     });
 
     render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Workers/i })).toBeInTheDocument(),
+    );
 
-    fireEvent.click(screen.getByText("Workers"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Workers/i }));
+    });
     expect(screen.getByText("Fleet health")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Clusters"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Clusters"));
+    });
     expect(screen.getByRole("heading", { name: "Provisioning targets" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("Settings"));
-    fireEvent.change(screen.getByPlaceholderText("Enter RELAYMD_API_TOKEN"), {
-      target: { value: "secret-token" },
+    await act(async () => {
+      fireEvent.click(screen.getByText("Settings"));
     });
-    fireEvent.click(screen.getByText("Save token"));
+    expect(
+      screen.getByText(/The proxy injects the RelayMD API token upstream/),
+    ).toBeInTheDocument();
+  });
+
+  it("opens connection details when the connected pill is clicked", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(
+        JSON.stringify({
+          status: "ok",
+          version: "0.1.4",
+          warnings: [],
+          tailscale: { connected: true, hostname: "relaymd" },
+        }),
+      ),
+    });
+
+    render(<App />);
+
     await waitFor(() =>
-      expect(screen.getByText("Token saved locally for this browser.")).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "CONNECTED" })).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByText("Settings"));
-    fireEvent.click(screen.getByText("Clear token"));
-    expect(screen.getByText(/Current state: missing/)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "CONNECTED" }));
+    });
+
+    expect(
+      screen.getByText(/The proxy injects the RelayMD API token upstream/),
+    ).toBeInTheDocument();
   });
 });

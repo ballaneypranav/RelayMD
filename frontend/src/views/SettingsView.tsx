@@ -1,22 +1,9 @@
 interface SettingsViewProps {
-  tokenInput: string;
-  tokenStored: boolean;
   apiBaseUrl: string;
   refreshIntervalSeconds: number | string;
-  onTokenChange: (value: string) => void;
-  onSaveToken: () => void;
-  onClearToken: () => void;
 }
 
-export function SettingsView({
-  tokenInput,
-  tokenStored,
-  apiBaseUrl,
-  refreshIntervalSeconds,
-  onTokenChange,
-  onSaveToken,
-  onClearToken,
-}: SettingsViewProps) {
+export function SettingsView({ apiBaseUrl, refreshIntervalSeconds }: SettingsViewProps) {
   return (
     <div className="settings-grid">
       <section className="panel">
@@ -25,30 +12,21 @@ export function SettingsView({
             <p className="eyebrow">Settings</p>
             <h2>Operator access</h2>
             <p className="panel-copy">
-              Store the API token in this browser and review the current orchestrator connection.
+              Dashboard access is handled by the local basic-auth proxy. The browser no longer
+              stores the RelayMD API token.
             </p>
           </div>
         </div>
-
-        <label className="field-label" htmlFor="relaymd-token">
-          API token
-        </label>
-        <input
-          id="relaymd-token"
-          type="password"
-          value={tokenInput}
-          onChange={(event) => onTokenChange(event.target.value)}
-          placeholder="Enter RELAYMD_API_TOKEN"
-        />
-        <p className="panel-copy">
-          Token is stored in localStorage for this browser only. Current state:{" "}
-          {tokenStored ? "configured" : "missing"}.
-        </p>
-        <div className="toolbar">
-          <button onClick={onSaveToken}>Save token</button>
-          <button className="secondary" onClick={onClearToken}>
-            Clear token
-          </button>
+        <div className="empty-state">
+          <h3>Auth flow</h3>
+          <p>
+            1. Open the dashboard through the proxy on port <code>36159</code>.
+          </p>
+          <p>2. Enter the proxy username and password in the browser prompt.</p>
+          <p>
+            3. The proxy injects the RelayMD API token upstream, so no dashboard token prompt is
+            required.
+          </p>
         </div>
       </section>
 

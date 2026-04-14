@@ -52,6 +52,10 @@ def proxy(
     host: str = typer.Option("127.0.0.1", help="Bind host"),
     port: int = typer.Option(36159, help="Bind port"),
     upstream_url: str = typer.Option("http://127.0.0.1:36158", help="Upstream RelayMD URL"),
+    api_token: str = typer.Option(
+        default_factory=lambda: os.getenv("RELAYMD_API_TOKEN", ""),
+        help="RelayMD API token injected upstream. Defaults to RELAYMD_API_TOKEN.",
+    ),
     username: str = typer.Option(
         default_factory=lambda: os.getenv("RELAYMD_DASHBOARD_USERNAME", ""),
         help="Dashboard basic-auth username. Defaults to RELAYMD_DASHBOARD_USERNAME.",
@@ -62,6 +66,12 @@ def proxy(
     ),
 ) -> None:
     """Start a basic-auth reverse proxy in front of the RelayMD dashboard."""
+    if not api_token.strip():
+        typer.echo(
+            "RelayMD API token is required. Set --api-token or RELAYMD_API_TOKEN.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     if not username.strip():
         typer.echo(
             "Dashboard proxy username is required. Set --username or RELAYMD_DASHBOARD_USERNAME.",
@@ -85,6 +95,7 @@ def proxy(
         create_dashboard_proxy_app(
             DashboardProxySettings(
                 upstream_url=upstream_url,
+                upstream_api_token=api_token,
                 username=username,
                 password=password,
             )
