@@ -948,6 +948,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dashboard-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend Build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#rollout-order" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1142,6 +1164,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dashboard-access" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Access
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#frontend-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frontend Build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#rollout-order" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1209,6 +1253,37 @@ It launches <code>uv run relaymd orchestrator up</code>.</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tmux<span class="w"> </span>kill-session<span class="w"> </span>-t<span class="w"> </span>relaymd
 </span></code></pre></div>
 <p>Logs are visible in the tmux session output.</p>
+<h2 id="dashboard-access">Dashboard Access</h2>
+<p>By default the orchestrator should listen on <code>127.0.0.1:36158</code>, not <code>0.0.0.0</code>, so the UI/API are not exposed on every interface of a shared login node.</p>
+<p>For solo use, the recommended setup is:</p>
+<ol>
+<li>run <code>relaymd orchestrator up</code></li>
+<li>run the basic-auth dashboard proxy on <code>127.0.0.1:36159</code></li>
+<li>forward only port <code>36159</code> to your laptop</li>
+</ol>
+<p>Start the proxy manually:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>uv<span class="w"> </span>run<span class="w"> </span>relaymd<span class="w"> </span>orchestrator<span class="w"> </span>proxy
+</span></code></pre></div>
+<p>Or via tmux:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>./deploy/tmux/start-dashboard-proxy.sh
+</span></code></pre></div>
+<p>Then forward only <code>36159</code> in VS Code and open the forwarded URL. The browser will prompt for the basic-auth credentials before the dashboard is served.</p>
+<p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so the browser does not need to store or manually enter the RelayMD API token.</p>
+<p>This does not make the service impossible for other users on the same node to probe, but it prevents them from seeing the dashboard without the proxy credentials.</p>
+<h2 id="frontend-build">Frontend Build</h2>
+<p>The operator UI is a React app in <code>frontend/</code> served by the orchestrator on port <code>36158</code>.</p>
+<p>Build it before starting or restarting the orchestrator:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>npm<span class="w"> </span>--cache<span class="w"> </span>./.npm<span class="w"> </span>install
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>npm<span class="w"> </span>--cache<span class="w"> </span>./.npm<span class="w"> </span>run<span class="w"> </span>build
+</span></code></pre></div>
+<p>Keep npm cache and build output inside the repo. <code>frontend/dist/</code> is generated locally and is not committed.</p>
 <h2 id="rollout-order">Rollout Order</h2>
 <p>Use this upgrade sequence for compatibility:
 1. deploy orchestrator first

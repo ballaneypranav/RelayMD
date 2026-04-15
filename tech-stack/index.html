@@ -1353,11 +1353,11 @@
 </span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── deployment.md          # Orchestrator deployment guide
 </span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── hpc-notes.md           # Apptainer + Tailscale runbook
 </span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   └── storage-layout.md
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>├── ui/                        # Streamlit monitoring dashboard
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>├── frontend/                  # React operator dashboard served by FastAPI
 </span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>├── Dockerfile                 # Worker container image
 </span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>└── pyproject.toml             # Root relaymd package + workspace config
 </span></code></pre></div>
-<p><code>relaymd-core</code> is the shared dependency layer: it carries only <code>relaymd.models</code> + <code>relaymd.storage</code>. The worker container installs <code>relaymd-core</code> + <code>relaymd-worker</code> only; it does not install <code>relaymd</code> (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A <code>uv</code> workspace at the repo root manages these three packages with one lockfile.</p>
+<p><code>relaymd-core</code> is the shared dependency layer: it carries only <code>relaymd.models</code> + <code>relaymd.storage</code>. The worker container installs <code>relaymd-core</code> + <code>relaymd-worker</code> only; it does not install <code>relaymd</code> (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A <code>uv</code> workspace at the repo root manages these three packages with one lockfile. The frontend uses npm under <code>frontend/</code>, with cache and build output kept inside the repo.</p>
 <hr />
 <h2 id="shared-data-models">Shared Data Models</h2>
 <p>All API request/response models live in <code>relaymd-core</code> under <code>relaymd.models</code>, shared by <code>relaymd</code> and <code>relaymd-worker</code>. If a field changes, it changes in one place and all consumers break loudly at import time rather than silently at runtime.</p>
