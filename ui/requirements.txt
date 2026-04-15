@@ -1,4 +1,0 @@
-streamlit
-streamlit-autorefresh
-pandas
-httpx

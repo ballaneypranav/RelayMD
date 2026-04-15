@@ -6,6 +6,7 @@ Start reading with:
 - [Core Architecture](docs/architecture.md)
 - [Job Lifecycle](docs/job-lifecycle.md)
 - [Tech Stack & Development Guidelines](docs/tech-stack.md)
+- [Deployment Guide](docs/deployment.md)
 
 ### Live Documentation
 
@@ -28,6 +29,16 @@ The worker entrypoint is `python -m relaymd.worker`. Provide
 bootstrap can retrieve runtime secrets.
 
 ## Development
+
+### Frontend
+
+The operator UI is built in `frontend/` and served by the orchestrator on port `36158`.
+
+```bash
+cd frontend
+npm --cache ./.npm install
+npm --cache ./.npm run build
+```
 
 ### Git Hooks
 

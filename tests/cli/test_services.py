@@ -73,6 +73,7 @@ def _make_job_read() -> JobRead:
 
 
 def _make_worker_read() -> WorkerRead:
+    now = datetime.now(UTC).isoformat()
     return WorkerRead.from_dict(
         {
             "id": str(uuid4()),
@@ -81,7 +82,8 @@ def _make_worker_read() -> WorkerRead:
             "gpu_count": 1,
             "vram_gb": 80,
             "status": "active",
-            "last_heartbeat": datetime.now(UTC).isoformat(),
+            "last_heartbeat": now,
+            "registered_at": now,
         }
     )
 

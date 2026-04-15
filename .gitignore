@@ -38,3 +38,9 @@ packages/relaymd-api-client/src/relaymd_api_client/
 
 # Infisical
 .infisical.json
+
+# Frontend
+frontend/dist/
+frontend/.npm/
+frontend/tsconfig.tsbuildinfo
+node_modules

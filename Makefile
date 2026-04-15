@@ -1,4 +1,4 @@
-.PHONY: ui docker-build docker-push release-cli setup-hooks
+.PHONY: frontend-build docker-build docker-push release-cli setup-hooks
 
 setup-hooks:
 	git config core.hooksPath .githooks
@@ -8,8 +8,9 @@ ORG ?= your-org
 BASE_IMAGE ?= ghcr.io/$(ORG)/relaymd-base:latest
 IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest
 
-ui:
-	uv run --with-requirements ui/requirements.txt streamlit run ui/dashboard.py
+frontend-build:
+	cd frontend && npm --cache ./.npm install
+	cd frontend && npm --cache ./.npm run build
 
 docker-build-base:
 	docker build -t $(BASE_IMAGE) -f Dockerfile.base .

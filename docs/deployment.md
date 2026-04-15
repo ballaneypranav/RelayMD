@@ -60,6 +60,54 @@ tmux kill-session -t relaymd
 
 Logs are visible in the tmux session output.
 
+## Dashboard Access
+
+By default the orchestrator should listen on `127.0.0.1:36158`, not `0.0.0.0`, so the UI/API are not exposed on every interface of a shared login node.
+
+For solo use, the recommended setup is:
+
+1. run `relaymd orchestrator up`
+2. run the basic-auth dashboard proxy on `127.0.0.1:36159`
+3. forward only port `36159` to your laptop
+
+Start the proxy manually:
+
+```bash
+export RELAYMD_API_TOKEN=<relaymd-api-token>
+export RELAYMD_DASHBOARD_USERNAME=<username>
+export RELAYMD_DASHBOARD_PASSWORD=<password>
+uv run relaymd orchestrator proxy
+```
+
+Or via tmux:
+
+```bash
+export RELAYMD_API_TOKEN=<relaymd-api-token>
+export RELAYMD_DASHBOARD_USERNAME=<username>
+export RELAYMD_DASHBOARD_PASSWORD=<password>
+./deploy/tmux/start-dashboard-proxy.sh
+```
+
+Then forward only `36159` in VS Code and open the forwarded URL. The browser will prompt for the basic-auth credentials before the dashboard is served.
+
+The proxy injects `RELAYMD_API_TOKEN` upstream, so the browser does not need to store or manually enter the RelayMD API token.
+
+This does not make the service impossible for other users on the same node to probe, but it prevents them from seeing the dashboard without the proxy credentials.
+
+## Frontend Build
+
+The operator UI is a React app in `frontend/` served by the orchestrator on port `36158`.
+
+Build it before starting or restarting the orchestrator:
+
+```bash
+cd frontend
+npm --cache ./.npm install
+npm --cache ./.npm run build
+```
+
+Keep npm cache and build output inside the repo. `frontend/dist/` is generated locally and is not committed.
+
 ## Rollout Order
 
 Use this upgrade sequence for compatibility:
