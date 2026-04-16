@@ -50,6 +50,7 @@ jobs:
               - 'packages/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - 'scripts/sync_workspace.sh'
               - '.github/workflows/ci.yml'
             cli:
               - 'packages/relaymd-core/**'
@@ -177,6 +178,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: ./scripts/sync_workspace.sh
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -202,10 +207,12 @@ jobs:
           docker run --rm --entrypoint python relaymd-orchestrator:ci - <<'PY'
           import asyncio
           import shutil
+          import relaymd_api_client
           from httpx import ASGITransport, AsyncClient
           from relaymd.orchestrator.config import OrchestratorSettings
           from relaymd.orchestrator.main import create_app
 
+          _ = relaymd_api_client
           assert shutil.which("ssh"), "ssh binary missing from orchestrator image"
           assert shutil.which("tailscale"), "tailscale binary missing from orchestrator image"
           assert shutil.which("tailscaled"), "tailscaled binary missing from orchestrator image"

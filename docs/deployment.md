@@ -22,6 +22,7 @@ storage.
 Recommended defaults:
 
 - Config: `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
+- Service env file: `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
 - DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
 - Orchestrator logs: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
 - SLURM worker logs: `/depot/plow/data/pballane/relaymd-service/logs/slurm/<cluster>`
@@ -53,6 +54,16 @@ Use the HPC wrappers in `deploy/hpc/`:
 - `relaymd-service-up`
 - `relaymd-service-proxy`
 
+Install wrappers/modulefile once:
+
+```bash
+./deploy/hpc/install-service-layout.sh
+module use /depot/plow/apps/modulefiles
+module load relaymd/current
+```
+
+After loading the module, `relaymd-service-*` wrappers are on `PATH`.
+
 Pull and activate a release:
 
 ```bash
@@ -60,6 +71,9 @@ Pull and activate a release:
   docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
+
+`relaymd-service-pull` defaults Apptainer build temp/cache to scratch-backed
+directories to avoid `/tmp` space failures on login nodes.
 
 Start service in tmux from the active release:
 
@@ -70,14 +84,12 @@ Start service in tmux from the active release:
 Start the dashboard proxy in tmux:
 
 ```bash
-export RELAYMD_API_TOKEN=<relaymd-api-token>
-export RELAYMD_DASHBOARD_USERNAME=<username>
-export RELAYMD_DASHBOARD_PASSWORD=<password>
 ./deploy/hpc/relaymd-service-proxy
 ```
 
 `relaymd-service-up` runs `relaymd orchestrator up` inside the orchestrator SIF
-and exports `RELAYMD_CONFIG` so runtime config remains external/private.
+and injects runtime env vars from `relaymd-service.env`/shell env into the
+container using `APPTAINERENV_*` so config and secrets remain external/private.
 
 ## Dashboard Access
 
