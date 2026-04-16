@@ -34,11 +34,18 @@ if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
     exit 0
 fi
 
-printf -v COMMAND \
-    "env RELAYMD_API_TOKEN=%q RELAYMD_DASHBOARD_USERNAME=%q RELAYMD_DASHBOARD_PASSWORD=%q apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator proxy --host 127.0.0.1 --port 36159 --upstream-url http://127.0.0.1:36158" \
-    "${RELAYMD_API_TOKEN}" "${RELAYMD_DASHBOARD_USERNAME}" "${RELAYMD_DASHBOARD_PASSWORD}" "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+tmux new-session -d -s "${SESSION_NAME}"
 
-tmux new-session -d -s "${SESSION_NAME}" "${COMMAND}"
+# Inject credentials via session environment so they are not exposed in command-line args.
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_API_TOKEN "${RELAYMD_API_TOKEN}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_USERNAME "${RELAYMD_DASHBOARD_USERNAME}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_PASSWORD "${RELAYMD_DASHBOARD_PASSWORD}"
+
+printf -v COMMAND \
+    "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator proxy --host 127.0.0.1 --port 36159 --upstream-url http://127.0.0.1:36158" \
+    "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+
+tmux send-keys -t "${SESSION_NAME}" "${COMMAND}" C-m
 
 echo "started relaymd dashboard proxy in tmux session '${SESSION_NAME}'"
 echo "attach: tmux attach -t ${SESSION_NAME}"

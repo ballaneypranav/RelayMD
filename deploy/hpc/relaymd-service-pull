@@ -12,6 +12,13 @@ RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 
+# Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
+if [[ ! "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "Invalid release-version '${RELEASE_VERSION}'." >&2
+    echo "Use only letters, digits, dot, underscore, and hyphen; must start with a letter/digit." >&2
+    exit 1
+fi
+
 if [[ -n "${2:-}" ]]; then
     ORCHESTRATOR_IMAGE_URI="$2"
 elif [[ -n "${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}" ]]; then

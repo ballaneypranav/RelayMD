@@ -54,7 +54,6 @@ You can override defaults through environment variables:
 - `RELAYMD_DATA_ROOT`
 - `RELAYMD_CONFIG`
 - `RELAYMD_ORCHESTRATOR_SIF`
-- `RELAYMD_WORKER_SIF`
 - `RELAYMD_BIND_PATHS`
 - `RELAYMD_TAILSCALE_SOCKET`
 
