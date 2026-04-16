@@ -1286,7 +1286,7 @@
 <h2 id="guiding-principles">Guiding Principles</h2>
 <p><strong>Apptainer-first.</strong> The worker runs inside an Apptainer <code>.sif</code> container. All Python dependencies — including the MD engine and the <code>relaymd-worker</code> package — must be installed inside the image. Do not rely on the host environment for anything.</p>
 <p><strong>No conda environments.</strong> Conda adds significant image size and slow solve times. Use pip inside the container image. The base image should provide a suitable Python (3.11+) directly.</p>
-<p><strong>uv for out-of-container installs.</strong> The orchestrator runs on the login node outside any container. Use <code>uv</code> — not pip, not conda. The orchestrator's dependencies are managed with a <code>uv</code> lockfile committed to the repo.</p>
+<p><strong>uv for local installs.</strong> Use <code>uv</code> — not pip, not conda — for local development and non-container workflows. Production HPC deployments run both orchestrator and worker from GHCR-backed Apptainer images.</p>
 <p><strong>Pydantic everywhere.</strong> All structured data — API request/response bodies, config objects, DB models, inter-component messages — should be typed with Pydantic. If you are writing a dict with string keys to pass data between functions, use a Pydantic model instead.</p>
 <p><strong>One binary for the operator.</strong> The <code>relaymd</code> CLI is compiled to a self-contained ELF binary with PyInstaller and distributed via GitHub Releases. No Python environment is required on the machine that submits jobs.</p>
 <hr />
@@ -1308,7 +1308,7 @@
 <tr>
 <td>Package manager (login node)</td>
 <td><code>uv</code></td>
-<td>Fast, reproducible, lockfile-based</td>
+<td>Fast, reproducible, lockfile-based local/dev installs</td>
 </tr>
 <tr>
 <td>Package manager (container)</td>
@@ -1355,7 +1355,8 @@
 </span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   └── storage-layout.md
 </span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>├── frontend/                  # React operator dashboard served by FastAPI
 </span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>├── Dockerfile                 # Worker container image
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>└── pyproject.toml             # Root relaymd package + workspace config
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>├── Dockerfile.orchestrator    # Orchestrator container image (+ bundled frontend)
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>└── pyproject.toml             # Root relaymd package + workspace config
 </span></code></pre></div>
 <p><code>relaymd-core</code> is the shared dependency layer: it carries only <code>relaymd.models</code> + <code>relaymd.storage</code>. The worker container installs <code>relaymd-core</code> + <code>relaymd-worker</code> only; it does not install <code>relaymd</code> (and therefore does not pull FastAPI, uvicorn, alembic, or typer). A <code>uv</code> workspace at the repo root manages these three packages with one lockfile. The frontend uses npm under <code>frontend/</code>, with cache and build output kept inside the repo.</p>
 <hr />
@@ -1412,7 +1413,12 @@
 </table>
 <hr />
 <h2 id="container-registry">Container Registry</h2>
-<p>GHCR (GitHub Container Registry). Images tagged as <code>ghcr.io/&lt;org&gt;/relaymd-worker:&lt;tag&gt;</code>. Free for public repositories, no rate limits, integrates with GitHub Actions CI.</p>
+<p>GHCR (GitHub Container Registry). Images tagged as:</p>
+<ul>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-worker:&lt;tag&gt;</code></li>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-orchestrator:&lt;tag&gt;</code></li>
+</ul>
+<p>Use immutable SHA tags for production deployments.</p>
 <hr />
 <h2 id="open-items">Open Items</h2>
 <ul>

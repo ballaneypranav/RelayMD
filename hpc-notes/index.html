@@ -1008,6 +1008,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#6-fakeroot-validation-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6) Fakeroot Validation Note
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1196,6 +1207,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#6-fakeroot-validation-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6) Fakeroot Validation Note
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1223,19 +1245,23 @@ Tailscale userspace networking on SLURM-managed HPC nodes.</p>
 <h2 id="1-pull-and-convert-from-ghcr">1) Pull and Convert from GHCR</h2>
 <p>Run on a cluster login node:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">IMAGE</span><span class="o">=</span><span class="s2">&quot;ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-worker:latest&quot;</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">SHARED_DIR</span><span class="o">=</span>/path/to/shared/project/containers
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SHARED_DIR</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">SHARED_DIR</span><span class="si">}</span><span class="s2">/relaymd.sif&quot;</span><span class="w"> </span><span class="s2">&quot;docker://</span><span class="si">${</span><span class="nv">IMAGE</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELEASE_DIR</span><span class="o">=</span>/depot/plow/apps/relaymd/releases/&lt;version&gt;
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">/relaymd-orchestrator.sif&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="s2">&quot;docker://ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-orchestrator:sha-&lt;shortsha&gt;&quot;</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">/relaymd-worker.sif&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="s2">&quot;docker://ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-worker:sha-&lt;shortsha&gt;&quot;</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>ln<span class="w"> </span>-sfn<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>/depot/plow/apps/relaymd/current
 </span></code></pre></div>
 <p>Expected output:
-- <code>relaymd.sif</code> exists at <code>${SHARED_DIR}/relaymd.sif</code>
+- both SIFs exist under <code>${RELEASE_DIR}</code>
 - file is readable from compute nodes (shared filesystem path)</p>
 <h2 id="2-submit-tailscale-userspace-validation-job">2) Submit Tailscale Userspace Validation Job</h2>
 <p>Use the <code>test_tailscale.sbatch</code> template available in the repo under <code>deploy/slurm/</code>:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TAILSCALE_AUTH_KEY</span><span class="o">=</span>&lt;ephemeral_auth_key&gt;
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ORCHESTRATOR_HOSTNAME</span><span class="o">=</span>&lt;orchestrator_magicdns_hostname&gt;
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_SIF_PATH</span><span class="o">=</span>/path/to/shared/project/containers/relaymd.sif
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_SIF_PATH</span><span class="o">=</span>/depot/plow/apps/relaymd/current/relaymd-worker.sif
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># Optional, cluster-specific:</span>
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># export APPTAINER_FLAGS=&quot;--cleanenv --writable-tmpfs --bind /tmp:/tmp&quot;</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
@@ -1280,6 +1306,10 @@ Tailscale userspace networking on SLURM-managed HPC nodes.</p>
 <li><code>/healthz</code> response:</li>
 <li>Final status:</li>
 </ul>
+<h2 id="6-fakeroot-validation-note">6) Fakeroot Validation Note</h2>
+<p><code>apptainer build --fakeroot</code> was probed on this HPC and is not currently a
+supported path due missing usable fakeroot/subuid support. RelayMD deployment
+uses GHCR-published images plus <code>apptainer pull</code> on the login node.</p>
 
 
 

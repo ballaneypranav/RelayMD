@@ -926,10 +926,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#yaml-config-template" class="md-nav__link">
+  <a href="#config-and-state" class="md-nav__link">
     <span class="md-ellipsis">
       
-        YAML Config Template
+        Config and State
       
     </span>
   </a>
@@ -937,10 +937,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tmux" class="md-nav__link">
+  <a href="#release-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        tmux
+        Release Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operator-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator Wrappers
       
     </span>
   </a>
@@ -952,17 +963,6 @@
     <span class="md-ellipsis">
       
         Dashboard Access
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#frontend-build" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Frontend Build
       
     </span>
   </a>
@@ -1142,10 +1142,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#yaml-config-template" class="md-nav__link">
+  <a href="#config-and-state" class="md-nav__link">
     <span class="md-ellipsis">
       
-        YAML Config Template
+        Config and State
       
     </span>
   </a>
@@ -1153,10 +1153,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#tmux" class="md-nav__link">
+  <a href="#release-layout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        tmux
+        Release Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#operator-wrappers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operator Wrappers
       
     </span>
   </a>
@@ -1168,17 +1179,6 @@
     <span class="md-ellipsis">
       
         Dashboard Access
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#frontend-build" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Frontend Build
       
     </span>
   </a>
@@ -1217,78 +1217,82 @@
 
 
 <h1 id="orchestrator-persistent-deployment">Orchestrator Persistent Deployment</h1>
-<p>Use tmux for persistent orchestrator processes. A shell-owned process is not production-safe because it dies when the terminal disconnects.</p>
-<h2 id="yaml-config-template">YAML Config Template</h2>
-<p>Create <code>~/.config/relaymd/config.yaml</code> from the canonical template:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>~/.config/relaymd
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cp<span class="w"> </span>deploy/config.example.yaml<span class="w"> </span>~/.config/relaymd/config.yaml
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>chmod<span class="w"> </span><span class="m">600</span><span class="w"> </span>~/.config/relaymd/config.yaml
+<p>RelayMD phase-1 HPC deployment uses two OCI images published to GHCR and pulled
+as Apptainer SIFs on the login node:</p>
+<ul>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-orchestrator:&lt;tag&gt;</code></li>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-worker:&lt;tag&gt;</code></li>
+</ul>
+<p>The supported deployment path is:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>OCI image -&gt; GHCR -&gt; apptainer pull on HPC
 </span></code></pre></div>
-<p>SQLite recommendation: keep the database in a stable persistent directory (for example <code>/srv/relaymd/orchestrator/relaymd.db</code>), not <code>/tmp</code>.</p>
-<p>Config lookup order (highest precedence first):
-- <code>RELAYMD_CONFIG=/absolute/path/to/config.yaml</code>
-- <code>./relaymd-config.yaml</code> (project-local override, gitignored)
-- <code>~/.config/relaymd/config.yaml</code> (user-global default)</p>
-<p>To force a specific path, set:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_CONFIG</span><span class="o">=</span>/absolute/path/to/config.yaml
+<p>Local <code>apptainer build --fakeroot</code> is not part of the supported rollout path.</p>
+<h2 id="config-and-state">Config and State</h2>
+<p>Keep runtime config outside the image and keep all mutable state on shared
+storage.</p>
+<p>Recommended defaults:</p>
+<ul>
+<li>Config: <code>/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml</code></li>
+<li>DB: <code>/depot/plow/data/pballane/relaymd-service/db/relaymd.db</code></li>
+<li>Orchestrator logs: <code>/depot/plow/data/pballane/relaymd-service/logs/orchestrator</code></li>
+<li>SLURM worker logs: <code>/depot/plow/data/pballane/relaymd-service/logs/slurm/&lt;cluster&gt;</code></li>
+</ul>
+<p>Config lookup order (highest precedence first):</p>
+<ul>
+<li><code>RELAYMD_CONFIG=/absolute/path/to/config.yaml</code></li>
+<li><code>./relaymd-config.yaml</code> (project-local override, gitignored)</li>
+<li><code>~/.config/relaymd/config.yaml</code> (user-global default)</li>
+</ul>
+<h2 id="release-layout">Release Layout</h2>
+<p>Store immutable pulled SIFs under a versioned release path and promote by
+symlink:</p>
+<ul>
+<li>Releases: <code>/depot/plow/apps/relaymd/releases/&lt;version&gt;/</code></li>
+<li>Active release symlink: <code>/depot/plow/apps/relaymd/current</code></li>
+</ul>
+<p>Expected active SIFs:</p>
+<ul>
+<li><code>/depot/plow/apps/relaymd/current/relaymd-orchestrator.sif</code></li>
+<li><code>/depot/plow/apps/relaymd/current/relaymd-worker.sif</code></li>
+</ul>
+<h2 id="operator-wrappers">Operator Wrappers</h2>
+<p>Use the HPC wrappers in <code>deploy/hpc/</code>:</p>
+<ul>
+<li><code>relaymd-service-pull</code></li>
+<li><code>relaymd-service-up</code></li>
+<li><code>relaymd-service-proxy</code></li>
+</ul>
+<p>Pull and activate a release:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
 </span></code></pre></div>
-<p>Secrets can stay out of the YAML file by overriding them via environment variables:
-- <code>RELAYMD_API_TOKEN</code>
-- <code>INFISICAL_TOKEN</code>
-- <code>APPTAINER_DOCKER_USERNAME</code> / <code>APPTAINER_DOCKER_PASSWORD</code> (optional; for private <code>docker://</code> pulls)</p>
-<p>When <code>INFISICAL_TOKEN</code> is configured and any <code>slurm_cluster_configs</code> entry uses
-<code>image_uri</code>, orchestrator also hydrates missing values for:
-- <code>APPTAINER_DOCKER_USERNAME</code>
-- <code>APPTAINER_DOCKER_PASSWORD</code></p>
-<h2 id="tmux">tmux</h2>
-<p>Launcher script is at <code>deploy/tmux/start-orchestrator.sh</code>.
-It launches <code>uv run relaymd orchestrator up</code>.</p>
-<p>Start:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./deploy/tmux/start-orchestrator.sh
+<p>Start service in tmux from the active release:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./deploy/hpc/relaymd-service-up
 </span></code></pre></div>
-<p>Attach:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>tmux<span class="w"> </span>attach<span class="w"> </span>-t<span class="w"> </span>relaymd
+<p>Start the dashboard proxy in tmux:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>./deploy/hpc/relaymd-service-proxy
 </span></code></pre></div>
-<p>Stop:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>tmux<span class="w"> </span>kill-session<span class="w"> </span>-t<span class="w"> </span>relaymd
-</span></code></pre></div>
-<p>Logs are visible in the tmux session output.</p>
+<p><code>relaymd-service-up</code> runs <code>relaymd orchestrator up</code> inside the orchestrator SIF
+and exports <code>RELAYMD_CONFIG</code> so runtime config remains external/private.</p>
 <h2 id="dashboard-access">Dashboard Access</h2>
-<p>By default the orchestrator should listen on <code>127.0.0.1:36158</code>, not <code>0.0.0.0</code>, so the UI/API are not exposed on every interface of a shared login node.</p>
-<p>For solo use, the recommended setup is:</p>
+<p>Use loopback binding and forward only proxy port <code>36159</code> to your laptop.</p>
 <ol>
-<li>run <code>relaymd orchestrator up</code></li>
-<li>run the basic-auth dashboard proxy on <code>127.0.0.1:36159</code></li>
-<li>forward only port <code>36159</code> to your laptop</li>
+<li>start orchestrator with <code>relaymd-service-up</code></li>
+<li>start proxy with <code>relaymd-service-proxy</code></li>
+<li>forward <code>36159</code> in VS Code/SSH tunnel</li>
 </ol>
-<p>Start the proxy manually:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>uv<span class="w"> </span>run<span class="w"> </span>relaymd<span class="w"> </span>orchestrator<span class="w"> </span>proxy
-</span></code></pre></div>
-<p>Or via tmux:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
-</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>./deploy/tmux/start-dashboard-proxy.sh
-</span></code></pre></div>
-<p>Then forward only <code>36159</code> in VS Code and open the forwarded URL. The browser will prompt for the basic-auth credentials before the dashboard is served.</p>
-<p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so the browser does not need to store or manually enter the RelayMD API token.</p>
-<p>This does not make the service impossible for other users on the same node to probe, but it prevents them from seeing the dashboard without the proxy credentials.</p>
-<h2 id="frontend-build">Frontend Build</h2>
-<p>The operator UI is a React app in <code>frontend/</code> served by the orchestrator on port <code>36158</code>.</p>
-<p>Build it before starting or restarting the orchestrator:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">cd</span><span class="w"> </span>frontend
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>npm<span class="w"> </span>--cache<span class="w"> </span>./.npm<span class="w"> </span>install
-</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>npm<span class="w"> </span>--cache<span class="w"> </span>./.npm<span class="w"> </span>run<span class="w"> </span>build
-</span></code></pre></div>
-<p>Keep npm cache and build output inside the repo. <code>frontend/dist/</code> is generated locally and is not committed.</p>
+<p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so browsers never need direct
+API token handling.</p>
 <h2 id="rollout-order">Rollout Order</h2>
-<p>Use this upgrade sequence for compatibility:
-1. deploy orchestrator first
-2. deploy worker image second
-3. upgrade CLI binaries last</p>
+<ol>
+<li>pull/promote orchestrator + worker release with immutable SHA tags</li>
+<li>start/restart orchestrator service from the new <code>current</code> symlink</li>
+<li>update CLI binaries as needed</li>
+</ol>
 
 
 

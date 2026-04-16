@@ -336,10 +336,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container" class="md-nav__link">
+  <a href="#containers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container
+        Containers
       
     </span>
   </a>
@@ -1116,10 +1116,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container" class="md-nav__link">
+  <a href="#containers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container
+        Containers
       
     </span>
   </a>
@@ -1147,23 +1147,29 @@
 
 
 <h1 id="relaymd">RelayMD</h1>
-<p>RelayMD is a distributed orchestration system for long-running molecular dynamics workloads across HPC and cloud GPU capacity; project design and implementation decisions are split across several focused documents in the `` directory.</p>
+<p>RelayMD is a distributed orchestration system for long-running molecular
+dynamics workloads across HPC and cloud GPU capacity; project design and
+implementation decisions are split across focused documents in <code>docs/</code>.</p>
 <p>Start reading with:
 - <a href="architecture/">Core Architecture</a>
 - <a href="job-lifecycle/">Job Lifecycle</a>
-- <a href="tech-stack/">Tech Stack &amp; Development Guidelines</a></p>
+- <a href="tech-stack/">Tech Stack &amp; Development Guidelines</a>
+- <a href="deployment/">Deployment Guide</a></p>
 <h3 id="live-documentation">Live Documentation</h3>
 <p>The full documentation is deployed to GitHub Pages at <a href="https://ballaneypranav.github.io/RelayMD/">https://ballaneypranav.github.io/RelayMD/</a>.</p>
-<h2 id="container">Container</h2>
-<p>RelayMD worker containers are published to GitHub Container Registry (GHCR) as
-<code>ghcr.io/&lt;org&gt;/relaymd-worker:latest</code>.</p>
+<h2 id="containers">Containers</h2>
+<p>RelayMD publishes both worker and orchestrator images to GHCR:</p>
+<ul>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-worker:&lt;tag&gt;</code></li>
+<li><code>ghcr.io/&lt;org&gt;/relaymd-orchestrator:&lt;tag&gt;</code></li>
+</ul>
+<p>Use immutable <code>sha-&lt;shortsha&gt;</code> tags for deploys.</p>
 <p>Build and push commands:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>make<span class="w"> </span>docker-build<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>make<span class="w"> </span>docker-push<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>make<span class="w"> </span>docker-build-worker<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>make<span class="w"> </span>docker-push-worker<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>make<span class="w"> </span>docker-build-orchestrator<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>make<span class="w"> </span>docker-push-orchestrator<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
 </span></code></pre></div>
-<p>The worker entrypoint is <code>python -m relaymd.worker</code>. Provide
-<code>INFISICAL_TOKEN=&lt;client_id&gt;:&lt;client_secret&gt;</code> when running the container so
-bootstrap can retrieve runtime secrets.</p>
 
 
 

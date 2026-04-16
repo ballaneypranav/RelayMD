@@ -1477,7 +1477,7 @@
 </table>
 <hr />
 <h2 id="operational-notes">Operational Notes</h2>
-<p><strong>The orchestrator must run on a persistent machine.</strong> A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On clusterA, use <code>deploy/tmux/start-orchestrator.sh</code>.</p>
+<p><strong>The orchestrator must run on a persistent machine.</strong> A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use the wrappers in <code>deploy/hpc/</code> (<code>relaymd-service-up</code>, <code>relaymd-service-proxy</code>) with the active orchestrator SIF under <code>/depot/plow/apps/relaymd/current/</code>.</p>
 <p><strong>Workers are cattle, not pets.</strong> Never attempt to rescue a worker that has gone silent. The orchestrator will re-queue its job automatically when the heartbeat times out. Just let it time out.</p>
 <p><strong>Typed transition conflicts are expected under races.</strong> Late worker callbacks (<code>checkpoint</code>, <code>complete</code>, <code>fail</code>) can receive a typed <code>409 job_transition_conflict</code>; this is expected safety behavior, not an incident.</p>
 <p><strong>Input bundles are immutable.</strong> Once uploaded and registered, the files in <code>jobs/{job_id}/input/</code> should never be modified. If the input needs to change, create a new job.</p>
