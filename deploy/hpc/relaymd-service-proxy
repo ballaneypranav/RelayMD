@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION_NAME="${SESSION_NAME:-relaymd-service-proxy}"
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-orchestrator.sif}"
+RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
+
+if [[ -z "${RELAYMD_API_TOKEN:-}" ]]; then
+    echo "RELAYMD_API_TOKEN is required" >&2
+    exit 1
+fi
+
+if [[ -z "${RELAYMD_DASHBOARD_USERNAME:-}" ]]; then
+    echo "RELAYMD_DASHBOARD_USERNAME is required" >&2
+    exit 1
+fi
+
+if [[ -z "${RELAYMD_DASHBOARD_PASSWORD:-}" ]]; then
+    echo "RELAYMD_DASHBOARD_PASSWORD is required" >&2
+    exit 1
+fi
+
+if [[ ! -f "${RELAYMD_ORCHESTRATOR_SIF}" ]]; then
+    echo "Orchestrator SIF not found: ${RELAYMD_ORCHESTRATOR_SIF}" >&2
+    exit 1
+fi
+
+if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
+    echo "tmux session '${SESSION_NAME}' already running"
+    echo "attach: tmux attach -t ${SESSION_NAME}"
+    exit 0
+fi
+
+printf -v COMMAND \
+    "env RELAYMD_API_TOKEN=%q RELAYMD_DASHBOARD_USERNAME=%q RELAYMD_DASHBOARD_PASSWORD=%q apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator proxy --host 127.0.0.1 --port 36159 --upstream-url http://127.0.0.1:36158" \
+    "${RELAYMD_API_TOKEN}" "${RELAYMD_DASHBOARD_USERNAME}" "${RELAYMD_DASHBOARD_PASSWORD}" "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+
+tmux new-session -d -s "${SESSION_NAME}" "${COMMAND}"
+
+echo "started relaymd dashboard proxy in tmux session '${SESSION_NAME}'"
+echo "attach: tmux attach -t ${SESSION_NAME}"
+echo "stop:   tmux kill-session -t ${SESSION_NAME}"

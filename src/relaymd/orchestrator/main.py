@@ -27,7 +27,11 @@ from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_route
 from relaymd.orchestrator.routers.workers import router as workers_router
 
 LOG = get_logger(__name__)
-FRONTEND_DIST_DIR = Path(__file__).resolve().parents[3] / "frontend" / "dist"
+FRONTEND_DIST_DIR_ENV_VAR = "RELAYMD_FRONTEND_DIST_DIR"
+FRONTEND_DIST_DIR_CANDIDATES = (
+    Path("/opt/relaymd/frontend/dist"),
+    Path(__file__).resolve().parents[3] / "frontend" / "dist",
+)
 SPA_EXCLUDED_PREFIXES = (
     "jobs",
     "workers",
@@ -60,7 +64,15 @@ def _load_frontend_runtime_config() -> dict[str, Any]:
 
 
 def _frontend_dist_dir() -> Path:
-    return FRONTEND_DIST_DIR
+    configured_dir = os.getenv(FRONTEND_DIST_DIR_ENV_VAR, "").strip()
+    candidates = list(FRONTEND_DIST_DIR_CANDIDATES)
+    if configured_dir:
+        candidates.insert(0, Path(configured_dir).expanduser())
+
+    for candidate in candidates:
+        if (candidate / "index.html").is_file():
+            return candidate
+    return candidates[0]
 
 
 def _frontend_index_path() -> Path:
@@ -361,7 +373,10 @@ def create_app(
         if not index_path.is_file():
             raise HTTPException(
                 status_code=503,
-                detail="Frontend build missing. Run the frontend build before starting the UI.",
+                detail=(
+                    "Frontend build missing. Set RELAYMD_FRONTEND_DIST_DIR or "
+                    "bundle assets into /opt/relaymd/frontend/dist."
+                ),
             )
         return FileResponse(index_path)
 
@@ -380,7 +395,10 @@ def create_app(
         if not index_path.is_file():
             raise HTTPException(
                 status_code=503,
-                detail="Frontend build missing. Run the frontend build before starting the UI.",
+                detail=(
+                    "Frontend build missing. Set RELAYMD_FRONTEND_DIST_DIR or "
+                    "bundle assets into /opt/relaymd/frontend/dist."
+                ),
             )
         return FileResponse(index_path)
 

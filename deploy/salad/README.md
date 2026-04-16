@@ -7,7 +7,7 @@ image from `W-150`, with secrets injected via Salad environment variables.
 
 1. In Salad Cloud, create a new container group.
 2. Container image:
-   - `ghcr.io/<org>/relaymd-worker:latest`
+   - `ghcr.io/<org>/relaymd-worker:sha-<shortsha>`
 3. Replica count:
    - start at `0`
 4. GPU selection:

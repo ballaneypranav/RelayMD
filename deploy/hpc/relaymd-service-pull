@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -lt 1 || $# -gt 3 ]]; then
+    echo "Usage: $0 <release-version> [orchestrator-image-uri] [worker-image-uri]" >&2
+    echo "Example: $0 sha-abc1234 docker://ghcr.io/my-org/relaymd-orchestrator:sha-abc1234 docker://ghcr.io/my-org/relaymd-worker:sha-abc1234" >&2
+    exit 1
+fi
+
+RELEASE_VERSION="$1"
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+
+if [[ -n "${2:-}" ]]; then
+    ORCHESTRATOR_IMAGE_URI="$2"
+elif [[ -n "${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}" ]]; then
+    ORCHESTRATOR_IMAGE_URI="${RELAYMD_ORCHESTRATOR_IMAGE_URI}"
+else
+    echo "Missing orchestrator image URI. Pass arg #2 or set RELAYMD_ORCHESTRATOR_IMAGE_URI." >&2
+    exit 1
+fi
+
+if [[ -n "${3:-}" ]]; then
+    WORKER_IMAGE_URI="$3"
+elif [[ -n "${RELAYMD_WORKER_IMAGE_URI:-}" ]]; then
+    WORKER_IMAGE_URI="${RELAYMD_WORKER_IMAGE_URI}"
+else
+    echo "Missing worker image URI. Pass arg #3 or set RELAYMD_WORKER_IMAGE_URI." >&2
+    exit 1
+fi
+
+RELEASE_DIR="${RELEASES_DIR}/${RELEASE_VERSION}"
+mkdir -p "${RELEASE_DIR}"
+
+ORCH_TMP="${RELEASE_DIR}/relaymd-orchestrator.sif.tmp"
+WORKER_TMP="${RELEASE_DIR}/relaymd-worker.sif.tmp"
+ORCH_SIF="${RELEASE_DIR}/relaymd-orchestrator.sif"
+WORKER_SIF="${RELEASE_DIR}/relaymd-worker.sif"
+
+echo "Pulling orchestrator image into ${ORCH_SIF}"
+apptainer pull "${ORCH_TMP}" "${ORCHESTRATOR_IMAGE_URI}"
+mv "${ORCH_TMP}" "${ORCH_SIF}"
+
+echo "Pulling worker image into ${WORKER_SIF}"
+apptainer pull "${WORKER_TMP}" "${WORKER_IMAGE_URI}"
+mv "${WORKER_TMP}" "${WORKER_SIF}"
+
+ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
+
+echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
+echo "  orchestrator: ${ORCH_SIF}"
+echo "  worker:       ${WORKER_SIF}"

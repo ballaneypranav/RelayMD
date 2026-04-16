@@ -1,116 +1,97 @@
 # Orchestrator Persistent Deployment
 
-Use tmux for persistent orchestrator processes. A shell-owned process is not production-safe because it dies when the terminal disconnects.
+RelayMD phase-1 HPC deployment uses two OCI images published to GHCR and pulled
+as Apptainer SIFs on the login node:
 
-## YAML Config Template
+- `ghcr.io/<org>/relaymd-orchestrator:<tag>`
+- `ghcr.io/<org>/relaymd-worker:<tag>`
 
-Create `~/.config/relaymd/config.yaml` from the canonical template:
+The supported deployment path is:
 
-```bash
-mkdir -p ~/.config/relaymd
-cp deploy/config.example.yaml ~/.config/relaymd/config.yaml
-chmod 600 ~/.config/relaymd/config.yaml
+```text
+OCI image -> GHCR -> apptainer pull on HPC
 ```
 
-SQLite recommendation: keep the database in a stable persistent directory (for example `/srv/relaymd/orchestrator/relaymd.db`), not `/tmp`.
+Local `apptainer build --fakeroot` is not part of the supported rollout path.
+
+## Config and State
+
+Keep runtime config outside the image and keep all mutable state on shared
+storage.
+
+Recommended defaults:
+
+- Config: `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
+- DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
+- Orchestrator logs: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
+- SLURM worker logs: `/depot/plow/data/pballane/relaymd-service/logs/slurm/<cluster>`
 
 Config lookup order (highest precedence first):
+
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
 - `./relaymd-config.yaml` (project-local override, gitignored)
 - `~/.config/relaymd/config.yaml` (user-global default)
 
-To force a specific path, set:
+## Release Layout
+
+Store immutable pulled SIFs under a versioned release path and promote by
+symlink:
+
+- Releases: `/depot/plow/apps/relaymd/releases/<version>/`
+- Active release symlink: `/depot/plow/apps/relaymd/current`
+
+Expected active SIFs:
+
+- `/depot/plow/apps/relaymd/current/relaymd-orchestrator.sif`
+- `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
+
+## Operator Wrappers
+
+Use the HPC wrappers in `deploy/hpc/`:
+
+- `relaymd-service-pull`
+- `relaymd-service-up`
+- `relaymd-service-proxy`
+
+Pull and activate a release:
 
 ```bash
-export RELAYMD_CONFIG=/absolute/path/to/config.yaml
+./deploy/hpc/relaymd-service-pull <release-version> \
+  docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
+  docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
-Secrets can stay out of the YAML file by overriding them via environment variables:
-- `RELAYMD_API_TOKEN`
-- `INFISICAL_TOKEN`
-- `APPTAINER_DOCKER_USERNAME` / `APPTAINER_DOCKER_PASSWORD` (optional; for private `docker://` pulls)
-
-When `INFISICAL_TOKEN` is configured and any `slurm_cluster_configs` entry uses
-`image_uri`, orchestrator also hydrates missing values for:
-- `APPTAINER_DOCKER_USERNAME`
-- `APPTAINER_DOCKER_PASSWORD`
-
-## tmux
-
-Launcher script is at `deploy/tmux/start-orchestrator.sh`.
-It launches `uv run relaymd orchestrator up`.
-
-Start:
+Start service in tmux from the active release:
 
 ```bash
-./deploy/tmux/start-orchestrator.sh
+./deploy/hpc/relaymd-service-up
 ```
 
-Attach:
+Start the dashboard proxy in tmux:
 
 ```bash
-tmux attach -t relaymd
+export RELAYMD_API_TOKEN=<relaymd-api-token>
+export RELAYMD_DASHBOARD_USERNAME=<username>
+export RELAYMD_DASHBOARD_PASSWORD=<password>
+./deploy/hpc/relaymd-service-proxy
 ```
 
-Stop:
-
-```bash
-tmux kill-session -t relaymd
-```
-
-Logs are visible in the tmux session output.
+`relaymd-service-up` runs `relaymd orchestrator up` inside the orchestrator SIF
+and exports `RELAYMD_CONFIG` so runtime config remains external/private.
 
 ## Dashboard Access
 
-By default the orchestrator should listen on `127.0.0.1:36158`, not `0.0.0.0`, so the UI/API are not exposed on every interface of a shared login node.
+Use loopback binding and forward only proxy port `36159` to your laptop.
 
-For solo use, the recommended setup is:
+1. start orchestrator with `relaymd-service-up`
+2. start proxy with `relaymd-service-proxy`
+3. forward `36159` in VS Code/SSH tunnel
 
-1. run `relaymd orchestrator up`
-2. run the basic-auth dashboard proxy on `127.0.0.1:36159`
-3. forward only port `36159` to your laptop
-
-Start the proxy manually:
-
-```bash
-export RELAYMD_API_TOKEN=<relaymd-api-token>
-export RELAYMD_DASHBOARD_USERNAME=<username>
-export RELAYMD_DASHBOARD_PASSWORD=<password>
-uv run relaymd orchestrator proxy
-```
-
-Or via tmux:
-
-```bash
-export RELAYMD_API_TOKEN=<relaymd-api-token>
-export RELAYMD_DASHBOARD_USERNAME=<username>
-export RELAYMD_DASHBOARD_PASSWORD=<password>
-./deploy/tmux/start-dashboard-proxy.sh
-```
-
-Then forward only `36159` in VS Code and open the forwarded URL. The browser will prompt for the basic-auth credentials before the dashboard is served.
-
-The proxy injects `RELAYMD_API_TOKEN` upstream, so the browser does not need to store or manually enter the RelayMD API token.
-
-This does not make the service impossible for other users on the same node to probe, but it prevents them from seeing the dashboard without the proxy credentials.
-
-## Frontend Build
-
-The operator UI is a React app in `frontend/` served by the orchestrator on port `36158`.
-
-Build it before starting or restarting the orchestrator:
-
-```bash
-cd frontend
-npm --cache ./.npm install
-npm --cache ./.npm run build
-```
-
-Keep npm cache and build output inside the repo. `frontend/dist/` is generated locally and is not committed.
+The proxy injects `RELAYMD_API_TOKEN` upstream, so browsers never need direct
+API token handling.
 
 ## Rollout Order
 
-Use this upgrade sequence for compatibility:
-1. deploy orchestrator first
-2. deploy worker image second
-3. upgrade CLI binaries last
+1. pull/promote orchestrator + worker release with immutable SHA tags
+2. start/restart orchestrator service from the new `current` symlink
+3. update CLI binaries as needed

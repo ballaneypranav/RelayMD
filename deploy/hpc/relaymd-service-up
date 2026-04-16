@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SESSION_NAME="${SESSION_NAME:-relaymd-service}"
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
+RELAYMD_TAILSCALE_SOCKET="${RELAYMD_TAILSCALE_SOCKET:-${RELAYMD_DATA_ROOT}/tailscale/tailscaled.sock}"
+RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-orchestrator.sif}"
+RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
+
+if [[ ! -f "${RELAYMD_CONFIG}" ]]; then
+    echo "Config file not found: ${RELAYMD_CONFIG}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${RELAYMD_ORCHESTRATOR_SIF}" ]]; then
+    echo "Orchestrator SIF not found: ${RELAYMD_ORCHESTRATOR_SIF}" >&2
+    exit 1
+fi
+
+mkdir -p "${RELAYMD_DATA_ROOT}/db" "${RELAYMD_DATA_ROOT}/logs/orchestrator" "${RELAYMD_DATA_ROOT}/tailscale"
+
+if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
+    echo "tmux session '${SESSION_NAME}' already running"
+    echo "attach: tmux attach -t ${SESSION_NAME}"
+    exit 0
+fi
+
+printf -v COMMAND \
+    "env RELAYMD_CONFIG=%q RELAYMD_TAILSCALE_SOCKET=%q apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator up --host 127.0.0.1 --port 36158" \
+    "${RELAYMD_CONFIG}" "${RELAYMD_TAILSCALE_SOCKET}" "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+
+tmux new-session -d -s "${SESSION_NAME}" "${COMMAND}"
+
+echo "started relaymd orchestrator in tmux session '${SESSION_NAME}'"
+echo "attach: tmux attach -t ${SESSION_NAME}"
+echo "stop:   tmux kill-session -t ${SESSION_NAME}"

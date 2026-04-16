@@ -3,7 +3,7 @@
 # - ./relaymd-config.yaml (project-local override, gitignored)
 
 # Path to the SQLite database file. Use an absolute path on a stable filesystem.
-database_url: sqlite+aiosqlite:////home/USER/relaymd/relaymd.db
+database_url: sqlite+aiosqlite:////depot/plow/data/pballane/relaymd-service/db/relaymd.db
 
 # API token is sourced from Infisical at runtime.
 # Do not set local overrides; provide only INFISICAL_TOKEN.
@@ -19,7 +19,7 @@ infisical_token: ""
 # in Infisical to http://<tailscale_hostname>:36158 so workers always resolve the
 # current IP via DNS instead of a hardcoded address.
 # tailscale_hostname: relaymd-orchestrator  # default; override via RELAYMD_TAILSCALE_HOSTNAME
-# tailscale_socket: ~/.tailscale/tailscaled.sock  # default; set via RELAYMD_TAILSCALE_SOCKET
+tailscale_socket: /depot/plow/data/pballane/relaymd-service/tailscale/tailscaled.sock
 # tailscale_auth_key: ""  # sourced from Infisical
 
 # Registry credentials are not injected via the SLURM template.
@@ -38,6 +38,9 @@ heartbeat_timeout_multiplier: 2.0
 stale_worker_reaper_interval_seconds: 60
 orphaned_job_requeue_interval_seconds: 60
 sbatch_submission_interval_seconds: 60
+
+# Directory for orchestrator logs and rendered sbatch script snapshots.
+log_directory: /depot/plow/data/pballane/relaymd-service/logs/orchestrator
 
 # Injected into sbatch as: #SBATCH --signal=TERM@<seconds>
 slurm_sigterm_margin_seconds: 300
@@ -71,14 +74,15 @@ slurm_cluster_configs:
     # - jit_threshold: submits like reactive but ONLY if the oldest queued job has waited > jit_threshold_hours
     strategy: "reactive"
     # jit_threshold_hours: 6.0
-    # Choose exactly one image source:
-    # 1) shared Apptainer image path (best for offline/restricted compute nodes)
-    sif_path: /depot/shared/containers/relaymd.sif
-    # 2) OR direct registry image (Apptainer uses docker://<image>)
+    # Choose exactly one image source.
+    # Phase 1 policy: keep one shared worker image for all clusters.
+    # Point every cluster to the same worker SIF promoted under current/.
+    sif_path: /depot/plow/apps/relaymd/current/relaymd-worker.sif
+    # Alternative: use a registry image directly (Apptainer uses docker://<image>)
     # Prefer a SHA tag over :latest to pin to a specific build.
     # The SHA tag is printed in the GitHub Actions job summary after each CI run.
     # image_uri: ghcr.io/<org>/relaymd-worker:sha-abc1234
-    # image_uri: ghcr.io/<org>/relaymd-worker:latest
+    # Per-job worker image selection is not supported in phase 1.
     # Optional scheduler directives:
     # nodes: 1
     # ntasks: 8
@@ -89,7 +93,7 @@ slurm_cluster_configs:
     # memory_per_gpu: 60G  # renders: #SBATCH --mem-per-gpu=60G
     wall_time: "4:00:00"
     max_pending_jobs: 1
-    # log_directory: /scratch/gilbreth/my-username/relaymd-logs
+    log_directory: /depot/plow/data/pballane/relaymd-service/logs/slurm/gilbreth-a30
 
 # SaladCloud API key for autoscaling workers.
 # Can be set via SALAD_API_KEY env var.

@@ -17,6 +17,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       base_image: ${{ steps.filter.outputs.base_image }}
       worker_image: ${{ steps.filter.outputs.worker_image }}
+      orchestrator_image: ${{ steps.filter.outputs.orchestrator_image }}
       cli: ${{ steps.filter.outputs.cli }}
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +42,14 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'scripts/sync_workspace.sh'
+              - '.github/workflows/ci.yml'
+            orchestrator_image:
+              - 'Dockerfile.orchestrator'
+              - 'frontend/**'
+              - 'src/**'
+              - 'packages/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
               - '.github/workflows/ci.yml'
             cli:
               - 'packages/relaymd-core/**'
@@ -158,6 +167,91 @@ jobs:
           echo "Pin a cluster to this build in \`relaymd-config.yaml\`:" >> $GITHUB_STEP_SUMMARY
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
+
+  build-orchestrator:
+    needs: [changes, test]
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.orchestrator
+          load: true
+          tags: relaymd-orchestrator:ci
+          cache-from: type=gha
+      - name: Smoke test orchestrator frontend serving
+        run: |
+          docker run --rm --entrypoint python relaymd-orchestrator:ci - <<'PY'
+          import asyncio
+          import shutil
+          from httpx import ASGITransport, AsyncClient
+          from relaymd.orchestrator.config import OrchestratorSettings
+          from relaymd.orchestrator.main import create_app
+
+          assert shutil.which("ssh"), "ssh binary missing from orchestrator image"
+          assert shutil.which("tailscale"), "tailscale binary missing from orchestrator image"
+          assert shutil.which("tailscaled"), "tailscaled binary missing from orchestrator image"
+
+          async def main() -> None:
+              settings = OrchestratorSettings(
+                  axiom_token="test",
+                  database_url="sqlite+aiosqlite:///:memory:",
+                  api_token="test-token",
+              )
+              app = create_app(settings, start_background_tasks=False)
+              async with app.router.lifespan_context(app):
+                  transport = ASGITransport(app=app)
+                  async with AsyncClient(transport=transport, base_url="http://test") as client:
+                      response = await client.get("/")
+                  assert response.status_code == 200, response.text[:200]
+
+          asyncio.run(main())
+          PY
+      - uses: docker/build-push-action@v5
+        id: build
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          context: .
+          file: Dockerfile.orchestrator
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Summary
+        run: |
+          DIGEST="${{ steps.build.outputs.digest }}"
+          if [ -z "${DIGEST}" ]; then
+            DIGEST="not-pushed (pull_request)"
+          fi
+          echo "### Orchestrator image" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          echo "Pin orchestrator deployment to this immutable tag:" >> $GITHUB_STEP_SUMMARY
+          echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
 
   build-cli:
     needs: [changes, test]

@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from relaymd.orchestrator.config import OrchestratorSettings
-from relaymd.orchestrator.main import _resolve_frontend_asset_path, create_app
+from relaymd.orchestrator.main import _frontend_dist_dir, _resolve_frontend_asset_path, create_app
 
 
 @asynccontextmanager
@@ -54,12 +54,21 @@ def test_frontend_config_rejects_non_loopback_api_base_url(
         create_app(make_settings(), start_background_tasks=False)
 
 
+def test_frontend_dist_dir_uses_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    dist_dir = tmp_path / "frontend-dist"
+    dist_dir.mkdir()
+    (dist_dir / "index.html").write_text("<html><body>frontend</body></html>")
+    monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
+
+    assert _frontend_dist_dir() == dist_dir
+
+
 @pytest.mark.asyncio
 async def test_root_serves_frontend_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>frontend</body></html>")
-    monkeypatch.setattr("relaymd.orchestrator.main.FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
         response = await client.get("/")
@@ -75,7 +84,7 @@ async def test_spa_fallback_serves_index_for_non_api_routes(
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>spa-shell</body></html>")
-    monkeypatch.setattr("relaymd.orchestrator.main.FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
         response = await client.get("/dashboard/jobs")
@@ -91,7 +100,7 @@ async def test_api_prefixes_are_not_intercepted_by_spa_fallback(
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>spa-shell</body></html>")
-    monkeypatch.setattr("relaymd.orchestrator.main.FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
         response = await client.get("/config/not-a-real-endpoint")
@@ -109,7 +118,7 @@ async def test_spa_fallback_serves_index_for_paths_with_api_like_prefix(
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>spa-shell</body></html>")
-    monkeypatch.setattr("relaymd.orchestrator.main.FRONTEND_DIST_DIR", dist_dir)
+    monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
         response = await client.get("/jobs-old/details")
