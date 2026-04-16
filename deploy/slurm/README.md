@@ -17,7 +17,7 @@ Per-cluster required keys:
 - `gpu_count`
 - exactly one of:
   - `sif_path` (shared filesystem path to a `.sif`)
-  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker:latest`)
+  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker:sha-abc1234`)
 
 Optional keys:
 
@@ -76,8 +76,13 @@ apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp <sif_path> pyth
 
 # or when using image_uri:
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
-  docker://ghcr.io/<org>/relaymd-worker:latest python -m relaymd.worker
+  docker://ghcr.io/<org>/relaymd-worker:sha-abc1234 python -m relaymd.worker
 ```
+
+Phase-1 deployment policy uses one shared worker image contract for all
+clusters. In production config, point each cluster at the same SIF promoted
+under `/depot/plow/apps/relaymd/current/relaymd-worker.sif` (or the same pinned
+immutable `image_uri`) to avoid accidental image heterogeneity.
 
 Runtime env vars are injected by the template (`WORKER_PLATFORM`, heartbeat/checkpoint intervals, and timeout knobs) from orchestrator config defaults.
 

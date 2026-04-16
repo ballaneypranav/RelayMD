@@ -79,7 +79,7 @@ relaymd workers list
 
 ## Orchestrator
 
-Start orchestrator (defaults: `0.0.0.0:36158`):
+Start orchestrator (defaults: `127.0.0.1:36158`):
 
 ```bash
 relaymd orchestrator up

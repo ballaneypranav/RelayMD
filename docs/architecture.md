@@ -140,7 +140,7 @@ The orchestrator API is not reachable from the public internet. A node must be o
 
 ## Operational Notes
 
-**The orchestrator must run on a persistent machine.** A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On clusterA, use `deploy/tmux/start-orchestrator.sh`.
+**The orchestrator must run on a persistent machine.** A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use the wrappers in `deploy/hpc/` (`relaymd-service-up`, `relaymd-service-proxy`) with the active orchestrator SIF under `/depot/plow/apps/relaymd/current/`.
 
 **Workers are cattle, not pets.** Never attempt to rescue a worker that has gone silent. The orchestrator will re-queue its job automatically when the heartbeat times out. Just let it time out.
 

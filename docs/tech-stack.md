@@ -6,7 +6,7 @@
 
 **No conda environments.** Conda adds significant image size and slow solve times. Use pip inside the container image. The base image should provide a suitable Python (3.11+) directly.
 
-**uv for out-of-container installs.** The orchestrator runs on the login node outside any container. Use `uv` — not pip, not conda. The orchestrator's dependencies are managed with a `uv` lockfile committed to the repo.
+**uv for local installs.** Use `uv` — not pip, not conda — for local development and non-container workflows. Production HPC deployments run both orchestrator and worker from GHCR-backed Apptainer images.
 
 **Pydantic everywhere.** All structured data — API request/response bodies, config objects, DB models, inter-component messages — should be typed with Pydantic. If you are writing a dict with string keys to pass data between functions, use a Pydantic model instead.
 
@@ -19,7 +19,7 @@
 | Decision                       | Choice                      | Rationale                                               |
 |-------------------------------|-----------------------------|---------------------------------------------------------|
 | Language                       | Python 3.11+                | Required by alchemical MD workloads; modern typing        |
-| Package manager (login node)   | `uv`                        | Fast, reproducible, lockfile-based                      |
+| Package manager (login node)   | `uv`                        | Fast, reproducible, lockfile-based local/dev installs   |
 | Package manager (container)    | pip inside Apptainer/Docker | No conda; uv can also be used in the Dockerfile         |
 | CLI distribution               | PyInstaller single binary   | No Python env required on HPC login node                |
 | Python typing                  | strict Pydantic throughout  | See guiding principle above                             |
@@ -55,6 +55,7 @@ relaymd/
 │   └── storage-layout.md
 ├── frontend/                  # React operator dashboard served by FastAPI
 ├── Dockerfile                 # Worker container image
+├── Dockerfile.orchestrator    # Orchestrator container image (+ bundled frontend)
 └── pyproject.toml             # Root relaymd package + workspace config
 ```
 
@@ -95,7 +96,12 @@ Both the orchestrator and worker have a `logging.py` module that configures stru
 
 ## Container Registry
 
-GHCR (GitHub Container Registry). Images tagged as `ghcr.io/<org>/relaymd-worker:<tag>`. Free for public repositories, no rate limits, integrates with GitHub Actions CI.
+GHCR (GitHub Container Registry). Images tagged as:
+
+- `ghcr.io/<org>/relaymd-worker:<tag>`
+- `ghcr.io/<org>/relaymd-orchestrator:<tag>`
+
+Use immutable SHA tags for production deployments.
 
 ---
 

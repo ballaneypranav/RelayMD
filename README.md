@@ -12,21 +12,26 @@ Start reading with:
 
 The full documentation is deployed to GitHub Pages at [https://ballaneypranav.github.io/RelayMD/](https://ballaneypranav.github.io/RelayMD/).
 
-## Container
+## Containers
 
-RelayMD worker containers are published to GitHub Container Registry (GHCR) as
-`ghcr.io/<org>/relaymd-worker:latest`.
+RelayMD publishes two images to GitHub Container Registry (GHCR):
+
+- `ghcr.io/<org>/relaymd-worker:<tag>`
+- `ghcr.io/<org>/relaymd-orchestrator:<tag>`
 
 Build and push commands:
 
 ```bash
-make docker-build ORG=<org>
-make docker-push ORG=<org>
+make docker-build-worker ORG=<org>
+make docker-push-worker ORG=<org>
+make docker-build-orchestrator ORG=<org>
+make docker-push-orchestrator ORG=<org>
 ```
 
-The worker entrypoint is `python -m relaymd.worker`. Provide
-`INFISICAL_TOKEN=<client_id>:<client_secret>` when running the container so
-bootstrap can retrieve runtime secrets.
+Worker entrypoint: `python -m relaymd.worker`.
+Orchestrator entrypoint: `relaymd orchestrator up`.
+Runtime requirement: set `INFISICAL_TOKEN=<client_id>:<client_secret>` for both
+worker bootstrap and orchestrator startup.
 
 ## Development
 

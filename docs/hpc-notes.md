@@ -10,14 +10,18 @@ Run on a cluster login node:
 
 ```bash
 export ORG=<org>
-export IMAGE="ghcr.io/${ORG}/relaymd-worker:latest"
-export SHARED_DIR=/path/to/shared/project/containers
-mkdir -p "${SHARED_DIR}"
-apptainer pull "${SHARED_DIR}/relaymd.sif" "docker://${IMAGE}"
+export RELEASE_DIR=/depot/plow/apps/relaymd/releases/<version>
+mkdir -p "${RELEASE_DIR}"
+
+apptainer pull "${RELEASE_DIR}/relaymd-orchestrator.sif" \
+  "docker://ghcr.io/${ORG}/relaymd-orchestrator:sha-<shortsha>"
+apptainer pull "${RELEASE_DIR}/relaymd-worker.sif" \
+  "docker://ghcr.io/${ORG}/relaymd-worker:sha-<shortsha>"
+ln -sfn "${RELEASE_DIR}" /depot/plow/apps/relaymd/current
 ```
 
 Expected output:
-- `relaymd.sif` exists at `${SHARED_DIR}/relaymd.sif`
+- both SIFs exist under `${RELEASE_DIR}`
 - file is readable from compute nodes (shared filesystem path)
 
 ## 2) Submit Tailscale Userspace Validation Job
@@ -27,7 +31,7 @@ Use the `test_tailscale.sbatch` template available in the repo under `deploy/slu
 ```bash
 export TAILSCALE_AUTH_KEY=<ephemeral_auth_key>
 export ORCHESTRATOR_HOSTNAME=<orchestrator_magicdns_hostname>
-export RELAYMD_SIF_PATH=/path/to/shared/project/containers/relaymd.sif
+export RELAYMD_SIF_PATH=/depot/plow/apps/relaymd/current/relaymd-worker.sif
 # Optional, cluster-specific:
 # export APPTAINER_FLAGS="--cleanenv --writable-tmpfs --bind /tmp:/tmp"
 
@@ -76,3 +80,9 @@ Fill this section after executing on the real HPC cluster:
 - Tailscale admin panel check (appear/disappear):
 - `/healthz` response:
 - Final status:
+
+## 6) Fakeroot Validation Note
+
+`apptainer build --fakeroot` was probed on this HPC and is not currently a
+supported path due missing usable fakeroot/subuid support. RelayMD deployment
+uses GHCR-published images plus `apptainer pull` on the login node.
