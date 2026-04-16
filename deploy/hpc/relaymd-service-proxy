@@ -34,7 +34,7 @@ if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
     exit 0
 fi
 
-tmux new-session -d -s "${SESSION_NAME}"
+tmux new-session -d -s "${SESSION_NAME}" -n "relaymd-proxy"
 
 # Inject credentials via session environment so they are not exposed in command-line args.
 tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_API_TOKEN "${RELAYMD_API_TOKEN}"
@@ -45,7 +45,8 @@ printf -v COMMAND \
     "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator proxy --host 127.0.0.1 --port 36159 --upstream-url http://127.0.0.1:36158" \
     "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
 
-tmux send-keys -t "${SESSION_NAME}" "${COMMAND}" C-m
+# Start the proxy command after session env is set so APPTAINERENV_* is inherited.
+tmux respawn-pane -k -t "${SESSION_NAME}:relaymd-proxy" "${COMMAND}"
 
 echo "started relaymd dashboard proxy in tmux session '${SESSION_NAME}'"
 echo "attach: tmux attach -t ${SESSION_NAME}"
