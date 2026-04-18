@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 relaymd = "relaymd.cli.__main__:app"
 relaymd-orchestrator = "relaymd.orchestrator.main:start"
+relaymd-dashboard-proxy = "relaymd.dashboard_proxy_main:start"
 
 [tool.uv.sources]
 relaymd-core = { workspace = true }

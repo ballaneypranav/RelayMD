@@ -171,7 +171,7 @@ tmux set-environment -t "${SESSION_NAME}" RELAYMD_ORCHESTRATOR_SIF "${RELAYMD_OR
 tmux set-environment -t "${SESSION_NAME}" CURRENT_HOST "${CURRENT_HOST}"
 
 printf -v COMMAND \
-    "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator up --host 127.0.0.1 --port %q" \
+    "apptainer exec --cleanenv --writable-tmpfs --bind %q %q env RELAYMD_ORCHESTRATOR_HOST=127.0.0.1 RELAYMD_ORCHESTRATOR_PORT=%q relaymd-orchestrator" \
     "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}" "${ORCHESTRATOR_PORT}"
 
 printf -v SUPERVISED_COMMAND \
