@@ -1,7 +1,7 @@
 # RelayMD HPC Service Wrappers
 
-These scripts standardize phase-1 operator workflows for a GHCR -> Apptainer
-pull and tmux-managed orchestrator service.
+These scripts standardize a tmux-managed frontend deployment for RelayMD on HPC.
+This deployment model remains intentionally login-node based (not Slurm service mode).
 
 ## Paths and Layout
 
@@ -17,13 +17,12 @@ Default state/config layout:
 - State root: `/depot/plow/data/pballane/relaymd-service`
 - Shared status file: `/depot/plow/data/pballane/relaymd-service/state/relaymd-service.status`
 - Config file: `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
-- DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
-- Orchestrator logs: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
-- Cluster logs: `/depot/plow/data/pballane/relaymd-service/logs/slurm/<cluster>`
+- Service env file: `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
+- Wrapper logs: `/depot/plow/data/pballane/relaymd-service/logs/service/`
 
 ## Commands
 
-Pull and activate a release:
+Pull and activate using explicit image URIs (backward-compatible mode):
 
 ```bash
 ./deploy/hpc/relaymd-service-pull <release-version> \
@@ -31,80 +30,136 @@ Pull and activate a release:
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
+Auto-resolve URIs from a tag (no copy/paste):
+
+```bash
+./deploy/hpc/relaymd-service-pull sha-<shortsha>
+```
+
+Auto-resolve newest shared `sha-*` tag across both packages:
+
+```bash
+./deploy/hpc/relaymd-service-pull latest
+```
+
+`latest` resolution policy is fixed: newest shared `sha-*` present in both
+`relaymd-orchestrator` and `relaymd-worker` package tags.
+
+Dependencies for `latest` mode:
+
+- `gh` and `jq`
+- GitHub auth scope `read:packages`
+
+Owner resolution for auto mode:
+
+- `RELAYMD_GHCR_OWNER` if set
+- else `gh repo view --json owner -q .owner.login`
+
 `relaymd-service-pull` uses scratch-backed Apptainer temp/cache by default:
 
 - `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/tmp`
 - `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/cache`
 
-Start orchestrator service inside the active SIF:
+Start orchestrator:
 
 ```bash
 ./deploy/hpc/relaymd-service-up
 ```
 
-Force takeover on this host (only when lock is stale):
-
-```bash
-./deploy/hpc/relaymd-service-up --force
-```
-
-Start dashboard proxy inside the active SIF:
+Start proxy:
 
 ```bash
 ./deploy/hpc/relaymd-service-proxy
 ```
 
-Force takeover on this host (only when lock is stale):
+Check live health:
 
 ```bash
+./deploy/hpc/relaymd-service-status
+```
+
+Force takeover (only after confirming the other host is inactive):
+
+```bash
+./deploy/hpc/relaymd-service-up --force
 ./deploy/hpc/relaymd-service-proxy --force
 ```
 
-`relaymd-service-proxy` reads `RELAYMD_API_TOKEN`,
-`RELAYMD_DASHBOARD_USERNAME`, and `RELAYMD_DASHBOARD_PASSWORD` from the shell
-or from `RELAYMD_ENV_FILE`.
+## Runtime Reliability Behavior
 
-## Frontend Pinning and Shared Lock
+- `relaymd-service-up` and `relaymd-service-proxy` run pane commands via a
+  supervised wrapper (`relaymd-service-supervise`).
+- Wrapper logs are persistent:
+  - `logs/service/orchestrator-wrapper.log`
+  - `logs/service/proxy-wrapper.log`
+- Each wrapper log includes start metadata (`host`, `command`, image path,
+  session/port) and exit metadata (timestamp + exit code).
+- Startup verification waits `STARTUP_GRACE_SECONDS` (default `3`). If the pane
+  exits early, the wrapper prints an immediate failure summary and tails the log.
+- Heartbeats are written while process is alive:
+  - interval `RELAYMD_HEARTBEAT_INTERVAL_SECONDS` (default `30`)
+  - stale threshold `RELAYMD_HEARTBEAT_STALE_SECONDS` (default `120`)
 
-To avoid random-frontend startup drift, set a pinned frontend host in
-`relaymd-service.env`:
+Status metadata fields include:
+
+- `ORCHESTRATOR_HEARTBEAT_AT`, `PROXY_HEARTBEAT_AT`
+- `ORCHESTRATOR_LAST_START_AT`, `ORCHESTRATOR_LAST_EXIT_AT`, `ORCHESTRATOR_LAST_EXIT_CODE`
+- `PROXY_LAST_START_AT`, `PROXY_LAST_EXIT_AT`, `PROXY_LAST_EXIT_CODE`
+
+`relaymd-service-status` reports file metadata plus local tmux/port checks and
+returns exit code `0` only when orchestrator and proxy are both healthy on the
+expected host.
+
+## Frontend Pinning, Locking, and Stale Heartbeats
+
+Set a pinned host in `relaymd-service.env`:
 
 ```bash
 RELAYMD_PRIMARY_HOST=gilbreth-fe03
 ```
 
-`relaymd-service-up` and `relaymd-service-proxy` write a shared status file on
-`/depot` with:
+Cross-host lock enforcement remains enabled. Wrappers refuse startup if another
+host is marked active unless `--force` is used.
 
-- host
-- timestamp
-- orchestrator/proxy active flags
-- orchestrator/proxy ports
+Lock diagnostics now include heartbeat timestamp/age and the stale threshold,
+so operators can see when the remote lock looks stale before a manual takeover.
 
-If the status file says RelayMD is active on another host, wrappers refuse to
-start on the current host unless `--force` is passed.
+## Operational Checks
+
+Use these checks during incident response:
+
+```bash
+relaymd-service-status
+
+# local checks
+TMUX='' tmux ls
+ss -ltn | egrep ':(36158|36159)\b'
+
+tail -n 80 /depot/plow/data/pballane/relaymd-service/logs/service/orchestrator-wrapper.log
+tail -n 80 /depot/plow/data/pballane/relaymd-service/logs/service/proxy-wrapper.log
+```
+
+Important: login-node services are non-durable and may be culled or restarted by
+cluster operations. Use `relaymd-service-status` and wrapper logs to detect
+service drift quickly after reconnect/reboot windows.
 
 ## One-Time Setup
 
-Install wrappers under the active release path and create a modulefile:
+Install wrappers and modulefile:
 
 ```bash
 ./deploy/hpc/install-service-layout.sh
-```
-
-Then load the module:
-
-```bash
 module use /depot/plow/apps/modulefiles
 module load relaymd/current
 ```
 
-After module load, wrappers are on `PATH` so you can run:
+After module load, wrappers are on `PATH`:
 
 ```bash
 relaymd-service-pull ...
 relaymd-service-up
 relaymd-service-proxy
+relaymd-service-status
 ```
 
 The installer seeds:
@@ -115,7 +170,7 @@ The installer seeds:
 - `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
 
 Edit `relaymd-service.env` and keep it private (`chmod 600`).
-Use [relaymd-service.env.example](./relaymd-service.env.example) as the template.
+Use [relaymd-service.env.example](./relaymd-service.env.example) as template.
 
 ## Overrides
 
@@ -132,14 +187,11 @@ You can override defaults through environment variables:
 - `RELAYMD_TAILSCALE_SOCKET`
 - `RELAYMD_PRIMARY_HOST`
 - `RELAYMD_STATUS_FILE`
+- `RELAYMD_GHCR_OWNER`
+- `RELAYMD_HEARTBEAT_INTERVAL_SECONDS`
+- `RELAYMD_HEARTBEAT_STALE_SECONDS`
+- `STARTUP_GRACE_SECONDS`
 - `ORCHESTRATOR_PORT`
 - `PROXY_PORT`
 - `APPTAINER_TMPDIR`
 - `APPTAINER_CACHEDIR`
-
-`relaymd-service-up` loads `RELAYMD_ENV_FILE`, injects runtime env vars into
-the container via `APPTAINERENV_*`, and runs:
-
-```bash
-relaymd orchestrator up --host 127.0.0.1 --port 36158
-```

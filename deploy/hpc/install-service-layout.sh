@@ -28,6 +28,9 @@ fi
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-pull" "${BIN_DIR}/relaymd-service-pull"
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-up" "${BIN_DIR}/relaymd-service-up"
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-proxy" "${BIN_DIR}/relaymd-service-proxy"
+install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-status" "${BIN_DIR}/relaymd-service-status"
+install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-supervise" "${BIN_DIR}/relaymd-service-supervise"
+install -m 0644 "${REPO_ROOT}/deploy/hpc/relaymd-service-lib.sh" "${BIN_DIR}/relaymd-service-lib.sh"
 
 if [[ ! -f "${CONFIG_DIR}/relaymd-config.yaml" ]]; then
     install -m 0644 "${REPO_ROOT}/deploy/config.example.yaml" "${CONFIG_DIR}/relaymd-config.yaml"

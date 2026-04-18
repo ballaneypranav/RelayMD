@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
+RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
+ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
+PROXY_PORT="${PROXY_PORT:-36159}"
+RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
+RELAYMD_HEARTBEAT_STALE_SECONDS="${RELAYMD_HEARTBEAT_STALE_SECONDS:-120}"
+CURRENT_HOST="$(hostname -s 2>/dev/null || hostname)"
+
+if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${RELAYMD_ENV_FILE}"
+    set +a
+fi
+
+RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
+ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
+PROXY_PORT="${PROXY_PORT:-36159}"
+RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
+RELAYMD_HEARTBEAT_STALE_SECONDS="${RELAYMD_HEARTBEAT_STALE_SECONDS:-120}"
+
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/relaymd-service-lib.sh"
+
+if [[ ! -f "${RELAYMD_STATUS_FILE}" ]]; then
+    echo "Status file not found: ${RELAYMD_STATUS_FILE}" >&2
+    exit 1
+fi
+
+host="$(status_get HOST)"
+updated_at="$(status_get UPDATED_AT)"
+updated_by="$(status_get UPDATED_BY)"
+orch_active="$(status_get ORCHESTRATOR_ACTIVE)"
+proxy_active="$(status_get PROXY_ACTIVE)"
+orch_hb="$(status_get ORCHESTRATOR_HEARTBEAT_AT)"
+proxy_hb="$(status_get PROXY_HEARTBEAT_AT)"
+orch_start="$(status_get ORCHESTRATOR_LAST_START_AT)"
+proxy_start="$(status_get PROXY_LAST_START_AT)"
+orch_exit_at="$(status_get ORCHESTRATOR_LAST_EXIT_AT)"
+proxy_exit_at="$(status_get PROXY_LAST_EXIT_AT)"
+orch_exit_code="$(status_get ORCHESTRATOR_LAST_EXIT_CODE)"
+proxy_exit_code="$(status_get PROXY_LAST_EXIT_CODE)"
+orch_session="$(status_get ORCHESTRATOR_SESSION)"
+proxy_session="$(status_get PROXY_SESSION)"
+
+if [[ -z "${orch_session}" ]]; then
+    orch_session="relaymd-service"
+fi
+if [[ -z "${proxy_session}" ]]; then
+    proxy_session="relaymd-service-proxy"
+fi
+
+if [[ -z "${orch_active}" ]]; then
+    orch_active="0"
+fi
+if [[ -z "${proxy_active}" ]]; then
+    proxy_active="0"
+fi
+
+orch_age="$(status_timestamp_age_seconds "${orch_hb}")"
+proxy_age="$(status_timestamp_age_seconds "${proxy_hb}")"
+
+if status_is_fresh "${orch_hb}" "${RELAYMD_HEARTBEAT_STALE_SECONDS}"; then
+    orch_fresh="fresh"
+else
+    orch_fresh="stale"
+fi
+
+if status_is_fresh "${proxy_hb}" "${RELAYMD_HEARTBEAT_STALE_SECONDS}"; then
+    proxy_fresh="fresh"
+else
+    proxy_fresh="stale"
+fi
+
+orch_tmux="down"
+if status_tmux_session_alive "${orch_session}"; then
+    orch_tmux="up"
+fi
+
+proxy_tmux="down"
+if status_tmux_session_alive "${proxy_session}"; then
+    proxy_tmux="up"
+fi
+
+orch_port="closed"
+if status_port_listening "${ORCHESTRATOR_PORT}"; then
+    orch_port="listening"
+fi
+
+proxy_port="closed"
+if status_port_listening "${PROXY_PORT}"; then
+    proxy_port="listening"
+fi
+
+expected_host="${RELAYMD_PRIMARY_HOST:-${host}}"
+if [[ -z "${expected_host}" ]]; then
+    expected_host="${CURRENT_HOST}"
+fi
+
+echo "RelayMD service status"
+echo "status_file=${RELAYMD_STATUS_FILE}"
+echo "host=${host} current_host=${CURRENT_HOST} expected_host=${expected_host} updated_at=${updated_at} updated_by=${updated_by}"
+echo "orchestrator: active=${orch_active} heartbeat_at=${orch_hb} heartbeat_age_seconds=${orch_age} heartbeat_state=${orch_fresh} session=${orch_session} tmux=${orch_tmux} port=${ORCHESTRATOR_PORT} port_state=${orch_port} last_start_at=${orch_start} last_exit_at=${orch_exit_at} last_exit_code=${orch_exit_code}"
+echo "proxy: active=${proxy_active} heartbeat_at=${proxy_hb} heartbeat_age_seconds=${proxy_age} heartbeat_state=${proxy_fresh} session=${proxy_session} tmux=${proxy_tmux} port=${PROXY_PORT} port_state=${proxy_port} last_start_at=${proxy_start} last_exit_at=${proxy_exit_at} last_exit_code=${proxy_exit_code}"
+
+healthy=1
+
+if [[ "${host}" != "${expected_host}" ]]; then
+    healthy=0
+fi
+if [[ "${CURRENT_HOST}" != "${expected_host}" ]]; then
+    healthy=0
+fi
+if [[ "${orch_active}" != "1" || "${proxy_active}" != "1" ]]; then
+    healthy=0
+fi
+if [[ "${orch_fresh}" != "fresh" || "${proxy_fresh}" != "fresh" ]]; then
+    healthy=0
+fi
+if [[ "${orch_tmux}" != "up" || "${proxy_tmux}" != "up" ]]; then
+    healthy=0
+fi
+if [[ "${orch_port}" != "listening" || "${proxy_port}" != "listening" ]]; then
+    healthy=0
+fi
+
+if [[ "${healthy}" -eq 1 ]]; then
+    echo "overall=healthy"
+    exit 0
+fi
+
+echo "overall=unhealthy"
+exit 1

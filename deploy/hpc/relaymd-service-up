@@ -2,13 +2,13 @@
 set -euo pipefail
 
 usage() {
-    cat <<'EOF'
+    cat <<'USAGE'
 Usage: relaymd-service-up [--force]
 
 Options:
   -f, --force    Override host pin/lock checks and take ownership on this host.
   -h, --help     Show this help.
-EOF
+USAGE
 }
 
 FORCE=0
@@ -30,6 +30,7 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SESSION_NAME="${SESSION_NAME:-relaymd-service}"
 PROXY_SESSION_NAME="${PROXY_SESSION_NAME:-relaymd-service-proxy}"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
@@ -42,9 +43,13 @@ RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-or
 RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
 RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
 RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
-RELAYMD_STATUS_DIR="$(dirname "${RELAYMD_STATUS_FILE}")"
 ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
 PROXY_PORT="${PROXY_PORT:-36159}"
+RELAYMD_HEARTBEAT_INTERVAL_SECONDS="${RELAYMD_HEARTBEAT_INTERVAL_SECONDS:-30}"
+RELAYMD_HEARTBEAT_STALE_SECONDS="${RELAYMD_HEARTBEAT_STALE_SECONDS:-120}"
+STARTUP_GRACE_SECONDS="${STARTUP_GRACE_SECONDS:-3}"
+RELAYMD_SERVICE_LOG_DIR="${RELAYMD_SERVICE_LOG_DIR:-${RELAYMD_DATA_ROOT}/logs/service}"
+ORCHESTRATOR_WRAPPER_LOG="${RELAYMD_SERVICE_LOG_DIR}/orchestrator-wrapper.log"
 CURRENT_HOST="$(hostname -s 2>/dev/null || hostname)"
 
 if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
@@ -57,47 +62,31 @@ fi
 RELAYMD_EFFECTIVE_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
 RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${RELAYMD_EFFECTIVE_USER}}}/relaymd-service}"
 RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
-RELAYMD_STATUS_DIR="$(dirname "${RELAYMD_STATUS_FILE}")"
+ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
+PROXY_PORT="${PROXY_PORT:-36159}"
+RELAYMD_HEARTBEAT_INTERVAL_SECONDS="${RELAYMD_HEARTBEAT_INTERVAL_SECONDS:-30}"
+RELAYMD_HEARTBEAT_STALE_SECONDS="${RELAYMD_HEARTBEAT_STALE_SECONDS:-120}"
+STARTUP_GRACE_SECONDS="${STARTUP_GRACE_SECONDS:-3}"
+RELAYMD_SERVICE_LOG_DIR="${RELAYMD_SERVICE_LOG_DIR:-${RELAYMD_DATA_ROOT}/logs/service}"
+ORCHESTRATOR_WRAPPER_LOG="${ORCHESTRATOR_WRAPPER_LOG:-${RELAYMD_SERVICE_LOG_DIR}/orchestrator-wrapper.log}"
+
 # Use scratch-backed temp/cache for Apptainer runtime mounts to avoid /tmp exhaustion.
 APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
 APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
 TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
 export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
 
-status_get() {
-    local key="$1"
-    local line
-    [[ -f "${RELAYMD_STATUS_FILE}" ]] || return 0
-    line="$(grep -E "^${key}=" "${RELAYMD_STATUS_FILE}" | head -n1 || true)"
-    printf '%s' "${line#*=}"
-}
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/relaymd-service-lib.sh"
 
-status_write() {
-    local host="$1"
-    local orchestrator_active="$2"
-    local proxy_active="$3"
-    local updated_at tmp_file
-
-    updated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    tmp_file="${RELAYMD_STATUS_FILE}.tmp.$$"
-
-    cat > "${tmp_file}" <<EOF
-HOST=${host}
-UPDATED_AT=${updated_at}
-UPDATED_BY=${RELAYMD_EFFECTIVE_USER}
-ORCHESTRATOR_ACTIVE=${orchestrator_active}
-ORCHESTRATOR_PORT=${ORCHESTRATOR_PORT}
-ORCHESTRATOR_SESSION=${SESSION_NAME}
-PROXY_ACTIVE=${proxy_active}
-PROXY_PORT=${PROXY_PORT}
-PROXY_SESSION=${PROXY_SESSION_NAME}
-EOF
-
-    mv "${tmp_file}" "${RELAYMD_STATUS_FILE}"
-    chmod 664 "${RELAYMD_STATUS_FILE}" 2>/dev/null || true
-}
-
-mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" "${RELAYMD_STATUS_DIR}"
+mkdir -p \
+    "${APPTAINER_TMPDIR}" \
+    "${APPTAINER_CACHEDIR}" \
+    "$(dirname "${RELAYMD_STATUS_FILE}")" \
+    "${RELAYMD_SERVICE_LOG_DIR}" \
+    "${RELAYMD_DATA_ROOT}/db" \
+    "${RELAYMD_DATA_ROOT}/logs/orchestrator" \
+    "${RELAYMD_DATA_ROOT}/tailscale"
 chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
 
 if [[ -n "${RELAYMD_PRIMARY_HOST}" && "${CURRENT_HOST}" != "${RELAYMD_PRIMARY_HOST}" && "${FORCE}" -ne 1 ]]; then
@@ -110,17 +99,27 @@ taking_over=0
 locked_host="$(status_get HOST)"
 locked_orchestrator_active="$(status_get ORCHESTRATOR_ACTIVE)"
 locked_proxy_active="$(status_get PROXY_ACTIVE)"
+locked_orchestrator_hb="$(status_get ORCHESTRATOR_HEARTBEAT_AT)"
+locked_proxy_hb="$(status_get PROXY_HEARTBEAT_AT)"
 
 if [[ -n "${locked_host}" && "${locked_host}" != "${CURRENT_HOST}" ]]; then
     if [[ "${locked_orchestrator_active}" == "1" || "${locked_proxy_active}" == "1" ]]; then
+        orch_age="$(status_timestamp_age_seconds "${locked_orchestrator_hb}")"
+        proxy_age="$(status_timestamp_age_seconds "${locked_proxy_hb}")"
+
         if [[ "${FORCE}" -ne 1 ]]; then
             echo "Refusing to start on ${CURRENT_HOST}: lock indicates active RelayMD service on ${locked_host}." >&2
             echo "Lock file: ${RELAYMD_STATUS_FILE}" >&2
+            echo "orchestrator_active=${locked_orchestrator_active} heartbeat_at=${locked_orchestrator_hb:-n/a} age_seconds=${orch_age}" >&2
+            echo "proxy_active=${locked_proxy_active} heartbeat_at=${locked_proxy_hb:-n/a} age_seconds=${proxy_age}" >&2
+            echo "Stale threshold: RELAYMD_HEARTBEAT_STALE_SECONDS=${RELAYMD_HEARTBEAT_STALE_SECONDS}" >&2
             echo "Use --force only when you have confirmed the other host is inactive." >&2
             exit 1
         fi
+
         taking_over=1
         echo "WARNING: taking over active lock from ${locked_host} due to --force." >&2
+        echo "WARNING: orchestrator heartbeat age=${orch_age}s, proxy heartbeat age=${proxy_age}s, stale threshold=${RELAYMD_HEARTBEAT_STALE_SECONDS}s." >&2
     fi
 fi
 
@@ -139,18 +138,20 @@ if [[ ! -f "${RELAYMD_ORCHESTRATOR_SIF}" ]]; then
     exit 1
 fi
 
-mkdir -p "${RELAYMD_DATA_ROOT}/db" "${RELAYMD_DATA_ROOT}/logs/orchestrator" "${RELAYMD_DATA_ROOT}/tailscale"
+if [[ "${taking_over}" -eq 1 ]]; then
+    status_set_pairs \
+        HOST "${CURRENT_HOST}" \
+        PROXY_ACTIVE "0" \
+        PROXY_HEARTBEAT_AT ""
+fi
 
 if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
-    if [[ "${taking_over}" -eq 1 ]]; then
-        proxy_active=0
-    else
-        proxy_active="$(status_get PROXY_ACTIVE)"
-        if [[ ! "${proxy_active}" =~ ^[01]$ ]]; then
-            proxy_active=0
-        fi
-    fi
-    status_write "${CURRENT_HOST}" 1 "${proxy_active}"
+    status_set_pairs \
+        HOST "${CURRENT_HOST}" \
+        ORCHESTRATOR_ACTIVE "1" \
+        ORCHESTRATOR_PORT "${ORCHESTRATOR_PORT}" \
+        ORCHESTRATOR_SESSION "${SESSION_NAME}" \
+        ORCHESTRATOR_HEARTBEAT_AT "$(status_now_utc)"
     echo "tmux session '${SESSION_NAME}' already running"
     echo "attach: tmux attach -t ${SESSION_NAME}"
     exit 0
@@ -164,26 +165,47 @@ tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_INFISICAL_TOKEN "${INFISI
 tmux set-environment -t "${SESSION_NAME}" APPTAINER_TMPDIR "${APPTAINER_TMPDIR}"
 tmux set-environment -t "${SESSION_NAME}" APPTAINER_CACHEDIR "${APPTAINER_CACHEDIR}"
 tmux set-environment -t "${SESSION_NAME}" TMPDIR "${TMPDIR}"
+tmux set-environment -t "${SESSION_NAME}" RELAYMD_STATUS_FILE "${RELAYMD_STATUS_FILE}"
+tmux set-environment -t "${SESSION_NAME}" RELAYMD_EFFECTIVE_USER "${RELAYMD_EFFECTIVE_USER}"
+tmux set-environment -t "${SESSION_NAME}" RELAYMD_HEARTBEAT_INTERVAL_SECONDS "${RELAYMD_HEARTBEAT_INTERVAL_SECONDS}"
+tmux set-environment -t "${SESSION_NAME}" RELAYMD_ORCHESTRATOR_SIF "${RELAYMD_ORCHESTRATOR_SIF}"
+tmux set-environment -t "${SESSION_NAME}" CURRENT_HOST "${CURRENT_HOST}"
 
 printf -v COMMAND \
     "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator up --host 127.0.0.1 --port %q" \
     "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}" "${ORCHESTRATOR_PORT}"
 
-tmux respawn-pane -k -t "${SESSION_NAME}:relaymd-orchestrator" "${COMMAND}"
+printf -v SUPERVISED_COMMAND \
+    "%q %q %q %q %q %q" \
+    "${SCRIPT_DIR}/relaymd-service-supervise" \
+    "orchestrator" \
+    "${ORCHESTRATOR_WRAPPER_LOG}" \
+    "${SESSION_NAME}" \
+    "${ORCHESTRATOR_PORT}" \
+    "${COMMAND}"
 
-if [[ "${taking_over}" -eq 1 ]]; then
-    proxy_active=0
-else
-    proxy_active="$(status_get PROXY_ACTIVE)"
-    if [[ ! "${proxy_active}" =~ ^[01]$ ]]; then
-        proxy_active=0
-    fi
+tmux respawn-pane -k -t "${SESSION_NAME}:relaymd-orchestrator" "${SUPERVISED_COMMAND}"
+
+sleep "${STARTUP_GRACE_SECONDS}"
+if ! tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
+    echo "Orchestrator tmux session exited during startup grace period (${STARTUP_GRACE_SECONDS}s)." >&2
+    echo "Wrapper log: ${ORCHESTRATOR_WRAPPER_LOG}" >&2
+    tail -n 40 "${ORCHESTRATOR_WRAPPER_LOG}" >&2 || true
+    exit 1
 fi
-status_write "${CURRENT_HOST}" 1 "${proxy_active}"
+
+pane_dead="$(tmux list-panes -t "${SESSION_NAME}:relaymd-orchestrator" -F '#{pane_dead}' 2>/dev/null | head -n1 || echo 1)"
+if [[ "${pane_dead}" == "1" ]]; then
+    echo "Orchestrator pane exited during startup grace period (${STARTUP_GRACE_SECONDS}s)." >&2
+    echo "Wrapper log: ${ORCHESTRATOR_WRAPPER_LOG}" >&2
+    tail -n 40 "${ORCHESTRATOR_WRAPPER_LOG}" >&2 || true
+    exit 1
+fi
 
 echo "started relaymd orchestrator in tmux session '${SESSION_NAME}'"
 echo "host:   ${CURRENT_HOST}"
 echo "port:   ${ORCHESTRATOR_PORT}"
 echo "status: ${RELAYMD_STATUS_FILE}"
+echo "logs:   ${ORCHESTRATOR_WRAPPER_LOG}"
 echo "attach: tmux attach -t ${SESSION_NAME}"
 echo "stop:   tmux kill-session -t ${SESSION_NAME}"
