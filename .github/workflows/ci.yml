@@ -269,11 +269,13 @@ jobs:
           docker run --rm --entrypoint python relaymd-orchestrator:ci - <<'PY'
           import asyncio
           import shutil
+          import infisical_client
           import relaymd_api_client
           from httpx import ASGITransport, AsyncClient
           from relaymd.orchestrator.config import OrchestratorSettings
           from relaymd.orchestrator.main import create_app
 
+          _ = infisical_client
           _ = relaymd_api_client
           assert shutil.which("relaymd-orchestrator"), "relaymd-orchestrator entrypoint missing from image"
           assert shutil.which("relaymd-dashboard-proxy"), "relaymd-dashboard-proxy entrypoint missing from image"
