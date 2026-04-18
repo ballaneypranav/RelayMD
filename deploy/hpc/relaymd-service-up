@@ -40,7 +40,6 @@ RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-servic
 RELAYMD_TAILSCALE_SOCKET="${RELAYMD_TAILSCALE_SOCKET:-${RELAYMD_DATA_ROOT}/tailscale/tailscaled.sock}"
 RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-orchestrator.sif}"
 RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
-RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${USER}}}/relaymd-service}"
 RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
 RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
 RELAYMD_STATUS_DIR="$(dirname "${RELAYMD_STATUS_FILE}")"
@@ -48,6 +47,17 @@ ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
 PROXY_PORT="${PROXY_PORT:-36159}"
 CURRENT_HOST="$(hostname -s 2>/dev/null || hostname)"
 
+if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${RELAYMD_ENV_FILE}"
+    set +a
+fi
+
+RELAYMD_EFFECTIVE_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${RELAYMD_EFFECTIVE_USER}}}/relaymd-service}"
+RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
+RELAYMD_STATUS_DIR="$(dirname "${RELAYMD_STATUS_FILE}")"
 # Use scratch-backed temp/cache for Apptainer runtime mounts to avoid /tmp exhaustion.
 APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
 APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
@@ -74,7 +84,7 @@ status_write() {
     cat > "${tmp_file}" <<EOF
 HOST=${host}
 UPDATED_AT=${updated_at}
-UPDATED_BY=${USER}
+UPDATED_BY=${RELAYMD_EFFECTIVE_USER}
 ORCHESTRATOR_ACTIVE=${orchestrator_active}
 ORCHESTRATOR_PORT=${ORCHESTRATOR_PORT}
 ORCHESTRATOR_SESSION=${SESSION_NAME}
@@ -89,13 +99,6 @@ EOF
 
 mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" "${RELAYMD_STATUS_DIR}"
 chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
-
-if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${RELAYMD_ENV_FILE}"
-    set +a
-fi
 
 if [[ -n "${RELAYMD_PRIMARY_HOST}" && "${CURRENT_HOST}" != "${RELAYMD_PRIMARY_HOST}" && "${FORCE}" -ne 1 ]]; then
     echo "Refusing to start on ${CURRENT_HOST}: RELAYMD_PRIMARY_HOST is '${RELAYMD_PRIMARY_HOST}'." >&2
