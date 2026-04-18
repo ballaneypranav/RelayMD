@@ -15,6 +15,7 @@ Default install layout:
 Default state/config layout:
 
 - State root: `/depot/plow/data/pballane/relaymd-service`
+- Shared status file: `/depot/plow/data/pballane/relaymd-service/state/relaymd-service.status`
 - Config file: `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
 - DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
 - Orchestrator logs: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
@@ -41,15 +42,47 @@ Start orchestrator service inside the active SIF:
 ./deploy/hpc/relaymd-service-up
 ```
 
+Force takeover on this host (only when lock is stale):
+
+```bash
+./deploy/hpc/relaymd-service-up --force
+```
+
 Start dashboard proxy inside the active SIF:
 
 ```bash
 ./deploy/hpc/relaymd-service-proxy
 ```
 
+Force takeover on this host (only when lock is stale):
+
+```bash
+./deploy/hpc/relaymd-service-proxy --force
+```
+
 `relaymd-service-proxy` reads `RELAYMD_API_TOKEN`,
 `RELAYMD_DASHBOARD_USERNAME`, and `RELAYMD_DASHBOARD_PASSWORD` from the shell
 or from `RELAYMD_ENV_FILE`.
+
+## Frontend Pinning and Shared Lock
+
+To avoid random-frontend startup drift, set a pinned frontend host in
+`relaymd-service.env`:
+
+```bash
+RELAYMD_PRIMARY_HOST=gilbreth-fe03
+```
+
+`relaymd-service-up` and `relaymd-service-proxy` write a shared status file on
+`/depot` with:
+
+- host
+- timestamp
+- orchestrator/proxy active flags
+- orchestrator/proxy ports
+
+If the status file says RelayMD is active on another host, wrappers refuse to
+start on the current host unless `--force` is passed.
 
 ## One-Time Setup
 
@@ -97,6 +130,10 @@ You can override defaults through environment variables:
 - `RELAYMD_ORCHESTRATOR_SIF`
 - `RELAYMD_BIND_PATHS`
 - `RELAYMD_TAILSCALE_SOCKET`
+- `RELAYMD_PRIMARY_HOST`
+- `RELAYMD_STATUS_FILE`
+- `ORCHESTRATOR_PORT`
+- `PROXY_PORT`
 - `APPTAINER_TMPDIR`
 - `APPTAINER_CACHEDIR`
 

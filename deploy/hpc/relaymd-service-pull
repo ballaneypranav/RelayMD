@@ -11,7 +11,8 @@ RELEASE_VERSION="$1"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
-RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${USER}}}/relaymd-service}"
+RELAYMD_EFFECTIVE_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${RELAYMD_EFFECTIVE_USER}}}/relaymd-service}"
 
 # Build temporary OCI/SIF artifacts on scratch to avoid /tmp exhaustion on login nodes.
 APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"

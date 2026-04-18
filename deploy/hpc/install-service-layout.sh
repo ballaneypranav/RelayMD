@@ -13,10 +13,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 CURRENT_DIR="${RELAYMD_SERVICE_ROOT}/current"
 BIN_DIR="${RELAYMD_SERVICE_ROOT}/bin"
 CONFIG_DIR="${RELAYMD_DATA_ROOT}/config"
+STATE_DIR="${RELAYMD_DATA_ROOT}/state"
 MODULEFILE_DIR="${MODULEFILES_ROOT}/${MODULE_NAME}"
 MODULEFILE_PATH="${MODULEFILE_DIR}/${MODULE_VERSION}.lua"
 
-mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${MODULEFILE_DIR}"
+mkdir -p "${BIN_DIR}" "${CONFIG_DIR}" "${STATE_DIR}" "${MODULEFILE_DIR}"
 
 if [[ -d "${CURRENT_DIR}" && ! -L "${CURRENT_DIR}" ]]; then
     echo "WARNING: ${CURRENT_DIR} is a directory." >&2
@@ -46,3 +47,4 @@ echo "Installed wrappers to: ${BIN_DIR}"
 echo "Modulefile: ${MODULEFILE_PATH}"
 echo "Config file: ${CONFIG_DIR}/relaymd-config.yaml"
 echo "Env file: ${CONFIG_DIR}/relaymd-service.env"
+echo "Status file: ${STATE_DIR}/relaymd-service.status"
