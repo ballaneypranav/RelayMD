@@ -191,14 +191,25 @@ jobs:
           tags: relaymd-worker-base:ci
           cache-from: type=gha
       - uses: docker/build-push-action@v5
-        id: build
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          load: true
+          tags: relaymd-worker:ci
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=relaymd-worker-base:ci
+          cache-from: type=gha
+      - uses: docker/build-push-action@v5
+        id: build
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          context: .
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=${{ github.event_name == 'pull_request' && 'relaymd-worker-base:ci' || format('ghcr.io/{0}/relaymd-worker-base:latest', github.repository_owner) }}
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Summary
@@ -249,13 +260,24 @@ jobs:
           tags: relaymd-orchestrator-base:ci
           cache-from: type=gha
       - uses: docker/build-push-action@v5
+        if: ${{ github.event_name == 'pull_request' }}
         with:
           context: .
           file: Dockerfile.orchestrator
           load: true
           tags: relaymd-orchestrator:ci
           build-args: |
-            BASE_IMAGE=${{ github.event_name == 'pull_request' && 'relaymd-orchestrator-base:ci' || format('ghcr.io/{0}/relaymd-orchestrator-base:latest', github.repository_owner) }}
+            BASE_IMAGE=relaymd-orchestrator-base:ci
+          cache-from: type=gha
+      - uses: docker/build-push-action@v5
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          context: .
+          file: Dockerfile.orchestrator
+          load: true
+          tags: relaymd-orchestrator:ci
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest
           cache-from: type=gha
       - name: Smoke test orchestrator frontend serving
         run: |
