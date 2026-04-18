@@ -143,7 +143,7 @@ _status_set_pairs_unlocked() {
 }
 
 status_set_pairs() {
-    local lock_file
+    local lock_file rc
 
     if (( $# == 0 || $# % 2 != 0 )); then
         echo "status_set_pairs requires key/value pairs" >&2
@@ -156,10 +156,14 @@ status_set_pairs() {
     if command -v flock >/dev/null 2>&1; then
         exec 9>"${lock_file}"
         flock 9
-        _status_set_pairs_unlocked "$@"
+        if _status_set_pairs_unlocked "$@"; then
+            rc=0
+        else
+            rc=$?
+        fi
         flock -u 9
         exec 9>&-
-        return 0
+        return "${rc}"
     fi
 
     _status_set_pairs_unlocked "$@"
