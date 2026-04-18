@@ -26,6 +26,43 @@ require_cmd() {
     fi
 }
 
+maybe_configure_apptainer_ghcr_auth() {
+    local image_uri token gh_user
+
+    for image_uri in "$@"; do
+        if [[ "${image_uri}" == docker://ghcr.io/* ]]; then
+            break
+        fi
+        image_uri=""
+    done
+
+    if [[ -z "${image_uri}" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${APPTAINER_DOCKER_USERNAME:-}" && -n "${APPTAINER_DOCKER_PASSWORD:-}" ]]; then
+        return 0
+    fi
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Note: ghcr.io pull detected but gh is not installed; continuing without auto auth bridge." >&2
+        echo "If pull fails with 403, set APPTAINER_DOCKER_USERNAME/APPTAINER_DOCKER_PASSWORD or run 'gh auth login -h github.com -s read:packages'." >&2
+        return 0
+    fi
+
+    token="$(gh auth token 2>/dev/null || true)"
+    gh_user="$(gh api user -q .login 2>/dev/null || true)"
+    if [[ -z "${token}" || -z "${gh_user}" ]]; then
+        echo "Note: unable to derive gh auth credentials for ghcr.io; continuing without auth bridge." >&2
+        echo "If pull fails with 403, run 'gh auth login -h github.com -s read:packages'." >&2
+        return 0
+    fi
+
+    export APPTAINER_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME:-${gh_user}}"
+    export APPTAINER_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD:-${token}}"
+    echo "Configured Apptainer GHCR auth from gh credentials for this pull invocation."
+}
+
 resolve_owner() {
     if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
         printf '%s' "${RELAYMD_GHCR_OWNER}"
@@ -176,6 +213,8 @@ if [[ -z "${WORKER_IMAGE_URI}" ]]; then
     echo "Missing worker image URI. Pass arg #3, set RELAYMD_WORKER_IMAGE_URI, or omit both URIs for auto mode." >&2
     exit 1
 fi
+
+maybe_configure_apptainer_ghcr_auth "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"
 
 # Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
 if [[ ! "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
