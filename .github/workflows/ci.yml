@@ -182,24 +182,16 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - name: Build worker base locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
-        with:
-          context: .
-          file: Dockerfile.worker-base
-          load: true
-          tags: relaymd-worker-base:ci
-          cache-from: type=gha
-      - uses: docker/build-push-action@v5
+        run: docker build -f Dockerfile.worker-base -t relaymd-worker-base:ci .
+      - name: Build worker image locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
-        with:
-          context: .
-          load: true
-          tags: relaymd-worker:ci
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            BASE_IMAGE=relaymd-worker-base:ci
-          cache-from: type=gha
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE=relaymd-worker-base:ci \
+            -t relaymd-worker:ci \
+            .
       - uses: docker/build-push-action@v5
         id: build
         if: ${{ github.event_name != 'pull_request' }}
@@ -251,24 +243,17 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - name: Build orchestrator base locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
-        with:
-          context: .
-          file: Dockerfile.orchestrator-base
-          load: true
-          tags: relaymd-orchestrator-base:ci
-          cache-from: type=gha
-      - uses: docker/build-push-action@v5
+        run: docker build -f Dockerfile.orchestrator-base -t relaymd-orchestrator-base:ci .
+      - name: Build orchestrator image locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
-        with:
-          context: .
-          file: Dockerfile.orchestrator
-          load: true
-          tags: relaymd-orchestrator:ci
-          build-args: |
-            BASE_IMAGE=relaymd-orchestrator-base:ci
-          cache-from: type=gha
+        run: |
+          docker build \
+            -f Dockerfile.orchestrator \
+            --build-arg BASE_IMAGE=relaymd-orchestrator-base:ci \
+            -t relaymd-orchestrator:ci \
+            .
       - uses: docker/build-push-action@v5
         if: ${{ github.event_name != 'pull_request' }}
         with:
