@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
-      base_image: ${{ steps.filter.outputs.base_image }}
+      worker_base_image: ${{ steps.filter.outputs.worker_base_image }}
+      orchestrator_base_image: ${{ steps.filter.outputs.orchestrator_base_image }}
       worker_image: ${{ steps.filter.outputs.worker_image }}
       orchestrator_image: ${{ steps.filter.outputs.orchestrator_image }}
       cli: ${{ steps.filter.outputs.cli }}
@@ -32,18 +33,22 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'scripts/sync_workspace.sh'
-            base_image:
-              - 'Dockerfile.base'
+            worker_base_image:
+              - 'Dockerfile.worker-base'
+              - '.github/workflows/ci.yml'
+            orchestrator_base_image:
+              - 'Dockerfile.orchestrator-base'
               - '.github/workflows/ci.yml'
             worker_image:
               - 'Dockerfile'
-              - 'Dockerfile.base'
+              - 'Dockerfile.worker-base'
               - 'packages/**'
               - 'pyproject.toml'
               - 'uv.lock'
               - 'scripts/sync_workspace.sh'
               - '.github/workflows/ci.yml'
             orchestrator_image:
+              - 'Dockerfile.orchestrator-base'
               - 'Dockerfile.orchestrator'
               - 'frontend/**'
               - 'src/**'
@@ -87,12 +92,12 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-base:
+  build-worker-base:
     needs: [changes, test]
     permissions:
       contents: read
       packages: write
-    if: ${{ !cancelled() && needs.changes.outputs.base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.worker_base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +109,7 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/${{ github.repository_owner }}/relaymd-base
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-worker-base
           tags: |
             type=raw,value=latest
       - uses: docker/setup-buildx-action@v3
@@ -112,7 +117,39 @@ jobs:
         id: build
         with:
           context: .
-          file: Dockerfile.base
+          file: Dockerfile.worker-base
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-orchestrator-base:
+    needs: [changes, test]
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ !cancelled() && needs.changes.outputs.orchestrator_base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base
+          tags: |
+            type=raw,value=latest
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
+        id: build
+        with:
+          context: .
+          file: Dockerfile.orchestrator-base
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -120,11 +157,11 @@ jobs:
           cache-to: type=gha,mode=max
 
   build-worker:
-    needs: [changes, test, build-base]
+    needs: [changes, test, build-worker-base]
     permissions:
       contents: read
       packages: write
-    if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-worker-base.result == 'success' || needs.build-worker-base.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,15 +182,26 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
       - uses: docker/setup-buildx-action@v3
+      - name: Build worker base locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: docker build -f Dockerfile.worker-base -t relaymd-worker-base:ci .
+      - name: Build worker image locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE=relaymd-worker-base:ci \
+            -t relaymd-worker:ci \
+            .
       - uses: docker/build-push-action@v5
         id: build
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-base:latest
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Summary
@@ -170,11 +218,11 @@ jobs:
           echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
 
   build-orchestrator:
-    needs: [changes, test]
+    needs: [changes, test, build-orchestrator-base]
     permissions:
       contents: read
       packages: write
-    if: ${{ !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-orchestrator-base.result == 'success' || needs.build-orchestrator-base.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -195,12 +243,26 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
       - uses: docker/setup-buildx-action@v3
+      - name: Build orchestrator base locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: docker build -f Dockerfile.orchestrator-base -t relaymd-orchestrator-base:ci .
+      - name: Build orchestrator image locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          docker build \
+            -f Dockerfile.orchestrator \
+            --build-arg BASE_IMAGE=relaymd-orchestrator-base:ci \
+            -t relaymd-orchestrator:ci \
+            .
       - uses: docker/build-push-action@v5
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           context: .
           file: Dockerfile.orchestrator
           load: true
           tags: relaymd-orchestrator:ci
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest
           cache-from: type=gha
       - name: Smoke test orchestrator frontend serving
         run: |
@@ -243,6 +305,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Summary
