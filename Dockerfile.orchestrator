@@ -32,6 +32,10 @@ COPY pyproject.toml uv.lock ./
 COPY packages ./packages
 COPY src ./src
 
+# relaymd CLI imports relaymd_api_client at startup; fail fast if generated client
+# sources are missing from build context.
+RUN test -f /workspace/packages/relaymd-api-client/src/relaymd_api_client/__init__.py
+
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --system \
     ./packages/relaymd-core \

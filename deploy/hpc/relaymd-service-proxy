@@ -5,8 +5,26 @@ SESSION_NAME="${SESSION_NAME:-relaymd-service-proxy}"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
 RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-orchestrator.sif}"
 RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${USER}}}/relaymd-service}"
+
+# Use scratch-backed temp/cache for Apptainer runtime mounts to avoid /tmp exhaustion.
+APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
+APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
+TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
+export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
+
+mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
+chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
+
+if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${RELAYMD_ENV_FILE}"
+    set +a
+fi
 
 if [[ -z "${RELAYMD_API_TOKEN:-}" ]]; then
     echo "RELAYMD_API_TOKEN is required" >&2
@@ -40,6 +58,9 @@ tmux new-session -d -s "${SESSION_NAME}" -n "relaymd-proxy"
 tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_API_TOKEN "${RELAYMD_API_TOKEN}"
 tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_USERNAME "${RELAYMD_DASHBOARD_USERNAME}"
 tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_PASSWORD "${RELAYMD_DASHBOARD_PASSWORD}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINER_TMPDIR "${APPTAINER_TMPDIR}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINER_CACHEDIR "${APPTAINER_CACHEDIR}"
+tmux set-environment -t "${SESSION_NAME}" TMPDIR "${TMPDIR}"
 
 printf -v COMMAND \
     "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator proxy --host 127.0.0.1 --port 36159 --upstream-url http://127.0.0.1:36158" \

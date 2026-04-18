@@ -30,6 +30,11 @@ Pull and activate a release:
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
+`relaymd-service-pull` uses scratch-backed Apptainer temp/cache by default:
+
+- `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/tmp`
+- `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/cache`
+
 Start orchestrator service inside the active SIF:
 
 ```bash
@@ -39,26 +44,64 @@ Start orchestrator service inside the active SIF:
 Start dashboard proxy inside the active SIF:
 
 ```bash
-export RELAYMD_API_TOKEN=<token>
-export RELAYMD_DASHBOARD_USERNAME=<username>
-export RELAYMD_DASHBOARD_PASSWORD=<password>
 ./deploy/hpc/relaymd-service-proxy
 ```
+
+`relaymd-service-proxy` reads `RELAYMD_API_TOKEN`,
+`RELAYMD_DASHBOARD_USERNAME`, and `RELAYMD_DASHBOARD_PASSWORD` from the shell
+or from `RELAYMD_ENV_FILE`.
+
+## One-Time Setup
+
+Install wrappers under the active release path and create a modulefile:
+
+```bash
+./deploy/hpc/install-service-layout.sh
+```
+
+Then load the module:
+
+```bash
+module use /depot/plow/apps/modulefiles
+module load relaymd/current
+```
+
+After module load, wrappers are on `PATH` so you can run:
+
+```bash
+relaymd-service-pull ...
+relaymd-service-up
+relaymd-service-proxy
+```
+
+The installer seeds:
+
+- `/depot/plow/apps/relaymd/bin/relaymd-service-*`
+- `/depot/plow/apps/modulefiles/relaymd/current.lua`
+- `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
+- `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
+
+Edit `relaymd-service.env` and keep it private (`chmod 600`).
+Use [relaymd-service.env.example](./relaymd-service.env.example) as the template.
 
 ## Overrides
 
 You can override defaults through environment variables:
 
 - `RELAYMD_SERVICE_ROOT`
+- `RELAYMD_SCRATCH_ROOT`
 - `CURRENT_LINK`
 - `RELAYMD_DATA_ROOT`
 - `RELAYMD_CONFIG`
+- `RELAYMD_ENV_FILE`
 - `RELAYMD_ORCHESTRATOR_SIF`
 - `RELAYMD_BIND_PATHS`
 - `RELAYMD_TAILSCALE_SOCKET`
+- `APPTAINER_TMPDIR`
+- `APPTAINER_CACHEDIR`
 
-`relaymd-service-up` exports `RELAYMD_CONFIG` and `RELAYMD_TAILSCALE_SOCKET`
-inside the container and runs:
+`relaymd-service-up` loads `RELAYMD_ENV_FILE`, injects runtime env vars into
+the container via `APPTAINERENV_*`, and runs:
 
 ```bash
 relaymd orchestrator up --host 127.0.0.1 --port 36158

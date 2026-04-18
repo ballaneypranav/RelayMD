@@ -6,9 +6,32 @@ RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
 RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
+RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
 RELAYMD_TAILSCALE_SOCKET="${RELAYMD_TAILSCALE_SOCKET:-${RELAYMD_DATA_ROOT}/tailscale/tailscaled.sock}"
 RELAYMD_ORCHESTRATOR_SIF="${RELAYMD_ORCHESTRATOR_SIF:-${CURRENT_LINK}/relaymd-orchestrator.sif}"
 RELAYMD_BIND_PATHS="${RELAYMD_BIND_PATHS:-${RELAYMD_DATA_ROOT}:${RELAYMD_DATA_ROOT}}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${USER}}}/relaymd-service}"
+
+# Use scratch-backed temp/cache for Apptainer runtime mounts to avoid /tmp exhaustion.
+APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
+APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
+TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
+export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
+
+mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
+chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
+
+if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${RELAYMD_ENV_FILE}"
+    set +a
+fi
+
+if [[ -z "${INFISICAL_TOKEN:-}" ]]; then
+    echo "INFISICAL_TOKEN is required (set it in environment or ${RELAYMD_ENV_FILE})" >&2
+    exit 1
+fi
 
 if [[ ! -f "${RELAYMD_CONFIG}" ]]; then
     echo "Config file not found: ${RELAYMD_CONFIG}" >&2
@@ -28,11 +51,20 @@ if tmux has-session -t "${SESSION_NAME}" 2>/dev/null; then
     exit 0
 fi
 
-printf -v COMMAND \
-    "env RELAYMD_CONFIG=%q RELAYMD_TAILSCALE_SOCKET=%q apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator up --host 127.0.0.1 --port 36158" \
-    "${RELAYMD_CONFIG}" "${RELAYMD_TAILSCALE_SOCKET}" "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+tmux new-session -d -s "${SESSION_NAME}" -n "relaymd-orchestrator"
 
-tmux new-session -d -s "${SESSION_NAME}" "${COMMAND}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_CONFIG "${RELAYMD_CONFIG}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_TAILSCALE_SOCKET "${RELAYMD_TAILSCALE_SOCKET}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_INFISICAL_TOKEN "${INFISICAL_TOKEN}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINER_TMPDIR "${APPTAINER_TMPDIR}"
+tmux set-environment -t "${SESSION_NAME}" APPTAINER_CACHEDIR "${APPTAINER_CACHEDIR}"
+tmux set-environment -t "${SESSION_NAME}" TMPDIR "${TMPDIR}"
+
+printf -v COMMAND \
+    "apptainer exec --cleanenv --writable-tmpfs --bind %q %q relaymd orchestrator up --host 127.0.0.1 --port 36158" \
+    "${RELAYMD_BIND_PATHS}" "${RELAYMD_ORCHESTRATOR_SIF}"
+
+tmux respawn-pane -k -t "${SESSION_NAME}:relaymd-orchestrator" "${COMMAND}"
 
 echo "started relaymd orchestrator in tmux session '${SESSION_NAME}'"
 echo "attach: tmux attach -t ${SESSION_NAME}"

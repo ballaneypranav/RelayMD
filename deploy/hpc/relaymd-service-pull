@@ -11,6 +11,16 @@ RELEASE_VERSION="$1"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${USER}}}/relaymd-service}"
+
+# Build temporary OCI/SIF artifacts on scratch to avoid /tmp exhaustion on login nodes.
+APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
+APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
+TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
+export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
+
+mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
+chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
 
 # Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
 if [[ ! "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -39,6 +49,12 @@ fi
 
 RELEASE_DIR="${RELEASES_DIR}/${RELEASE_VERSION}"
 mkdir -p "${RELEASE_DIR}"
+
+if [[ -d "${CURRENT_LINK}" && ! -L "${CURRENT_LINK}" ]]; then
+    echo "Refusing to repoint ${CURRENT_LINK}: path exists as a directory, not a symlink." >&2
+    echo "Move wrappers out of ${CURRENT_LINK}/bin (use ${RELAYMD_SERVICE_ROOT}/bin) and recreate current as a symlink." >&2
+    exit 1
+fi
 
 ORCH_TMP="${RELEASE_DIR}/relaymd-orchestrator.sif.tmp"
 WORKER_TMP="${RELEASE_DIR}/relaymd-worker.sif.tmp"
