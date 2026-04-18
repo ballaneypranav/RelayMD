@@ -53,6 +53,7 @@ Use the HPC wrappers in `deploy/hpc/`:
 - `relaymd-service-pull`
 - `relaymd-service-up`
 - `relaymd-service-proxy`
+- `relaymd-service-status`
 
 Install wrappers/modulefile once:
 
@@ -72,6 +73,18 @@ Pull and activate a release:
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
+Auto-resolve by tag:
+
+```bash
+./deploy/hpc/relaymd-service-pull sha-<shortsha>
+```
+
+Auto-resolve newest shared `sha-*` across orchestrator+worker:
+
+```bash
+./deploy/hpc/relaymd-service-pull latest
+```
+
 `relaymd-service-pull` defaults Apptainer build temp/cache to scratch-backed
 directories to avoid `/tmp` space failures on login nodes.
 
@@ -87,9 +100,18 @@ Start the dashboard proxy in tmux:
 ./deploy/hpc/relaymd-service-proxy
 ```
 
+Check live status (heartbeat freshness + tmux + ports):
+
+```bash
+./deploy/hpc/relaymd-service-status
+```
+
 `relaymd-service-up` runs `relaymd orchestrator up` inside the orchestrator SIF
 and injects runtime env vars from `relaymd-service.env`/shell env into the
 container using `APPTAINERENV_*` so config and secrets remain external/private.
+Wrappers now persist service logs under
+`/depot/plow/data/pballane/relaymd-service/logs/service/` and record
+start/exit metadata plus heartbeat updates in the shared status file.
 
 ## Dashboard Access
 
@@ -101,6 +123,10 @@ Use loopback binding and forward only proxy port `36159` to your laptop.
 
 The proxy injects `RELAYMD_API_TOKEN` upstream, so browsers never need direct
 API token handling.
+
+Note: login-node tmux services are non-durable and can be culled/restarted by
+cluster maintenance. Operationally, use `relaymd-service-status` and wrapper
+logs to verify service health after reconnects or host events.
 
 ## Rollout Order
 

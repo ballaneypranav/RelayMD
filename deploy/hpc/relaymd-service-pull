@@ -1,10 +1,136 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 || $# -gt 3 ]]; then
-    echo "Usage: $0 <release-version> [orchestrator-image-uri] [worker-image-uri]" >&2
-    echo "Example: $0 sha-abc1234 docker://ghcr.io/my-org/relaymd-orchestrator:sha-abc1234 docker://ghcr.io/my-org/relaymd-worker:sha-abc1234" >&2
+usage() {
+    cat <<'USAGE'
+Usage: relaymd-service-pull <release-version|latest> [orchestrator-image-uri] [worker-image-uri]
+
+Examples:
+  relaymd-service-pull sha-abc1234 \
+    docker://ghcr.io/my-org/relaymd-orchestrator:sha-abc1234 \
+    docker://ghcr.io/my-org/relaymd-worker:sha-abc1234
+
+  relaymd-service-pull sha-abc1234
+  relaymd-service-pull latest
+USAGE
+}
+
+require_cmd() {
+    local cmd="$1"
+    local remediation="$2"
+
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+        echo "Missing required command '${cmd}'." >&2
+        echo "Remediation: ${remediation}" >&2
+        exit 1
+    fi
+}
+
+resolve_owner() {
+    if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
+        printf '%s' "${RELAYMD_GHCR_OWNER}"
+        return 0
+    fi
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "Unable to auto-resolve GHCR owner: RELAYMD_GHCR_OWNER is unset and 'gh' is not installed." >&2
+        echo "Remediation: set RELAYMD_GHCR_OWNER=<org-or-user>, or install/auth gh, or pass explicit image URIs." >&2
+        exit 1
+    fi
+
+    owner="$(gh repo view --json owner -q .owner.login 2>/dev/null || true)"
+    if [[ -z "${owner}" ]]; then
+        echo "Unable to resolve default GHCR owner via 'gh repo view'." >&2
+        echo "Remediation: gh auth login -h github.com && gh repo view --json owner -q .owner.login" >&2
+        exit 1
+    fi
+
+    printf '%s' "${owner}"
+}
+
+require_gh_packages_scope() {
+    local auth_status
+
+    auth_status="$(gh auth status -h github.com 2>&1 || true)"
+    if [[ "${auth_status}" != *"read:packages"* ]]; then
+        echo "GitHub auth is missing the required 'read:packages' scope for auto-latest resolution." >&2
+        echo "Remediation: gh auth refresh -h github.com -s read:packages" >&2
+        echo "If you are not logged in yet: gh auth login -h github.com -s read:packages" >&2
+        exit 1
+    fi
+}
+
+fetch_package_versions_json() {
+    local owner="$1"
+    local package_name="$2"
+    local output_file="$3"
+
+    if gh api -H "Accept: application/vnd.github+json" "/orgs/${owner}/packages/container/${package_name}/versions?per_page=100" > "${output_file}" 2>/dev/null; then
+        return 0
+    fi
+
+    if gh api -H "Accept: application/vnd.github+json" "/users/${owner}/packages/container/${package_name}/versions?per_page=100" > "${output_file}" 2>/dev/null; then
+        return 0
+    fi
+
+    echo "Failed to query GHCR package versions for ${owner}/${package_name}." >&2
+    echo "Remediation: confirm gh auth and package access: gh auth status -h github.com" >&2
+    echo "Then refresh scope: gh auth refresh -h github.com -s read:packages" >&2
     exit 1
+}
+
+resolve_latest_shared_sha_tag() {
+    local owner="$1"
+    local tmp_dir orch_json worker_json orch_tags worker_tags latest_shared
+
+    require_cmd gh "Install GitHub CLI and authenticate: gh auth login -h github.com -s read:packages"
+    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
+    require_gh_packages_scope
+
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/relaymd-pull-tags.XXXXXX")"
+    trap 'rm -rf "${tmp_dir}"' RETURN
+
+    orch_json="${tmp_dir}/orchestrator.json"
+    worker_json="${tmp_dir}/worker.json"
+    orch_tags="${tmp_dir}/orchestrator-tags.tsv"
+    worker_tags="${tmp_dir}/worker-tags.tsv"
+
+    fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
+    fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
+
+    jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(. )\t\($updated_at)"' "${orch_json}" \
+        | sort -t $'\t' -k1,1 -k2,2r \
+        | awk -F $'\t' '!seen[$1]++{print $1"\t"$2}' > "${orch_tags}"
+
+    jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(. )\t\($updated_at)"' "${worker_json}" \
+        | sort -t $'\t' -k1,1 -k2,2r \
+        | awk -F $'\t' '!seen[$1]++{print $1"\t"$2}' > "${worker_tags}"
+
+    latest_shared="$(awk -F $'\t' '
+        NR == FNR { worker[$1] = $2; next }
+        ($1 in worker) {
+            newest = ($2 > worker[$1]) ? $2 : worker[$1]
+            print $1 "\t" newest
+        }
+    ' "${worker_tags}" "${orch_tags}" | sort -t $'\t' -k2,2r | head -n1 | cut -f1)"
+
+    if [[ -z "${latest_shared}" ]]; then
+        echo "No shared sha-* tag found between relaymd-orchestrator and relaymd-worker in GHCR owner '${owner}'." >&2
+        echo "Remediation: publish both packages with a shared sha-* tag, then rerun relaymd-service-pull latest." >&2
+        exit 1
+    fi
+
+    printf '%s' "${latest_shared}"
+}
+
+if [[ $# -lt 1 || $# -gt 3 ]]; then
+    usage >&2
+    exit 1
+fi
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
 fi
 
 RELEASE_VERSION="$1"
@@ -23,28 +149,38 @@ export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
 mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
 chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
 
+ORCHESTRATOR_IMAGE_URI="${2:-${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}}"
+WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
+
+if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
+    owner="$(resolve_owner)"
+
+    if [[ "${RELEASE_VERSION}" == "latest" ]]; then
+        release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
+        RELEASE_VERSION="${release_tag}"
+    else
+        release_tag="${RELEASE_VERSION}"
+    fi
+
+    ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
+    WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
+    echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
+fi
+
+if [[ -z "${ORCHESTRATOR_IMAGE_URI}" ]]; then
+    echo "Missing orchestrator image URI. Pass arg #2, set RELAYMD_ORCHESTRATOR_IMAGE_URI, or omit both URIs for auto mode." >&2
+    exit 1
+fi
+
+if [[ -z "${WORKER_IMAGE_URI}" ]]; then
+    echo "Missing worker image URI. Pass arg #3, set RELAYMD_WORKER_IMAGE_URI, or omit both URIs for auto mode." >&2
+    exit 1
+fi
+
 # Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
 if [[ ! "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
     echo "Invalid release-version '${RELEASE_VERSION}'." >&2
     echo "Use only letters, digits, dot, underscore, and hyphen; must start with a letter/digit." >&2
-    exit 1
-fi
-
-if [[ -n "${2:-}" ]]; then
-    ORCHESTRATOR_IMAGE_URI="$2"
-elif [[ -n "${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}" ]]; then
-    ORCHESTRATOR_IMAGE_URI="${RELAYMD_ORCHESTRATOR_IMAGE_URI}"
-else
-    echo "Missing orchestrator image URI. Pass arg #2 or set RELAYMD_ORCHESTRATOR_IMAGE_URI." >&2
-    exit 1
-fi
-
-if [[ -n "${3:-}" ]]; then
-    WORKER_IMAGE_URI="$3"
-elif [[ -n "${RELAYMD_WORKER_IMAGE_URI:-}" ]]; then
-    WORKER_IMAGE_URI="${RELAYMD_WORKER_IMAGE_URI}"
-else
-    echo "Missing worker image URI. Pass arg #3 or set RELAYMD_WORKER_IMAGE_URI." >&2
     exit 1
 fi
 
@@ -75,3 +211,6 @@ ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
 echo "  orchestrator: ${ORCH_SIF}"
 echo "  worker:       ${WORKER_SIF}"
+echo "  source images:"
+echo "    ${ORCHESTRATOR_IMAGE_URI}"
+echo "    ${WORKER_IMAGE_URI}"
