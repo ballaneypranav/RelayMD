@@ -1262,6 +1262,7 @@ symlink:</p>
 <li><code>relaymd-service-pull</code></li>
 <li><code>relaymd-service-up</code></li>
 <li><code>relaymd-service-proxy</code></li>
+<li><code>relaymd-service-status</code></li>
 </ul>
 <p>Install wrappers/modulefile once:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/install-service-layout.sh
@@ -1274,17 +1275,29 @@ symlink:</p>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
 </span></code></pre></div>
+<p>Auto-resolve by tag:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>sha-&lt;shortsha&gt;
+</span></code></pre></div>
+<p>Auto-resolve newest shared <code>sha-*</code> across orchestrator+worker:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>latest
+</span></code></pre></div>
 <p><code>relaymd-service-pull</code> defaults Apptainer build temp/cache to scratch-backed
 directories to avoid <code>/tmp</code> space failures on login nodes.</p>
 <p>Start service in tmux from the active release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./deploy/hpc/relaymd-service-up
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./deploy/hpc/relaymd-service-up
 </span></code></pre></div>
 <p>Start the dashboard proxy in tmux:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./deploy/hpc/relaymd-service-proxy
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>./deploy/hpc/relaymd-service-proxy
+</span></code></pre></div>
+<p>Check live status (heartbeat freshness + tmux + ports):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>./deploy/hpc/relaymd-service-status
 </span></code></pre></div>
 <p><code>relaymd-service-up</code> runs <code>relaymd orchestrator up</code> inside the orchestrator SIF
 and injects runtime env vars from <code>relaymd-service.env</code>/shell env into the
-container using <code>APPTAINERENV_*</code> so config and secrets remain external/private.</p>
+container using <code>APPTAINERENV_*</code> so config and secrets remain external/private.
+Wrappers now persist service logs under
+<code>/depot/plow/data/pballane/relaymd-service/logs/service/</code> and record
+start/exit metadata plus heartbeat updates in the shared status file.</p>
 <h2 id="dashboard-access">Dashboard Access</h2>
 <p>Use loopback binding and forward only proxy port <code>36159</code> to your laptop.</p>
 <ol>
@@ -1294,6 +1307,9 @@ container using <code>APPTAINERENV_*</code> so config and secrets remain externa
 </ol>
 <p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so browsers never need direct
 API token handling.</p>
+<p>Note: login-node tmux services are non-durable and can be culled/restarted by
+cluster maintenance. Operationally, use <code>relaymd-service-status</code> and wrapper
+logs to verify service health after reconnects or host events.</p>
 <h2 id="rollout-order">Rollout Order</h2>
 <ol>
 <li>pull/promote orchestrator + worker release with immutable SHA tags</li>
