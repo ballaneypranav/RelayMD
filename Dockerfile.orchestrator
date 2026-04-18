@@ -44,4 +44,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY --from=frontend-builder /workspace/frontend/dist /opt/relaymd/frontend/dist
 
-ENTRYPOINT ["relaymd", "orchestrator", "up"]
+ENTRYPOINT ["relaymd-orchestrator"]

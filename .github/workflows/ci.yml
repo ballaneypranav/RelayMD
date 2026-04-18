@@ -213,6 +213,8 @@ jobs:
           from relaymd.orchestrator.main import create_app
 
           _ = relaymd_api_client
+          assert shutil.which("relaymd-orchestrator"), "relaymd-orchestrator entrypoint missing from image"
+          assert shutil.which("relaymd-dashboard-proxy"), "relaymd-dashboard-proxy entrypoint missing from image"
           assert shutil.which("ssh"), "ssh binary missing from orchestrator image"
           assert shutil.which("tailscale"), "tailscale binary missing from orchestrator image"
           assert shutil.which("tailscaled"), "tailscaled binary missing from orchestrator image"

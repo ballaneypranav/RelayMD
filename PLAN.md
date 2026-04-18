@@ -1,96 +1,105 @@
-# RelayMD HPC Image Deployment Plan
+### HPC Deploy Reliability + Auto-Tag Pull Plan
 
-## Summary
-- Extend the existing GitHub Actions + GHCR flow from the worker image to a **second image** for the orchestrator, with the React frontend bundled into that image.
-- Deploy on HPC by **pulling Apptainer SIFs from GHCR**, not by building SIFs locally with `apptainer --fakeroot`.
-- Keep the initial runtime model simple:
-  - one orchestrator image
-  - one worker image
-  - no job-type-specific worker image selection yet
-  - one operator-managed service
-- Keep runtime config external to the images and deploy it as a private file on HPC. Keep mutable state on shared storage with absolute paths.
+#### Summary
+Implement a reliability-focused HPC deploy update on a new branch, with these explicit goals:
+1. `relaymd-service-pull` can auto-resolve image tags (no GitHub copy/paste).
+2. Service startup failures are diagnosable from persistent logs.
+3. Status reflects live reality (heartbeat + exit metadata), not just last start.
+4. Existing frontend tmux model remains primary (no Slurm service-mode migration in this change).
 
-## Key Changes
-- **CI / image build**
-  - Add a new GitHub Actions job that builds and pushes `ghcr.io/<owner>/relaymd-orchestrator`.
-  - Keep the existing `relaymd-base` and `relaymd-worker` pipeline unchanged except for any shared refactors needed for reuse.
-  - Build the frontend during the orchestrator image build and copy the built assets into the image.
-  - Tag the orchestrator image the same way as the worker image: `latest` plus pinned `sha-<shortsha>` tags.
+#### Implementation Changes
+1. **Branch and scope setup**
+- Create branch from `main`: `hpc-service-reliability`.
+- Keep existing wrapper names and backward-compatible CLI behavior where possible.
+- Keep tmux-on-frontend as primary runtime model.
 
-- **Container contents**
-  - Worker image remains what it is today: CUDA/runtime base plus `relaymd-core`, `relaymd-api-client`, and `relaymd-worker`; entrypoint stays `python -m relaymd.worker`.
-  - Orchestrator image should include:
-    - the `relaymd` package with CLI/orchestrator code
-    - built frontend assets
-    - runtime tools the orchestrator actually uses in-container, including `ssh`, `tailscale`, and `tailscaled`
-  - Do not try to serve the frontend from a repo-relative path inside the image. Make the orchestrator load frontend assets from an in-image path or packaged resources.
+2. **Automate SHA tag resolution in pull step**
+- Extend `relaymd-service-pull` interface:
+  - Keep current mode: explicit URIs still supported.
+  - Add auto mode: if URIs are omitted, resolve them automatically.
+  - Add `latest` release selector: `relaymd-service-pull latest` resolves newest shared `sha-*` across orchestrator + worker packages.
+- Resolution policy (locked choice):
+  - Choose **latest shared SHA tag** present in both GHCR packages.
+- Owner/registry defaults:
+  - `RELAYMD_GHCR_OWNER` optional override.
+  - Default owner from `gh repo view --json owner -q .owner.login`.
+  - Package names fixed to `relaymd-orchestrator` and `relaymd-worker`.
+- Dependencies/failure behavior:
+  - Require `gh` and `jq` only for auto-latest mode.
+  - Require `gh` auth scope `read:packages`.
+  - Emit actionable errors with exact remediation command.
+- Preserve existing release safety checks (path-safe release name, symlink protections, scratch temp/cache).
 
-- **HPC deployment shape**
-  - Pull images on the login node with `apptainer pull ... docker://ghcr.io/...`.
-  - Store immutable SIF artifacts under a versioned shared install path, for example:
-    - `/depot/plow/apps/relaymd/releases/<version>/relaymd-orchestrator.sif`
-    - `/depot/plow/apps/relaymd/releases/<version>/relaymd-worker.sif`
-  - Keep a stable `/depot/plow/apps/relaymd/current` symlink to the active release.
-  - Run the orchestrator via tmux from the orchestrator SIF, with binds for:
-    - private runtime config
-    - DB/log/state directories
-    - any required tailscale socket/state location if persisted outside the image
-  - Keep runtime state under `/depot/plow/data/pballane/relaymd-service`, not inside the SIF and not in `/tmp`.
+3. **Service death troubleshooting + persistent logging**
+- Add persistent wrapper-level logs under `/depot/.../logs/service/`:
+  - `orchestrator-wrapper.log`
+  - `proxy-wrapper.log`
+- Run tmux pane commands through a small supervised shell wrapper that:
+  - appends stdout/stderr to the corresponding wrapper log,
+  - writes start timestamp, command, host, and image path,
+  - writes exit timestamp and exit code on termination.
+- Startup verification:
+  - After `tmux respawn-pane`, wait briefly (`STARTUP_GRACE_SECONDS`, default 3).
+  - If pane/session exits early, print a concise failure summary and tail of wrapper log to terminal.
 
-- **Config and state**
-  - Keep config templates in git under `deploy/`.
-  - Deploy a private runtime config copy outside the image, pointed to by `RELAYMD_CONFIG`.
-  - Set absolute paths for:
-    - `database_url`
-    - orchestrator `log_directory`
-    - each cluster `log_directory`
-  - Standardize paths:
-    - DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
-    - Orchestrator logs and saved `.sbatch` scripts: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
-    - SLURM worker stdout/stderr: `/depot/plow/data/pballane/relaymd-service/logs/slurm/<cluster>`
+4. **Heartbeat + truthful status metadata**
+- Extend shared status file schema to include:
+  - `ORCHESTRATOR_HEARTBEAT_AT`, `PROXY_HEARTBEAT_AT`
+  - `ORCHESTRATOR_LAST_START_AT`, `ORCHESTRATOR_LAST_EXIT_AT`, `ORCHESTRATOR_LAST_EXIT_CODE`
+  - `PROXY_LAST_START_AT`, `PROXY_LAST_EXIT_AT`, `PROXY_LAST_EXIT_CODE`
+- Heartbeat mechanism:
+  - While each service process is alive, update heartbeat timestamp every `RELAYMD_HEARTBEAT_INTERVAL_SECONDS` (default 30).
+  - On process exit, mark corresponding `*_ACTIVE=0` and set exit metadata.
+- Lock behavior refinement:
+  - Keep cross-host lock enforcement.
+  - Include freshness awareness using `RELAYMD_HEARTBEAT_STALE_SECONDS` (default 120) in lock diagnostics.
+  - Continue requiring `--force` for takeover when another host is marked active.
+- Add `relaymd-service-status` command:
+  - Reports status file fields + heartbeat freshness + local tmux/port checks.
+  - Exit code `0` only when orchestrator/proxy are both healthy on expected host.
 
-- **Worker image policy**
-  - Keep **one worker image contract** for phase 1.
-  - Do not add job-type-specific image selection yet.
-  - Preserve current behavior where worker image selection is operationally tied to cluster config, but standardize on one shared worker image in the deployed config to avoid accidental heterogeneity during the first rollout.
-  - Document clearly that per-job image selection is not supported today and is deferred.
+5. **Address other discussed concerns (docs + operator UX)**
+- Update HPC docs with:
+  - new auto-pull examples (`latest` mode),
+  - clear note that login-node services are non-durable and may be culled/restarted,
+  - operational checks (`relaymd-service-status`, tmux/port checks),
+  - log file locations and stale-heartbeat interpretation.
+- Update env example with new optional knobs:
+  - `RELAYMD_GHCR_OWNER`
+  - `RELAYMD_HEARTBEAT_INTERVAL_SECONDS`
+  - `RELAYMD_HEARTBEAT_STALE_SECONDS`
+  - `STARTUP_GRACE_SECONDS`
 
-## Interfaces / Operational Commands
-- Add image publish outputs in CI summaries for both worker and orchestrator image tags/digests.
-- Add or replace HPC launcher wrappers so operators use stable commands like:
-  - `relaymd-service-pull`
-  - `relaymd-service-up`
-  - `relaymd-service-proxy`
-- These wrappers should:
-  - reference the active SIF under `/depot/plow/apps/relaymd/current/`
-  - export `RELAYMD_CONFIG`
-  - bind the shared state directories
-  - run `relaymd orchestrator up` inside the orchestrator image
-- Keep `relaymd orchestrator up` as the supported service command. Do not reintroduce `run`.
+#### Test Plan
+1. **Script validation**
+- `bash -n` for all updated/new wrappers.
+- Shellcheck-style pass for quoting and safe eval/printf usage.
 
-## Test Plan
-- **CI tests**
-  - Verify the orchestrator image build succeeds and produces a runnable image with bundled frontend assets.
-  - Add a smoke test that the orchestrator serves `/` successfully when frontend assets are present in-image.
-- **Local/container tests**
-  - Add tests for frontend asset lookup from the packaged/in-image path.
-  - Keep current worker image tests unchanged except for any shared build refactor coverage.
-- **HPC acceptance**
-  - Pull the orchestrator SIF from GHCR on the login node.
-  - Launch it under tmux with external config/state binds.
-  - Verify:
-    - `/healthz` responds
-    - `/` serves the bundled frontend
-    - DB is created in the shared data directory
-    - orchestrator log file is written in the shared log directory
-    - rendered `.sbatch` copies land under `.../logs/orchestrator/slurm/`
-  - Submit a known test job and verify worker stdout/stderr land under the configured cluster log directory, not in unexpected default cwd locations.
-- **Fakeroot validation note**
-  - Record that local `apptainer --fakeroot` was probed on this HPC and failed due missing usable fakeroot/subuid support, so local fakeroot builds are not part of the supported deployment path.
+2. **Auto-tag resolution scenarios**
+- explicit URIs path still works unchanged.
+- `latest` mode resolves shared tag correctly.
+- failure cases:
+  - missing `gh`/`jq`,
+  - auth scope missing,
+  - no shared `sha-*` tags.
 
-## Assumptions and Defaults
-- “Elsewhere” means **GitHub Actions building OCI images and publishing them to GHCR**.
-- The orchestrator will be containerized in a **separate image** from the worker, not merged into the worker image.
-- Phase 1 is still **operator-only** for service management and runtime config ownership.
-- The deployment path is **OCI image -> GHCR -> `apptainer pull` on HPC**, not `apptainer build --fakeroot` on the cluster.
-- Multiple worker images by job type are explicitly deferred until after the shared orchestrator/image deployment is stable.
+3. **Runtime reliability scenarios**
+- Successful start updates active flags and heartbeat timestamps.
+- Forced crash path writes non-zero exit metadata and log trail.
+- Early startup failure prints immediate diagnostics and log tail.
+- `relaymd-service-status` detects:
+  - healthy,
+  - down,
+  - stale heartbeat,
+  - stale lock on other host.
+
+4. **Cross-host lock behavior**
+- start on pinned host succeeds.
+- start on different host is refused.
+- `--force` takeover works and updates host ownership fields.
+
+#### Assumptions and Defaults
+- Keep tmux frontend deployment model in this scope (no Slurm-service migration now).
+- Use “detect + log only” reliability policy (no auto-restart loops).
+- Use latest shared SHA policy for GHCR auto resolution.
+- Default branch name: `hpc-service-reliability`.
