@@ -1233,6 +1233,7 @@ storage.</p>
 <p>Recommended defaults:</p>
 <ul>
 <li>Config: <code>/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml</code></li>
+<li>Service env file: <code>/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env</code></li>
 <li>DB: <code>/depot/plow/data/pballane/relaymd-service/db/relaymd.db</code></li>
 <li>Orchestrator logs: <code>/depot/plow/data/pballane/relaymd-service/logs/orchestrator</code></li>
 <li>SLURM worker logs: <code>/depot/plow/data/pballane/relaymd-service/logs/slurm/&lt;cluster&gt;</code></li>
@@ -1262,22 +1263,28 @@ symlink:</p>
 <li><code>relaymd-service-up</code></li>
 <li><code>relaymd-service-proxy</code></li>
 </ul>
-<p>Pull and activate a release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
+<p>Install wrappers/modulefile once:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/install-service-layout.sh
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>module<span class="w"> </span>use<span class="w"> </span>/depot/plow/apps/modulefiles
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>module<span class="w"> </span>load<span class="w"> </span>relaymd/current
 </span></code></pre></div>
+<p>After loading the module, <code>relaymd-service-*</code> wrappers are on <code>PATH</code>.</p>
+<p>Pull and activate a release:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
+</span></code></pre></div>
+<p><code>relaymd-service-pull</code> defaults Apptainer build temp/cache to scratch-backed
+directories to avoid <code>/tmp</code> space failures on login nodes.</p>
 <p>Start service in tmux from the active release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./deploy/hpc/relaymd-service-up
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./deploy/hpc/relaymd-service-up
 </span></code></pre></div>
 <p>Start the dashboard proxy in tmux:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_API_TOKEN</span><span class="o">=</span>&lt;relaymd-api-token&gt;
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_USERNAME</span><span class="o">=</span>&lt;username&gt;
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_DASHBOARD_PASSWORD</span><span class="o">=</span>&lt;password&gt;
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>./deploy/hpc/relaymd-service-proxy
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./deploy/hpc/relaymd-service-proxy
 </span></code></pre></div>
 <p><code>relaymd-service-up</code> runs <code>relaymd orchestrator up</code> inside the orchestrator SIF
-and exports <code>RELAYMD_CONFIG</code> so runtime config remains external/private.</p>
+and injects runtime env vars from <code>relaymd-service.env</code>/shell env into the
+container using <code>APPTAINERENV_*</code> so config and secrets remain external/private.</p>
 <h2 id="dashboard-access">Dashboard Access</h2>
 <p>Use loopback binding and forward only proxy port <code>36159</code> to your laptop.</p>
 <ol>
