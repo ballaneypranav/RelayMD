@@ -9,24 +9,12 @@ COPY frontend/ ./
 RUN npm run build
 
 
-FROM python:3.11-slim-bookworm
+ARG BASE_IMAGE=ghcr.io/ballaneypranav/relaymd-orchestrator-base:latest
+FROM ${BASE_IMAGE}
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
 ENV RELAYMD_FRONTEND_DIST_DIR=/opt/relaymd/frontend/dist
 
 WORKDIR /workspace
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg openssh-client \
-    && mkdir -p --mode=0755 /usr/share/keyrings \
-    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
-    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends tailscale \
-    && python -m pip install --no-cache-dir --upgrade pip uv \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
 COPY packages ./packages
