@@ -1,7 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+    cat <<'USAGE'
+Usage: relaymd-service-status [--verbose] [--json] [--no-color]
+
+Options:
+  -v, --verbose   Show detailed status fields.
+  --json          Emit machine-readable JSON.
+  --no-color      Disable ANSI color output.
+  -h, --help      Show this help.
+USAGE
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+VERBOSE=0
+JSON_MODE=0
+NO_COLOR_FLAG=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose)
+            VERBOSE=1
+            ;;
+        --json)
+            JSON_MODE=1
+            ;;
+        --no-color)
+            NO_COLOR_FLAG=1
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
 RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
@@ -33,6 +73,78 @@ if [[ ! -f "${RELAYMD_STATUS_FILE}" ]]; then
     exit 1
 fi
 
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "${s}"
+}
+
+print_pair() {
+    local key="$1"
+    local value="$2"
+    printf "  %-20s %s\n" "${key}" "${value}"
+}
+
+format_age() {
+    local age="$1"
+    if [[ "${age}" -lt 0 ]]; then
+        printf 'n/a'
+    else
+        printf '%ss ago' "${age}"
+    fi
+}
+
+format_ts() {
+    local ts="$1"
+    if [[ -z "${ts}" ]]; then
+        printf 'n/a'
+    else
+        printf '%s' "${ts}"
+    fi
+}
+
+format_yes_no() {
+    local v="$1"
+    if [[ "${v}" == "1" ]]; then
+        printf 'yes'
+    else
+        printf 'no'
+    fi
+}
+
+if [[ -t 1 && "${NO_COLOR_FLAG}" -eq 0 && -z "${NO_COLOR:-}" ]]; then
+    C_RESET=$'\033[0m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_BOLD=$'\033[1m'
+else
+    C_RESET=""
+    C_RED=""
+    C_GREEN=""
+    C_YELLOW=""
+    C_BOLD=""
+fi
+
+status_color() {
+    local value="$1"
+    case "${value}" in
+        healthy|ok|fresh|yes|running|listening)
+            printf '%s' "${C_GREEN}"
+            ;;
+        stale)
+            printf '%s' "${C_YELLOW}"
+            ;;
+        *)
+            printf '%s' "${C_RED}"
+            ;;
+    esac
+}
+
 host="$(status_get HOST)"
 updated_at="$(status_get UPDATED_AT)"
 updated_by="$(status_get UPDATED_BY)"
@@ -55,12 +167,17 @@ fi
 if [[ -z "${proxy_session}" ]]; then
     proxy_session="relaymd-service-proxy"
 fi
-
 if [[ -z "${orch_active}" ]]; then
     orch_active="0"
 fi
 if [[ -z "${proxy_active}" ]]; then
     proxy_active="0"
+fi
+if [[ -z "${updated_at}" ]]; then
+    updated_at="n/a"
+fi
+if [[ -z "${updated_by}" ]]; then
+    updated_by="n/a"
 fi
 
 orch_age="$(status_timestamp_age_seconds "${orch_hb}")"
@@ -71,7 +188,6 @@ if status_is_fresh "${orch_hb}" "${RELAYMD_HEARTBEAT_STALE_SECONDS}"; then
 else
     orch_fresh="stale"
 fi
-
 if status_is_fresh "${proxy_hb}" "${RELAYMD_HEARTBEAT_STALE_SECONDS}"; then
     proxy_fresh="fresh"
 else
@@ -82,7 +198,6 @@ orch_tmux="down"
 if status_tmux_session_alive "${orch_session}"; then
     orch_tmux="up"
 fi
-
 proxy_tmux="down"
 if status_tmux_session_alive "${proxy_session}"; then
     proxy_tmux="up"
@@ -92,7 +207,6 @@ orch_port="closed"
 if status_port_listening "${ORCHESTRATOR_PORT}"; then
     orch_port="listening"
 fi
-
 proxy_port="closed"
 if status_port_listening "${PROXY_PORT}"; then
     proxy_port="listening"
@@ -103,37 +217,134 @@ if [[ -z "${expected_host}" ]]; then
     expected_host="${CURRENT_HOST}"
 fi
 
-echo "RelayMD service status"
-echo "status_file=${RELAYMD_STATUS_FILE}"
-echo "host=${host} current_host=${CURRENT_HOST} expected_host=${expected_host} updated_at=${updated_at} updated_by=${updated_by}"
-echo "orchestrator: active=${orch_active} heartbeat_at=${orch_hb} heartbeat_age_seconds=${orch_age} heartbeat_state=${orch_fresh} session=${orch_session} tmux=${orch_tmux} port=${ORCHESTRATOR_PORT} port_state=${orch_port} last_start_at=${orch_start} last_exit_at=${orch_exit_at} last_exit_code=${orch_exit_code}"
-echo "proxy: active=${proxy_active} heartbeat_at=${proxy_hb} heartbeat_age_seconds=${proxy_age} heartbeat_state=${proxy_fresh} session=${proxy_session} tmux=${proxy_tmux} port=${PROXY_PORT} port_state=${proxy_port} last_start_at=${proxy_start} last_exit_at=${proxy_exit_at} last_exit_code=${proxy_exit_code}"
+orch_service_ok=1
+if [[ "${orch_active}" != "1" || "${orch_fresh}" != "fresh" || "${orch_tmux}" != "up" || "${orch_port}" != "listening" ]]; then
+    orch_service_ok=0
+fi
+
+proxy_service_ok=1
+if [[ "${proxy_active}" != "1" || "${proxy_fresh}" != "fresh" || "${proxy_tmux}" != "up" || "${proxy_port}" != "listening" ]]; then
+    proxy_service_ok=0
+fi
 
 healthy=1
-
 if [[ "${host}" != "${expected_host}" ]]; then
     healthy=0
 fi
 if [[ "${CURRENT_HOST}" != "${expected_host}" ]]; then
     healthy=0
 fi
-if [[ "${orch_active}" != "1" || "${proxy_active}" != "1" ]]; then
+if [[ "${orch_service_ok}" -ne 1 || "${proxy_service_ok}" -ne 1 ]]; then
     healthy=0
 fi
-if [[ "${orch_fresh}" != "fresh" || "${proxy_fresh}" != "fresh" ]]; then
-    healthy=0
+
+if [[ "${JSON_MODE}" -eq 1 ]]; then
+    overall_state="unhealthy"
+    if [[ "${healthy}" -eq 1 ]]; then
+        overall_state="healthy"
+    fi
+
+    cat <<JSON
+{
+  "overall": "$(json_escape "${overall_state}")",
+  "healthy": ${healthy},
+  "status_file": "$(json_escape "${RELAYMD_STATUS_FILE}")",
+  "lock_host": "$(json_escape "${host}")",
+  "current_host": "$(json_escape "${CURRENT_HOST}")",
+  "expected_host": "$(json_escape "${expected_host}")",
+  "updated_at": "$(json_escape "${updated_at}")",
+  "updated_by": "$(json_escape "${updated_by}")",
+  "orchestrator": {
+    "service_ok": ${orch_service_ok},
+    "active": ${orch_active},
+    "session": "$(json_escape "${orch_session}")",
+    "tmux": "$(json_escape "${orch_tmux}")",
+    "port": ${ORCHESTRATOR_PORT},
+    "port_state": "$(json_escape "${orch_port}")",
+    "heartbeat_state": "$(json_escape "${orch_fresh}")",
+    "heartbeat_age_seconds": ${orch_age},
+    "heartbeat_at": "$(json_escape "${orch_hb}")",
+    "last_start_at": "$(json_escape "${orch_start}")",
+    "last_exit_at": "$(json_escape "${orch_exit_at}")",
+    "last_exit_code": "$(json_escape "${orch_exit_code}")"
+  },
+  "proxy": {
+    "service_ok": ${proxy_service_ok},
+    "active": ${proxy_active},
+    "session": "$(json_escape "${proxy_session}")",
+    "tmux": "$(json_escape "${proxy_tmux}")",
+    "port": ${PROXY_PORT},
+    "port_state": "$(json_escape "${proxy_port}")",
+    "heartbeat_state": "$(json_escape "${proxy_fresh}")",
+    "heartbeat_age_seconds": ${proxy_age},
+    "heartbeat_at": "$(json_escape "${proxy_hb}")",
+    "last_start_at": "$(json_escape "${proxy_start}")",
+    "last_exit_at": "$(json_escape "${proxy_exit_at}")",
+    "last_exit_code": "$(json_escape "${proxy_exit_code}")"
+  }
+}
+JSON
+
+    if [[ "${healthy}" -eq 1 ]]; then
+        exit 0
+    fi
+    exit 1
 fi
-if [[ "${orch_tmux}" != "up" || "${proxy_tmux}" != "up" ]]; then
-    healthy=0
+
+overall_state="unhealthy"
+overall_color="${C_RED}"
+if [[ "${healthy}" -eq 1 ]]; then
+    overall_state="healthy"
+    overall_color="${C_GREEN}"
 fi
-if [[ "${orch_port}" != "listening" || "${proxy_port}" != "listening" ]]; then
-    healthy=0
+
+orch_line_state="fail"
+if [[ "${orch_service_ok}" -eq 1 ]]; then
+    orch_line_state="ok"
+fi
+proxy_line_state="fail"
+if [[ "${proxy_service_ok}" -eq 1 ]]; then
+    proxy_line_state="ok"
+fi
+
+printf "%sRelayMD Status: %s%s%s\n" "${C_BOLD}" "${overall_color}" "${overall_state^^}" "${C_RESET}"
+printf "Host: %s (expected %s)\n" "${CURRENT_HOST}" "${expected_host}"
+printf "Orchestrator: %s%s%s | active=%s tmux=%s port=%s/%s hb=%s (%s)\n" \
+    "$(status_color "${orch_line_state}")" "${orch_line_state^^}" "${C_RESET}" \
+    "$(format_yes_no "${orch_active}")" \
+    "$([[ "${orch_tmux}" == "up" ]] && echo running || echo stopped)" \
+    "${ORCHESTRATOR_PORT}" "${orch_port}" \
+    "${orch_fresh}" "$(format_age "${orch_age}")"
+printf "Proxy:        %s%s%s | active=%s tmux=%s port=%s/%s hb=%s (%s)\n" \
+    "$(status_color "${proxy_line_state}")" "${proxy_line_state^^}" "${C_RESET}" \
+    "$(format_yes_no "${proxy_active}")" \
+    "$([[ "${proxy_tmux}" == "up" ]] && echo running || echo stopped)" \
+    "${PROXY_PORT}" "${proxy_port}" \
+    "${proxy_fresh}" "$(format_age "${proxy_age}")"
+
+if [[ "${VERBOSE}" -eq 1 ]]; then
+    printf "\n%sDetails%s\n" "${C_BOLD}" "${C_RESET}"
+    print_pair "status_file" "${RELAYMD_STATUS_FILE}"
+    print_pair "lock_host" "${host:-n/a}"
+    print_pair "updated_at" "${updated_at}"
+    print_pair "updated_by" "${updated_by}"
+
+    printf "\n%sOrchestrator%s\n" "${C_BOLD}" "${C_RESET}"
+    print_pair "session" "${orch_session}"
+    print_pair "heartbeat_at" "$(format_ts "${orch_hb}")"
+    print_pair "last_start_at" "$(format_ts "${orch_start}")"
+    print_pair "last_exit_at" "$(format_ts "${orch_exit_at}")"
+    print_pair "last_exit_code" "$(format_ts "${orch_exit_code}")"
+
+    printf "\n%sProxy%s\n" "${C_BOLD}" "${C_RESET}"
+    print_pair "session" "${proxy_session}"
+    print_pair "heartbeat_at" "$(format_ts "${proxy_hb}")"
+    print_pair "last_start_at" "$(format_ts "${proxy_start}")"
+    print_pair "last_exit_at" "$(format_ts "${proxy_exit_at}")"
+    print_pair "last_exit_code" "$(format_ts "${proxy_exit_code}")"
 fi
 
 if [[ "${healthy}" -eq 1 ]]; then
-    echo "overall=healthy"
     exit 0
 fi
-
-echo "overall=unhealthy"
 exit 1
