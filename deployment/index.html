@@ -1244,6 +1244,19 @@ storage.</p>
 <li><code>./relaymd-config.yaml</code> (project-local override, gitignored)</li>
 <li><code>~/.config/relaymd/config.yaml</code> (user-global default)</li>
 </ul>
+<p>Worker checkpoint polling default:</p>
+<ul>
+<li><code>worker_checkpoint_poll_interval_seconds: 300</code> (default)</li>
+<li>Rendered to worker runtime as <code>CHECKPOINT_POLL_INTERVAL_SECONDS</code></li>
+</ul>
+<p>Worker runtime contract for AToM jobs:</p>
+<ul>
+<li>Worker image includes <code>bash</code>, <code>python</code>, <code>tar</code>, <code>timeout</code> (coreutils), and standard shell tooling.</li>
+<li>Worker image installs pinned AToM-OpenMM Python package(s); keep the image clean (no <code>/depot/...</code> compatibility paths baked into the container).</li>
+<li>Set <code>ats_dir</code> in your submit-side config/bundle generation to the installed
+  module path in the worker runtime, for example:
+  <code>python -c "import pathlib, atom_openmm; print(pathlib.Path(atom_openmm.__file__).resolve().parent)"</code></li>
+</ul>
 <h2 id="release-layout">Release Layout</h2>
 <p>Store immutable pulled SIFs under a versioned release path and promote by
 symlink:</p>
