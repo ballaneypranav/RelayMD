@@ -37,6 +37,12 @@ if [[ -n "${ORCH_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
   exit 1
 fi
 
+if [[ -z "${ORCH_IMAGE_URI}" && -n "${WORKER_IMAGE_URI}" ]]; then
+  echo "If you pass worker image URI, you must also pass orchestrator image URI." >&2
+  usage >&2
+  exit 1
+fi
+
 if [[ $# -gt 3 ]]; then
   usage >&2
   exit 1
