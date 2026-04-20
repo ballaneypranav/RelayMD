@@ -1306,8 +1306,9 @@ symlink:</p>
 <p>Auto-resolve newest shared <code>sha-*</code> across orchestrator+worker:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>latest
 </span></code></pre></div>
-<p><code>relaymd-service-pull</code> defaults Apptainer build temp/cache to scratch-backed
-directories to avoid <code>/tmp</code> space failures on login nodes.</p>
+<p><code>relaymd-service-pull</code> defaults Apptainer build temp/cache to
+<code>/tmp/relaymd-service-$UID</code> (override with <code>RELAYMD_SCRATCH_ROOT</code>,
+<code>APPTAINER_TMPDIR</code>, or <code>APPTAINER_CACHEDIR</code>).</p>
 <p>Start service in tmux from the active release:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>./deploy/hpc/relaymd-service-up
 </span></code></pre></div>
