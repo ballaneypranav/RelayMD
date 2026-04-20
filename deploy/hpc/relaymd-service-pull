@@ -15,6 +15,40 @@ Examples:
 USAGE
 }
 
+stat_uid() {
+    local path="$1"
+    stat -c '%u' "${path}"
+}
+
+ensure_secure_private_dir() {
+    local path="$1"
+    local label="$2"
+    local owner_uid
+
+    if [[ -L "${path}" ]]; then
+        echo "${label} path '${path}' must not be a symlink." >&2
+        exit 1
+    fi
+
+    if [[ -e "${path}" && ! -d "${path}" ]]; then
+        echo "${label} path '${path}' exists but is not a directory." >&2
+        exit 1
+    fi
+
+    mkdir -p "${path}"
+
+    owner_uid="$(stat_uid "${path}")"
+    if [[ "${owner_uid}" != "${RELAYMD_EFFECTIVE_UID}" ]]; then
+        echo "${label} path '${path}' is owned by UID ${owner_uid}, expected ${RELAYMD_EFFECTIVE_UID}." >&2
+        exit 1
+    fi
+
+    if ! chmod 700 "${path}"; then
+        echo "Failed to set secure permissions on ${label} path '${path}'." >&2
+        exit 1
+    fi
+}
+
 require_cmd() {
     local cmd="$1"
     local remediation="$2"
@@ -30,6 +64,11 @@ download_file() {
     local uri="$1"
     local output_path="$2"
 
+    if [[ -f "${uri}" ]]; then
+        cp "${uri}" "${output_path}"
+        return 0
+    fi
+
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "${uri}" -o "${output_path}"
         return $?
@@ -41,8 +80,22 @@ download_file() {
     fi
 
     echo "Missing downloader for '${uri}'." >&2
-    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path and copy manually." >&2
+    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path/URI." >&2
     exit 1
+}
+
+validate_cli_binary() {
+    local cli_path="$1"
+
+    if ! "${cli_path}" --help >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if ! "${cli_path}" submit --help >/dev/null 2>&1; then
+        return 1
+    fi
+
+    return 0
 }
 
 resolve_cli_owner() {
@@ -214,17 +267,19 @@ RELEASE_VERSION="$1"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
-RELAYMD_EFFECTIVE_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
-RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${RELAYMD_EFFECTIVE_USER}}}/relaymd-service}"
+RELAYMD_EFFECTIVE_UID="${UID:-$(id -u 2>/dev/null || echo unknown)}"
+# Default to /tmp on this HPC because OCI->SIF conversion is significantly faster on local /tmp than /scratch.
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-/tmp/relaymd-service-${RELAYMD_EFFECTIVE_UID}}"
 
-# Build temporary OCI/SIF artifacts on scratch to avoid /tmp exhaustion on login nodes.
+# Build temporary OCI/SIF artifacts under RELAYMD_SCRATCH_ROOT.
 APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
 APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
 TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
 export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
 
-mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
-chmod 700 "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}" 2>/dev/null || true
+ensure_secure_private_dir "${RELAYMD_SCRATCH_ROOT}" "RELAYMD_SCRATCH_ROOT"
+ensure_secure_private_dir "${APPTAINER_TMPDIR}" "APPTAINER_TMPDIR"
+ensure_secure_private_dir "${APPTAINER_CACHEDIR}" "APPTAINER_CACHEDIR"
 
 ORCHESTRATOR_IMAGE_URI="${2:-${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}}"
 WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
@@ -311,6 +366,25 @@ if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
     fi
 fi
 chmod 0755 "${CLI_TMP}"
+
+if ! validate_cli_binary "${CLI_TMP}"; then
+    if [[ -n "${CLI_FALLBACK_URI:-}" && "${CLI_URI}" != "${CLI_FALLBACK_URI}" ]]; then
+        echo "Downloaded CLI from '${CLI_URI}' failed self-check. Falling back to latest." >&2
+        if ! download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"; then
+            echo "Failed to download fallback CLI from '${CLI_FALLBACK_URI}'." >&2
+            exit 1
+        fi
+        chmod 0755 "${CLI_TMP}"
+        CLI_URI="${CLI_FALLBACK_URI}"
+    fi
+
+    if ! validate_cli_binary "${CLI_TMP}"; then
+        echo "Downloaded relaymd CLI from '${CLI_URI}' failed self-check ('--help' and 'submit --help')." >&2
+        echo "Remediation: publish/fetch a working release binary, or set RELAYMD_CLI_URI to a known-good local path/URI." >&2
+        exit 1
+    fi
+fi
+
 mv "${CLI_TMP}" "${CLI_BIN}"
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"

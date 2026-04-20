@@ -117,8 +117,9 @@ Auto-resolve newest shared `sha-*` across orchestrator+worker:
 ./deploy/hpc/relaymd-service-pull latest
 ```
 
-`relaymd-service-pull` defaults Apptainer build temp/cache to scratch-backed
-directories to avoid `/tmp` space failures on login nodes.
+`relaymd-service-pull` defaults Apptainer build temp/cache to
+`/tmp/relaymd-service-$UID` (override with `RELAYMD_SCRATCH_ROOT`,
+`APPTAINER_TMPDIR`, or `APPTAINER_CACHEDIR`).
 
 Start service in tmux from the active release:
 
