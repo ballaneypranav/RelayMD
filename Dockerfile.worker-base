@@ -3,6 +3,8 @@ FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV ATOM_REPO_URL=https://github.com/ballaneypranav/AToM-OpenMM
+ENV ATOM_REPO_REF=71f2f4e6b90f3cfd8ff3ab0ec46e32922e9c2f56
 
 WORKDIR /app
 
@@ -14,6 +16,10 @@ RUN apt-get update \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+        bash \
+        coreutils \
+        tar \
+        procps \
         python3.11 \
         python3.11-distutils \
         python3.11-venv \
@@ -33,4 +39,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     configobj \
     numpy \
     setproctitle \
-    atom-openmm
+    "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"

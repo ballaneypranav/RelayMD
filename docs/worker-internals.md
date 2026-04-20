@@ -20,7 +20,9 @@ POST /jobs/request
     │       │                                      → POST /jobs/{id}/checkpoint
     │       │
     │       ├── on SIGTERM (wall time / Salad shutdown):
-    │       │       → SIGTERM to subprocess → wait → upload checkpoint
+    │       │       → SIGTERM to subprocess
+    │       │       → wait for checkpoint newer than pre-shutdown baseline mtime
+    │       │       → upload only if newer checkpoint exists
     │       │       → POST /jobs/{id}/checkpoint → exit
     │       │       (orchestrator re-queues automatically)
     │       │
@@ -51,6 +53,8 @@ class WorkerSettings(BaseSettings):
     orchestrator_timeout_seconds: float = 30.0
     sigterm_checkpoint_wait_seconds: int = 60
 ```
+
+`checkpoint_poll_interval_seconds` defaults to `300` seconds and can be overridden via `CHECKPOINT_POLL_INTERVAL_SECONDS` (worker env var) or `worker_checkpoint_poll_interval_seconds` (orchestrator config rendered into the SLURM worker environment).
 
 On HPC, `SLURM_JOB_ID` is automatically present in the environment. The worker reads it and passes it as `slurm_job_id` in `POST /workers/register`. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.
 
@@ -86,9 +90,9 @@ Worker control flow is implemented as one procedural loop with explicit seams:
 
 ## Checkpoint Strategy
 
-Filesystem polling every 5 minutes. The worker polls the simulation working directory for a file matching the `checkpoint_glob_pattern` from `relaymd-worker.json`. When a newer one is found, it uploads to B2 and reports immediately.
+Filesystem polling every 5 minutes by default (`300s`). The worker polls the simulation working directory for a file matching the `checkpoint_glob_pattern` from `relaymd-worker.json`. When a newer one is found, it uploads to B2 and reports immediately.
 
-On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`), the worker sends SIGTERM to the subprocess, waits up to `sigterm_checkpoint_wait_seconds` (default 60s) for a final checkpoint write, uploads, and exits.
+On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`), the worker sends SIGTERM to the subprocess and snapshots a pre-shutdown checkpoint mtime baseline. It then waits up to `sigterm_checkpoint_wait_seconds` (default 60s) for a checkpoint that is strictly newer than that baseline. This prevents stale re-uploads during handoff races. If no newer checkpoint appears, the worker exits without uploading an older one.
 
 The exact glob pattern for AToM-OpenMM checkpoints is to be confirmed during end-to-end testing.
 

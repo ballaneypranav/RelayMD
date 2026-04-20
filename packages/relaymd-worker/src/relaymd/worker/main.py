@@ -74,6 +74,15 @@ def _find_latest_checkpoint(workdir: Path, pattern: str) -> Path | None:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
+def _checkpoint_mtime(checkpoint: Path | None) -> float | None:
+    if checkpoint is None:
+        return None
+    try:
+        return checkpoint.stat().st_mtime
+    except OSError:
+        return None
+
+
 def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
     candidate_paths = [
         bundle_root / "relaymd-worker.json",
@@ -169,11 +178,15 @@ def _wait_for_final_checkpoint(
     checkpoint_glob_pattern: str,
     timeout_seconds: int,
     poll_interval_seconds: int,
+    min_checkpoint_mtime: float | None = None,
 ) -> Path | None:
     deadline = time.monotonic() + timeout_seconds
     while True:
         checkpoint = _find_latest_checkpoint(workdir, checkpoint_glob_pattern)
-        if checkpoint is not None:
+        checkpoint_mtime = _checkpoint_mtime(checkpoint)
+        if checkpoint is not None and checkpoint_mtime is not None and (
+            min_checkpoint_mtime is None or checkpoint_mtime > min_checkpoint_mtime
+        ):
             return checkpoint
         if time.monotonic() >= deadline:
             return None
@@ -266,20 +279,49 @@ def _run_assigned_job(
             while True:
                 if context.shutdown_event.is_set():
                     job_log.info("shutdown_requested_terminating_job")
+                    baseline_mtime = last_uploaded_mtime
+                    latest_checkpoint_before_shutdown = execution.latest_checkpoint()
+                    latest_mtime_before_shutdown = _checkpoint_mtime(
+                        latest_checkpoint_before_shutdown
+                    )
+                    if latest_mtime_before_shutdown is not None and (
+                        baseline_mtime is None or latest_mtime_before_shutdown > baseline_mtime
+                    ):
+                        baseline_mtime = latest_mtime_before_shutdown
+
                     execution.request_terminate()
                     final_checkpoint = _wait_for_final_checkpoint(
                         bundle_root,
                         execution_config.checkpoint_glob_pattern,
                         timeout_seconds=context.sigterm_checkpoint_wait_seconds,
                         poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
+                        min_checkpoint_mtime=baseline_mtime,
                     )
+                    if (
+                        final_checkpoint is None
+                        and last_uploaded_mtime is None
+                        and assignment.latest_checkpoint_path is None
+                        and latest_checkpoint_before_shutdown is not None
+                    ):
+                        final_checkpoint = latest_checkpoint_before_shutdown
+
                     if final_checkpoint is not None:
-                        last_uploaded_mtime = _upload_checkpoint(
-                            context,
-                            logger=job_log,
-                            checkpoint=final_checkpoint,
+                        final_mtime = _checkpoint_mtime(final_checkpoint)
+                        if last_uploaded_mtime is None or (
+                            final_mtime is not None and final_mtime > last_uploaded_mtime
+                        ):
+                            last_uploaded_mtime = _upload_checkpoint(
+                                context,
+                                logger=job_log,
+                                checkpoint=final_checkpoint,
+                                checkpoint_b2_key=checkpoint_b2_key,
+                                job_id=assignment.job_id,
+                            )
+                    elif baseline_mtime is not None:
+                        job_log.info(
+                            "shutdown_no_newer_checkpoint_found",
                             checkpoint_b2_key=checkpoint_b2_key,
-                            job_id=assignment.job_id,
+                            baseline_mtime=baseline_mtime,
                         )
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return

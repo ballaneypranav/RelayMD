@@ -37,16 +37,15 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
                   │
                   ├── every 60s: POST /workers/{id}/heartbeat
                   │
-                  ├── every 5min (poll): new checkpoint found?
+                  ├── every 5min (poll; default 300s): new checkpoint found?
                   │       → upload to B2
                   │       → POST /jobs/{id}/checkpoint
                   │       → if job already terminal: typed 409 conflict (safe to ignore)
                   │
                   ├── on wall-time margin (SIGTERM from SLURM):
                   │       → send SIGTERM to subprocess
-                  │       → wait up to 60s for final checkpoint write
-                  │       → upload checkpoint to B2
-                  │       → POST /jobs/{id}/checkpoint
+                  │       → wait up to 60s for checkpoint newer than pre-shutdown baseline mtime
+                  │       → if newer checkpoint exists: upload to B2 + POST /jobs/{id}/checkpoint
                   │       → exit  (orchestrator re-queues automatically)
                   │
                   └── on clean subprocess exit:
