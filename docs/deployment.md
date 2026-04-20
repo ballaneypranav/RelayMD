@@ -33,6 +33,19 @@ Config lookup order (highest precedence first):
 - `./relaymd-config.yaml` (project-local override, gitignored)
 - `~/.config/relaymd/config.yaml` (user-global default)
 
+Worker checkpoint polling default:
+
+- `worker_checkpoint_poll_interval_seconds: 300` (default)
+- Rendered to worker runtime as `CHECKPOINT_POLL_INTERVAL_SECONDS`
+
+Worker runtime contract for AToM jobs:
+
+- Worker image includes `bash`, `python`, `tar`, `timeout` (coreutils), and standard shell tooling.
+- Worker image installs pinned AToM-OpenMM Python package(s); keep the image clean (no `/depot/...` compatibility paths baked into the container).
+- Set `ats_dir` in your submit-side config/bundle generation to the installed
+  module path in the worker runtime, for example:
+  `python -c "import pathlib, atom_openmm; print(pathlib.Path(atom_openmm.__file__).resolve().parent)"`
+
 ## Release Layout
 
 Store immutable pulled SIFs under a versioned release path and promote by

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import signal
 import tarfile
 import threading
@@ -20,6 +21,7 @@ from relaymd.worker.main import (
     _build_storage_client,
     _run_assigned_job,
     _upload_checkpoint,
+    _wait_for_final_checkpoint,
     run_worker,
 )
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
@@ -603,6 +605,214 @@ def test_upload_checkpoint_emits_failure_event(tmp_path: Path) -> None:
     logger.exception.assert_called_once()
     assert logger.exception.call_args.args[0] == "checkpoint_upload_failed"
     gateway.report_checkpoint.assert_not_called()
+
+
+def test_wait_for_final_checkpoint_respects_min_mtime(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "relaymd-checkpoint.tar.gz"
+    checkpoint.write_text("old", encoding="utf-8")
+    os.utime(checkpoint, (100.0, 100.0))
+
+    no_newer = _wait_for_final_checkpoint(
+        tmp_path,
+        "relaymd-checkpoint.tar.gz",
+        timeout_seconds=0,
+        poll_interval_seconds=1,
+        min_checkpoint_mtime=100.0,
+    )
+    assert no_newer is None
+
+    newer_allowed = _wait_for_final_checkpoint(
+        tmp_path,
+        "relaymd-checkpoint.tar.gz",
+        timeout_seconds=0,
+        poll_interval_seconds=1,
+        min_checkpoint_mtime=99.0,
+    )
+    assert newer_allowed == checkpoint
+
+
+def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
+            "latest_checkpoint_path": "jobs/job-shutdown/checkpoints/latest",
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            self.workdir = kwargs["workdir"]
+            self.checkpoint = self.workdir / "relaymd-checkpoint.tar.gz"
+            self.checkpoint.write_text("old", encoding="utf-8")
+            os.utime(self.checkpoint, (100.0, 100.0))
+            self._running = False
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            return None
+
+        def latest_checkpoint(self):
+            return self.checkpoint
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            self.checkpoint.write_text("new", encoding="utf-8")
+            os.utime(self.checkpoint, (200.0, 200.0))
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    uploaded_mtimes: list[float] = []
+
+    def _fake_upload_checkpoint(*args, **kwargs) -> float:
+        checkpoint_mtime = kwargs["checkpoint"].stat().st_mtime
+        uploaded_mtimes.append(checkpoint_mtime)
+        return checkpoint_mtime
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr("relaymd.worker.main._upload_checkpoint", _fake_upload_checkpoint)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_glob_pattern="relaymd-checkpoint.tar.gz",
+        ),
+    )
+
+    storage = Mock()
+
+    def _download_file(_remote: str, local: Path) -> None:
+        local.write_bytes(b"bundle-data")
+
+    storage.download_file.side_effect = _download_file
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = True
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    assert uploaded_mtimes == [200.0]
+    gateway.complete_job.assert_not_called()
+    gateway.fail_job.assert_not_called()
+
+
+def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
+    monkeypatch,
+) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            self.workdir = kwargs["workdir"]
+            self.checkpoint = self.workdir / "relaymd-checkpoint.tar.gz"
+            self.checkpoint.write_text("old", encoding="utf-8")
+            os.utime(self.checkpoint, (100.0, 100.0))
+            self._running = False
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            return None
+
+        def latest_checkpoint(self):
+            return self.checkpoint
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            return None
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_glob_pattern="relaymd-checkpoint.tar.gz",
+        ),
+    )
+
+    upload_checkpoint = Mock()
+    monkeypatch.setattr("relaymd.worker.main._upload_checkpoint", upload_checkpoint)
+
+    storage = Mock()
+
+    def _download_file(_remote: str, local: Path) -> None:
+        local.write_bytes(b"bundle-data")
+
+    storage.download_file.side_effect = _download_file
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = True
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=0,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    upload_checkpoint.assert_not_called()
+    gateway.complete_job.assert_not_called()
+    gateway.fail_job.assert_not_called()
 
 
 def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_path: Path) -> None:

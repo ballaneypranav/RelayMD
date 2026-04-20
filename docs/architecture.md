@@ -88,7 +88,7 @@ On startup, a worker:
 5. Downloads the input bundle and the latest checkpoint (if one exists) from object storage
 6. Launches the MD engine as a subprocess
 7. Sends heartbeats to the orchestrator every `worker_heartbeat_interval_seconds` (default 60s) while the worker process is alive (polling + running)
-8. On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`): sends SIGTERM to the subprocess, waits for a final checkpoint write, uploads it to object storage, and reports the checkpoint path to the orchestrator — then exits cleanly
+8. On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`): sends SIGTERM to the subprocess, waits for a checkpoint strictly newer than a pre-shutdown baseline mtime, uploads/reports only if newer state exists, then exits cleanly
 9. On clean subprocess exit: reports job completion and loops back to poll for another job
 
 The worker has no persistent state. If it dies mid-run, the orchestrator detects the missed heartbeat, marks the job as re-queued, and assigns it to the next available worker. That worker picks up from the last checkpoint as if nothing happened.
