@@ -43,7 +43,10 @@ ensure_secure_private_dir() {
         exit 1
     fi
 
-    chmod 700 "${path}" 2>/dev/null || true
+    if ! chmod 700 "${path}"; then
+        echo "Failed to set secure permissions on ${label} path '${path}'." >&2
+        exit 1
+    fi
 }
 
 require_cmd() {
