@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ./INSTALL [release-version] [orchestrator-image-uri] [worker-image-uri]
+
+Examples:
+  ./INSTALL
+  ./INSTALL latest
+  ./INSTALL sha-abc1234
+  ./INSTALL sha-abc1234 \
+    docker://ghcr.io/<org>/relaymd-orchestrator:sha-abc1234 \
+    docker://ghcr.io/<org>/relaymd-worker:sha-abc1234
+
+Behavior:
+  1) Installs/updates service layout and modulefile
+  2) Loads relaymd module
+  3) Pulls/activates requested release
+  4) Runs module+CLI smoke check
+USAGE
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+RELEASE_VERSION="${1:-latest}"
+ORCH_IMAGE_URI="${2:-}"
+WORKER_IMAGE_URI="${3:-}"
+
+if [[ -n "${ORCH_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
+  echo "If you pass orchestrator image URI, you must also pass worker image URI." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ $# -gt 3 ]]; then
+  usage >&2
+  exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
+echo "[1/4] Installing service layout"
+./deploy/hpc/install-service-layout.sh
+
+echo "[2/4] Loading relaymd module"
+if ! command -v module >/dev/null 2>&1; then
+  if [[ -f /etc/profile.d/lmod.sh ]]; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/lmod.sh
+  fi
+fi
+
+if ! command -v module >/dev/null 2>&1; then
+  echo "module command is unavailable in this shell." >&2
+  exit 1
+fi
+
+module use /depot/plow/apps/modulefiles
+module load relaymd/current
+
+echo "[3/4] Pulling and activating release: ${RELEASE_VERSION}"
+if [[ -n "${ORCH_IMAGE_URI}" ]]; then
+  ./deploy/hpc/relaymd-service-pull "${RELEASE_VERSION}" "${ORCH_IMAGE_URI}" "${WORKER_IMAGE_URI}"
+else
+  ./deploy/hpc/relaymd-service-pull "${RELEASE_VERSION}"
+fi
+
+echo "[4/4] Running smoke check"
+./deploy/hpc/relaymd-module-smoke-check
+
+echo
+
+echo "Install/activation complete."
+echo "relaymd path: $(command -v relaymd || echo '<not found>')"

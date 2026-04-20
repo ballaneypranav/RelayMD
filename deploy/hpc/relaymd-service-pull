@@ -30,6 +30,11 @@ download_file() {
     local uri="$1"
     local output_path="$2"
 
+    if [[ -f "${uri}" ]]; then
+        cp "${uri}" "${output_path}"
+        return 0
+    fi
+
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL "${uri}" -o "${output_path}"
         return $?
@@ -41,8 +46,22 @@ download_file() {
     fi
 
     echo "Missing downloader for '${uri}'." >&2
-    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path and copy manually." >&2
+    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path/URI." >&2
     exit 1
+}
+
+validate_cli_binary() {
+    local cli_path="$1"
+
+    if ! "${cli_path}" --help >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if ! "${cli_path}" submit --help >/dev/null 2>&1; then
+        return 1
+    fi
+
+    return 0
 }
 
 resolve_cli_owner() {
@@ -215,9 +234,9 @@ RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 RELAYMD_EFFECTIVE_USER="${USER:-$(id -un 2>/dev/null || echo unknown)}"
-RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/${RELAYMD_EFFECTIVE_USER}}}/relaymd-service}"
+RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-/tmp/${RELAYMD_EFFECTIVE_USER}/relaymd-service}"
 
-# Build temporary OCI/SIF artifacts on scratch to avoid /tmp exhaustion on login nodes.
+# Build temporary OCI/SIF artifacts under RELAYMD_SCRATCH_ROOT.
 APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
 APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
 TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
@@ -311,6 +330,25 @@ if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
     fi
 fi
 chmod 0755 "${CLI_TMP}"
+
+if ! validate_cli_binary "${CLI_TMP}"; then
+    if [[ -n "${CLI_FALLBACK_URI:-}" && "${CLI_URI}" != "${CLI_FALLBACK_URI}" ]]; then
+        echo "Downloaded CLI from '${CLI_URI}' failed self-check. Falling back to latest." >&2
+        if ! download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"; then
+            echo "Failed to download fallback CLI from '${CLI_FALLBACK_URI}'." >&2
+            exit 1
+        fi
+        chmod 0755 "${CLI_TMP}"
+        CLI_URI="${CLI_FALLBACK_URI}"
+    fi
+
+    if ! validate_cli_binary "${CLI_TMP}"; then
+        echo "Downloaded relaymd CLI from '${CLI_URI}' failed self-check ('--help' and 'submit --help')." >&2
+        echo "Remediation: publish/fetch a working release binary, or set RELAYMD_CLI_URI to a known-good local path/URI." >&2
+        exit 1
+    fi
+fi
+
 mv "${CLI_TMP}" "${CLI_BIN}"
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"

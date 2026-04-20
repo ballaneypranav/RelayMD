@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 a = Analysis(
     ['src/relaymd/cli/__main__.py'],
-    pathex=['src'],
+    pathex=['src', 'packages/relaymd-core/src'],
     binaries=[],
     datas=[],
     hiddenimports=['boto3', 'botocore'],
