@@ -30,6 +30,7 @@ install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-up" "${BIN_DIR}/relaymd
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-proxy" "${BIN_DIR}/relaymd-service-proxy"
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-status" "${BIN_DIR}/relaymd-service-status"
 install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd-service-supervise" "${BIN_DIR}/relaymd-service-supervise"
+install -m 0755 "${REPO_ROOT}/deploy/hpc/relaymd" "${BIN_DIR}/relaymd"
 install -m 0644 "${REPO_ROOT}/deploy/hpc/relaymd-service-lib.sh" "${BIN_DIR}/relaymd-service-lib.sh"
 
 if [[ ! -f "${CONFIG_DIR}/relaymd-config.yaml" ]]; then
@@ -47,6 +48,7 @@ sed \
 chmod 0644 "${MODULEFILE_PATH}"
 
 echo "Installed wrappers to: ${BIN_DIR}"
+echo "Installed CLI wrapper: ${BIN_DIR}/relaymd"
 echo "Modulefile: ${MODULEFILE_PATH}"
 echo "Config file: ${CONFIG_DIR}/relaymd-config.yaml"
 echo "Env file: ${CONFIG_DIR}/relaymd-service.env"

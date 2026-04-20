@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+CLI_BIN="${CURRENT_LINK}/relaymd"
+
+if [[ ! -x "${CLI_BIN}" ]]; then
+    echo "RelayMD CLI binary is not available at ${CLI_BIN}." >&2
+    echo "Run relaymd-service-pull to activate a release with CLI artifacts." >&2
+    exit 1
+fi
+
+exec "${CLI_BIN}" "$@"

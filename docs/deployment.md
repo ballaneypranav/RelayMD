@@ -58,6 +58,7 @@ Expected active SIFs:
 
 - `/depot/plow/apps/relaymd/current/relaymd-orchestrator.sif`
 - `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
+- `/depot/plow/apps/relaymd/current/relaymd`
 
 ## Operator Wrappers
 
@@ -76,7 +77,22 @@ module use /depot/plow/apps/modulefiles
 module load relaymd/current
 ```
 
-After loading the module, `relaymd-service-*` wrappers are on `PATH`.
+After loading the module, `relaymd-service-*` wrappers and `relaymd` are on
+`PATH` (via `/depot/plow/apps/relaymd/bin`).
+
+Validate CLI exposure:
+
+```bash
+which relaymd
+relaymd --help
+relaymd submit --help
+```
+
+Automated smoke check:
+
+```bash
+./deploy/hpc/relaymd-module-smoke-check
+```
 
 Pull and activate a release:
 
@@ -85,6 +101,9 @@ Pull and activate a release:
   docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
+
+This also downloads and activates a host-side `relaymd` CLI binary under
+`/depot/plow/apps/relaymd/current/relaymd`.
 
 Auto-resolve by tag:
 
@@ -145,4 +164,4 @@ logs to verify service health after reconnects or host events.
 
 1. pull/promote orchestrator + worker release with immutable SHA tags
 2. start/restart orchestrator service from the new `current` symlink
-3. update CLI binaries as needed
+3. promote release; this also updates the active `relaymd` CLI binary

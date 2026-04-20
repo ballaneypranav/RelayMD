@@ -26,6 +26,46 @@ require_cmd() {
     fi
 }
 
+download_file() {
+    local uri="$1"
+    local output_path="$2"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "${uri}" -o "${output_path}"
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO "${output_path}" "${uri}"
+        return $?
+    fi
+
+    echo "Missing downloader for '${uri}'." >&2
+    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path and copy manually." >&2
+    exit 1
+}
+
+resolve_cli_owner() {
+    if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
+        printf '%s' "${RELAYMD_GHCR_OWNER}"
+        return 0
+    fi
+
+    if [[ "${ORCHESTRATOR_IMAGE_URI:-}" =~ ^docker://ghcr\.io/([^/]+)/ ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
+    if command -v gh >/dev/null 2>&1; then
+        resolve_owner
+        return 0
+    fi
+
+    echo "Unable to resolve RelayMD CLI owner." >&2
+    echo "Remediation: set RELAYMD_CLI_URI or RELAYMD_GHCR_OWNER, or install/auth gh." >&2
+    exit 1
+}
+
 maybe_configure_apptainer_ghcr_auth() {
     local image_uri token gh_user
 
@@ -236,6 +276,20 @@ ORCH_TMP="${RELEASE_DIR}/relaymd-orchestrator.sif.tmp"
 WORKER_TMP="${RELEASE_DIR}/relaymd-worker.sif.tmp"
 ORCH_SIF="${RELEASE_DIR}/relaymd-orchestrator.sif"
 WORKER_SIF="${RELEASE_DIR}/relaymd-worker.sif"
+CLI_TMP="${RELEASE_DIR}/relaymd.tmp"
+CLI_BIN="${RELEASE_DIR}/relaymd"
+
+if [[ -n "${RELAYMD_CLI_URI:-}" ]]; then
+    CLI_URI="${RELAYMD_CLI_URI}"
+else
+    owner="$(resolve_cli_owner)"
+    if [[ "${RELEASE_VERSION}" == "latest" ]]; then
+        CLI_URI="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-linux-x86_64"
+    else
+        CLI_URI="https://github.com/${owner}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-linux-x86_64"
+        CLI_FALLBACK_URI="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-linux-x86_64"
+    fi
+fi
 
 echo "Pulling orchestrator image into ${ORCH_SIF}"
 apptainer pull "${ORCH_TMP}" "${ORCHESTRATOR_IMAGE_URI}"
@@ -245,11 +299,28 @@ echo "Pulling worker image into ${WORKER_SIF}"
 apptainer pull "${WORKER_TMP}" "${WORKER_IMAGE_URI}"
 mv "${WORKER_TMP}" "${WORKER_SIF}"
 
+echo "Downloading relaymd CLI into ${CLI_BIN}"
+if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
+    if [[ -n "${CLI_FALLBACK_URI:-}" ]]; then
+        echo "Failed to download CLI from release tag '${RELEASE_VERSION}'. Falling back to latest." >&2
+        download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"
+        CLI_URI="${CLI_FALLBACK_URI}"
+    else
+        echo "Failed to download relaymd CLI from '${CLI_URI}'." >&2
+        exit 1
+    fi
+fi
+chmod 0755 "${CLI_TMP}"
+mv "${CLI_TMP}" "${CLI_BIN}"
+
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
 echo "  orchestrator: ${ORCH_SIF}"
 echo "  worker:       ${WORKER_SIF}"
+echo "  cli:          ${CLI_BIN}"
 echo "  source images:"
 echo "    ${ORCHESTRATOR_IMAGE_URI}"
 echo "    ${WORKER_IMAGE_URI}"
+echo "  source cli:"
+echo "    ${CLI_URI}"

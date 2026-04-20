@@ -11,6 +11,7 @@ Default install layout:
 - Active symlink: `/depot/plow/apps/relaymd/current`
 - Orchestrator SIF: `/depot/plow/apps/relaymd/current/relaymd-orchestrator.sif`
 - Worker SIF: `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
+- CLI binary: `/depot/plow/apps/relaymd/current/relaymd`
 
 Default state/config layout:
 
@@ -29,6 +30,9 @@ Pull and activate using explicit image URIs (backward-compatible mode):
   docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
   docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
+
+Each pull also installs a host-side `relaymd` CLI into the active release
+directory and promotes it with the same `current` symlink.
 
 Auto-resolve URIs from a tag (no copy/paste):
 
@@ -153,18 +157,26 @@ module use /depot/plow/apps/modulefiles
 module load relaymd/current
 ```
 
-After module load, wrappers are on `PATH`:
+After module load, wrappers and the RelayMD CLI are on `PATH`:
 
 ```bash
+relaymd --help
 relaymd-service-pull ...
 relaymd-service-up
 relaymd-service-proxy
 relaymd-service-status
 ```
 
+Run smoke verification:
+
+```bash
+./deploy/hpc/relaymd-module-smoke-check
+```
+
 The installer seeds:
 
 - `/depot/plow/apps/relaymd/bin/relaymd-service-*`
+- `/depot/plow/apps/relaymd/bin/relaymd` (wrapper that dispatches to `current/relaymd`)
 - `/depot/plow/apps/modulefiles/relaymd/current.lua`
 - `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
 - `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
@@ -188,6 +200,7 @@ You can override defaults through environment variables:
 - `RELAYMD_PRIMARY_HOST`
 - `RELAYMD_STATUS_FILE`
 - `RELAYMD_GHCR_OWNER`
+- `RELAYMD_CLI_URI`
 - `RELAYMD_HEARTBEAT_INTERVAL_SECONDS`
 - `RELAYMD_HEARTBEAT_STALE_SECONDS`
 - `STARTUP_GRACE_SECONDS`
