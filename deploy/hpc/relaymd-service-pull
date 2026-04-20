@@ -12,8 +12,15 @@ Examples:
 
   relaymd-service-pull sha-abc1234
   relaymd-service-pull latest
+
+latest behavior:
+  1) Resolve pinned image+CLI set from release manifest (relaymd-release-manifest.json).
+  2) If manifest lookup fails, fall back to newest shared sha-* image tag.
 USAGE
 }
+
+AUTO_RESOLVED_CLI_URI=""
+ALLOW_CLI_FALLBACK=1
 
 stat_uid() {
     local path="$1"
@@ -253,6 +260,38 @@ resolve_latest_shared_sha_tag() {
     printf '%s' "${latest_shared}"
 }
 
+resolve_latest_release_manifest() {
+    local manifest_uri="$1"
+    local manifest_json release_version manifest_orch manifest_worker manifest_cli
+
+    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
+
+    manifest_json="$(mktemp "${TMPDIR:-/tmp}/relaymd-release-manifest.XXXXXX.json")"
+
+    if ! download_file "${manifest_uri}" "${manifest_json}"; then
+        rm -f "${manifest_json}" 2>/dev/null || true
+        return 1
+    fi
+
+    release_version="$(jq -r '.release_version // empty' "${manifest_json}")"
+    manifest_orch="$(jq -r '.orchestrator_image // empty' "${manifest_json}")"
+    manifest_worker="$(jq -r '.worker_image // empty' "${manifest_json}")"
+    manifest_cli="$(jq -r '.cli_uri // empty' "${manifest_json}")"
+    rm -f "${manifest_json}" 2>/dev/null || true
+
+    if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_cli}" ]]; then
+        echo "Release manifest '${manifest_uri}' is missing required fields." >&2
+        return 1
+    fi
+
+    RELEASE_VERSION="${release_version}"
+    ORCHESTRATOR_IMAGE_URI="${manifest_orch}"
+    WORKER_IMAGE_URI="${manifest_worker}"
+    AUTO_RESOLVED_CLI_URI="${manifest_cli}"
+    ALLOW_CLI_FALLBACK=0
+    return 0
+}
+
 if [[ $# -lt 1 || $# -gt 3 ]]; then
     usage >&2
     exit 1
@@ -288,15 +327,23 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
     owner="$(resolve_owner)"
 
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
-        release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
-        RELEASE_VERSION="${release_tag}"
+        manifest_uri="${RELAYMD_RELEASE_MANIFEST_URI:-https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json}"
+        if resolve_latest_release_manifest "${manifest_uri}"; then
+            echo "Resolved latest release from manifest '${manifest_uri}' (release '${RELEASE_VERSION}')."
+        else
+            echo "Failed to resolve latest via release manifest; falling back to newest shared sha-* image tag." >&2
+            release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
+            RELEASE_VERSION="${release_tag}"
+            ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
+            WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
+            echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
+        fi
     else
         release_tag="${RELEASE_VERSION}"
+        ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
+        WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
+        echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
     fi
-
-    ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
-    WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
-    echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
 fi
 
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" ]]; then
@@ -336,6 +383,8 @@ CLI_BIN="${RELEASE_DIR}/relaymd"
 
 if [[ -n "${RELAYMD_CLI_URI:-}" ]]; then
     CLI_URI="${RELAYMD_CLI_URI}"
+elif [[ -n "${AUTO_RESOLVED_CLI_URI}" ]]; then
+    CLI_URI="${AUTO_RESOLVED_CLI_URI}"
 else
     owner="$(resolve_cli_owner)"
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
@@ -356,7 +405,7 @@ mv "${WORKER_TMP}" "${WORKER_SIF}"
 
 echo "Downloading relaymd CLI into ${CLI_BIN}"
 if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
-    if [[ -n "${CLI_FALLBACK_URI:-}" ]]; then
+    if [[ "${ALLOW_CLI_FALLBACK}" == "1" && -n "${CLI_FALLBACK_URI:-}" ]]; then
         echo "Failed to download CLI from release tag '${RELEASE_VERSION}'. Falling back to latest." >&2
         download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"
         CLI_URI="${CLI_FALLBACK_URI}"
@@ -368,7 +417,7 @@ fi
 chmod 0755 "${CLI_TMP}"
 
 if ! validate_cli_binary "${CLI_TMP}"; then
-    if [[ -n "${CLI_FALLBACK_URI:-}" && "${CLI_URI}" != "${CLI_FALLBACK_URI}" ]]; then
+    if [[ "${ALLOW_CLI_FALLBACK}" == "1" && -n "${CLI_FALLBACK_URI:-}" && "${CLI_URI}" != "${CLI_FALLBACK_URI}" ]]; then
         echo "Downloaded CLI from '${CLI_URI}' failed self-check. Falling back to latest." >&2
         if ! download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"; then
             echo "Failed to download fallback CLI from '${CLI_FALLBACK_URI}'." >&2

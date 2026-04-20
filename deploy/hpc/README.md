@@ -40,29 +40,33 @@ Auto-resolve URIs from a tag (no copy/paste):
 ./deploy/hpc/relaymd-service-pull sha-<shortsha>
 ```
 
-Auto-resolve newest shared `sha-*` tag across both packages:
+Auto-resolve latest pinned release set:
 
 ```bash
 ./deploy/hpc/relaymd-service-pull latest
 ```
 
-`latest` resolution policy is fixed: newest shared `sha-*` present in both
-`relaymd-orchestrator` and `relaymd-worker` package tags.
+`latest` first resolves from release manifest
+`relaymd-release-manifest.json` (published to GitHub release tag `latest`),
+which pins orchestrator image, worker image, and CLI URI together.
+If manifest resolution fails, it falls back to newest shared `sha-*` present in
+both `relaymd-orchestrator` and `relaymd-worker` package tags.
 
 Dependencies for `latest` mode:
 
-- `gh` and `jq`
-- GitHub auth scope `read:packages`
+- `jq`
+- one downloader (`curl` or `wget`) for manifest download
+- `gh` and GitHub auth scope `read:packages` only for fallback path
 
 Owner resolution for auto mode:
 
 - `RELAYMD_GHCR_OWNER` if set
 - else `gh repo view --json owner -q .owner.login`
 
-`relaymd-service-pull` uses scratch-backed Apptainer temp/cache by default:
+`relaymd-service-pull` defaults Apptainer temp/cache under `/tmp`:
 
-- `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/tmp`
-- `${SCRATCH:-${RCAC_SCRATCH:-/scratch/gilbreth/$USER}}/relaymd-service/apptainer/cache`
+- `/tmp/relaymd-service-$UID/apptainer/tmp`
+- `/tmp/relaymd-service-$UID/apptainer/cache`
 
 Start orchestrator:
 
@@ -200,6 +204,7 @@ You can override defaults through environment variables:
 - `RELAYMD_PRIMARY_HOST`
 - `RELAYMD_STATUS_FILE`
 - `RELAYMD_GHCR_OWNER`
+- `RELAYMD_RELEASE_MANIFEST_URI`
 - `RELAYMD_CLI_URI`
 - `RELAYMD_HEARTBEAT_INTERVAL_SECONDS`
 - `RELAYMD_HEARTBEAT_STALE_SECONDS`

@@ -111,11 +111,16 @@ Auto-resolve by tag:
 ./deploy/hpc/relaymd-service-pull sha-<shortsha>
 ```
 
-Auto-resolve newest shared `sha-*` across orchestrator+worker:
+Auto-resolve latest pinned release set:
 
 ```bash
 ./deploy/hpc/relaymd-service-pull latest
 ```
+
+`latest` resolves from release manifest
+`relaymd-release-manifest.json` on GitHub release `latest`, so orchestrator,
+worker, and CLI are promoted as one pinned set. If manifest resolution fails,
+`relaymd-service-pull` falls back to newest shared `sha-*` image tag discovery.
 
 `relaymd-service-pull` defaults Apptainer build temp/cache to
 `/tmp/relaymd-service-$UID` (override with `RELAYMD_SCRATCH_ROOT`,
