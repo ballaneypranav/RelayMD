@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODULEFILES_ROOT="${MODULEFILES_ROOT:-/depot/plow/apps/modulefiles}"
+MODULE_NAME="${MODULE_NAME:-relaymd/current}"
+EXPECTED_CLI_PATH="${EXPECTED_CLI_PATH:-/depot/plow/apps/relaymd/bin/relaymd}"
+
+if ! command -v module >/dev/null 2>&1; then
+    if [[ -f /etc/profile.d/lmod.sh ]]; then
+        # shellcheck disable=SC1091
+        source /etc/profile.d/lmod.sh
+    fi
+fi
+
+if ! command -v module >/dev/null 2>&1; then
+    echo "module command is unavailable in this shell." >&2
+    exit 1
+fi
+
+module use "${MODULEFILES_ROOT}"
+module load "${MODULE_NAME}"
+
+resolved_cli="$(command -v relaymd || true)"
+if [[ -z "${resolved_cli}" ]]; then
+    echo "relaymd not found on PATH after module load '${MODULE_NAME}'." >&2
+    exit 1
+fi
+
+if [[ "${resolved_cli}" != "${EXPECTED_CLI_PATH}" ]]; then
+    echo "relaymd resolved to '${resolved_cli}', expected '${EXPECTED_CLI_PATH}'." >&2
+    exit 1
+fi
+
+relaymd --help >/dev/null
+relaymd submit --help >/dev/null
+
+echo "relaymd module smoke check passed."
+echo "  module: ${MODULE_NAME}"
+echo "  relaymd: ${resolved_cli}"
