@@ -352,3 +352,87 @@ jobs:
           prerelease: false
           make_latest: true
           files: dist/relaymd-linux-x86_64
+
+  publish-release-manifest:
+    needs: [changes, test, build-worker, build-orchestrator, build-cli]
+    permissions:
+      contents: write
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate release manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          SOURCE_SHA: ${{ github.sha }}
+          WORKER_CHANGED: ${{ needs.changes.outputs.worker_image }}
+          ORCH_CHANGED: ${{ needs.changes.outputs.orchestrator_image }}
+          CLI_CHANGED: ${{ needs.changes.outputs.cli }}
+        run: |
+          set -euo pipefail
+          short_sha="${SOURCE_SHA:0:7}"
+          prev_manifest="$(mktemp)"
+          release_json="$(mktemp)"
+          echo '{}' > "${prev_manifest}"
+
+          if gh api "/repos/${REPO}/releases/tags/latest" > "${release_json}" 2>/dev/null; then
+            manifest_asset_url="$(jq -r '.assets[]? | select(.name=="relaymd-release-manifest.json") | .url' "${release_json}")"
+            if [[ -n "${manifest_asset_url}" ]]; then
+              gh api -H "Accept: application/octet-stream" "${manifest_asset_url}" > "${prev_manifest}"
+            fi
+          fi
+
+          prev_release_version="$(jq -r '.release_version // empty' "${prev_manifest}")"
+          prev_worker_image="$(jq -r '.worker_image // empty' "${prev_manifest}")"
+          prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
+          prev_cli_uri="$(jq -r '.cli_uri // empty' "${prev_manifest}")"
+
+          if [[ "${WORKER_CHANGED}" == "true" ]]; then
+            worker_image="docker://ghcr.io/${OWNER}/relaymd-worker:sha-${short_sha}"
+          else
+            worker_image="${prev_worker_image:-docker://ghcr.io/${OWNER}/relaymd-worker:latest}"
+          fi
+
+          if [[ "${ORCH_CHANGED}" == "true" ]]; then
+            orchestrator_image="docker://ghcr.io/${OWNER}/relaymd-orchestrator:sha-${short_sha}"
+          else
+            orchestrator_image="${prev_orch_image:-docker://ghcr.io/${OWNER}/relaymd-orchestrator:latest}"
+          fi
+
+          if [[ "${CLI_CHANGED}" == "true" ]]; then
+            cli_uri="https://github.com/${OWNER}/relaymd/releases/latest/download/relaymd-linux-x86_64"
+          else
+            cli_uri="${prev_cli_uri:-https://github.com/${OWNER}/relaymd/releases/latest/download/relaymd-linux-x86_64}"
+          fi
+
+          if [[ "${WORKER_CHANGED}" == "true" || "${ORCH_CHANGED}" == "true" || "${CLI_CHANGED}" == "true" ]]; then
+            release_version="sha-${short_sha}"
+          else
+            release_version="${prev_release_version:-sha-${short_sha}}"
+          fi
+
+          jq -n \
+            --arg release_version "${release_version}" \
+            --arg orchestrator_image "${orchestrator_image}" \
+            --arg worker_image "${worker_image}" \
+            --arg cli_uri "${cli_uri}" \
+            --arg source_commit "${SOURCE_SHA}" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              release_version: $release_version,
+              orchestrator_image: $orchestrator_image,
+              worker_image: $worker_image,
+              cli_uri: $cli_uri,
+              source_commit: $source_commit,
+              generated_at: $generated_at
+            }' > relaymd-release-manifest.json
+
+      - name: Upload release manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest
+          prerelease: false
+          make_latest: true
+          files: relaymd-release-manifest.json
