@@ -340,9 +340,20 @@ jobs:
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
-      - run: uv run pyinstaller relaymd-cli.spec
+      - run: ./scripts/build_cli_binary.sh
+      - id: cli_sha
+        run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Rename binary
         run: mv dist/relaymd dist/relaymd-linux-x86_64
+      - name: Upload immutable CLI release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sha-${{ steps.cli_sha.outputs.short_sha }}
+          name: sha-${{ steps.cli_sha.outputs.short_sha }}
+          prerelease: false
+          make_latest: false
+          files: dist/relaymd-linux-x86_64
       - name: Upload to GitHub Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
@@ -401,7 +412,7 @@ jobs:
           fi
 
           if [[ "${CLI_CHANGED}" == "true" ]]; then
-            cli_uri="https://github.com/${OWNER}/relaymd/releases/latest/download/relaymd-linux-x86_64"
+            cli_uri="https://github.com/${OWNER}/relaymd/releases/download/sha-${short_sha}/relaymd-linux-x86_64"
           else
             cli_uri="${prev_cli_uri:-https://github.com/${OWNER}/relaymd/releases/latest/download/relaymd-linux-x86_64}"
           fi
