@@ -324,14 +324,22 @@ ORCHESTRATOR_IMAGE_URI="${2:-${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}}"
 WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
 
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
-    owner="$(resolve_owner)"
-
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
-        manifest_uri="${RELAYMD_RELEASE_MANIFEST_URI:-https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json}"
+        owner=""
+        if [[ -n "${RELAYMD_RELEASE_MANIFEST_URI:-}" ]]; then
+            manifest_uri="${RELAYMD_RELEASE_MANIFEST_URI}"
+        else
+            owner="$(resolve_owner)"
+            manifest_uri="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json"
+        fi
+
         if resolve_latest_release_manifest "${manifest_uri}"; then
             echo "Resolved latest release from manifest '${manifest_uri}' (release '${RELEASE_VERSION}')."
         else
             echo "Failed to resolve latest via release manifest; falling back to newest shared sha-* image tag." >&2
+            if [[ -z "${owner}" ]]; then
+                owner="$(resolve_owner)"
+            fi
             release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
             RELEASE_VERSION="${release_tag}"
             ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
@@ -339,6 +347,7 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
             echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
         fi
     else
+        owner="$(resolve_owner)"
         release_tag="${RELEASE_VERSION}"
         ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
         WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
