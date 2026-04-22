@@ -115,9 +115,10 @@ async def _query_live_slurm_job_statuses(
 
     command = [
         "ssh",
-        "-q",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "LogLevel=ERROR",
     ]
     if cluster.ssh_port != 22:
         command.extend(["-p", str(cluster.ssh_port)])

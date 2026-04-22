@@ -103,9 +103,10 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert job_id == "12345"
     assert command_args == [
         "ssh",
-        "-q",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "LogLevel=ERROR",
         "test-user@test-host",
         "sbatch",
         "--parsable",
@@ -752,9 +753,10 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
     assert remaining == []
     assert command_args == [
         "ssh",
-        "-q",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "LogLevel=ERROR",
         "test-user@test-host",
         "squeue",
         "--jobs",
@@ -821,9 +823,10 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
     assert kept.provider_last_checked_at is not None
     assert command_args == [
         "ssh",
-        "-q",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "LogLevel=ERROR",
         "test-user@test-host",
         "squeue",
         "--jobs",
