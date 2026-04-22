@@ -265,9 +265,10 @@ async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSetting
 
     command = [
         "ssh",
-        "-q",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "LogLevel=ERROR",
     ]
     if cluster.ssh_port != 22:
         command.extend(["-p", str(cluster.ssh_port)])
