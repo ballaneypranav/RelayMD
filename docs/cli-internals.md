@@ -2,11 +2,11 @@
 
 ## Framework
 
-`typer` combined with `rich` for terminal output. Grouped into subcommands (`submit`, `jobs`, `workers`, `orchestrator`). The `main` app disables local variables in exception traces for cleaner CLI output.
+`typer` combined with `rich` for terminal output. Grouped into service commands (`up`, `down`, `status`, `logs`, `upgrade`) and operator subcommands (`submit`, `job`, `worker`, `monitor`, `path`, `config`). The old plural `jobs`/`workers` and low-level `orchestrator` commands remain as hidden compatibility aliases.
 
 ## Shared Context
 
-A dependency injection workaround using `typer.Context.obj`. The root callback initializes a `CliContext` object (containing the `CliSettings`, `StorageClient`, and `httpx.Client`) which is passed down to all subcommands. This avoids instantiating a new B2 connection for every invoked command.
+A dependency injection workaround using `typer.Context.obj`. The root callback initializes a `CliContext` object (containing the `CliSettings`, `StorageClient`, and `httpx.Client`) which is passed down to API-facing subcommands. This avoids instantiating a new B2 connection for every invoked command.
 
 ## `relaymd submit` Workflow
 
@@ -28,4 +28,4 @@ The build script strips unnecessary dependencies (like `pydantic`'s compiled cor
 
 ## Token Hydration
 
-The `CliSettings` module reads `pydantic-settings` from `~/.config/relaymd/config.yaml` and environment variables. To avoid hardcoding B2 credentials in the YAML file on the login node, the CLI supports automatic secret hydration from Infisical. If `infisical_token` is provided, the CLI will transparently fetch missing `api_token` and B2 credentials via the Infisical API before executing any command.
+The `CliSettings` module reads `pydantic-settings` from `RELAYMD_CONFIG`, or from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml` in the module-managed HPC install, with `~/.config/relaymd/config.yaml` retained as a standalone fallback. To avoid hardcoding B2 credentials in the YAML file on the login node, the CLI supports automatic secret hydration from Infisical. If `infisical_token` is provided, the CLI will transparently fetch missing `api_token` and B2 credentials via the Infisical API before executing any command.

@@ -5,14 +5,17 @@ import sys
 
 import typer
 
+from relaymd.cli.commands import service as service_commands
+from relaymd.cli.commands.config import app as config_app
 from relaymd.cli.commands.jobs import app as jobs_app
 from relaymd.cli.commands.monitor import monitor
+from relaymd.cli.commands.path import app as path_app
 from relaymd.cli.commands.submit import submit
 from relaymd.cli.commands.workers import app as workers_app
 from relaymd.dashboard_proxy import DashboardProxySettings, create_dashboard_proxy_app
 
 app = typer.Typer(help="RelayMD operator CLI")
-orchestrator_app = typer.Typer(help="Orchestrator commands")
+orchestrator_app = typer.Typer(help="Orchestrator commands", hidden=True)
 
 
 @orchestrator_app.command()
@@ -107,8 +110,19 @@ def proxy(
 
 app.command()(submit)
 app.command()(monitor)
-app.add_typer(jobs_app, name="jobs")
-app.add_typer(workers_app, name="workers")
+app.command()(service_commands.up)
+app.command()(service_commands.down)
+app.command()(service_commands.restart)
+app.command()(service_commands.status)
+app.command()(service_commands.logs)
+app.command()(service_commands.attach)
+app.command()(service_commands.upgrade)
+app.add_typer(jobs_app, name="job")
+app.add_typer(jobs_app, name="jobs", hidden=True)
+app.add_typer(workers_app, name="worker")
+app.add_typer(workers_app, name="workers", hidden=True)
+app.add_typer(path_app, name="path")
+app.add_typer(config_app, name="config")
 app.add_typer(orchestrator_app, name="orchestrator")
 
 

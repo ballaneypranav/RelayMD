@@ -1,6 +1,6 @@
-# RelayMD HPC Service Wrappers
+# RelayMD HPC Service Deployment
 
-These scripts standardize a tmux-managed frontend deployment for RelayMD on HPC.
+The installed `relaymd` CLI standardizes a tmux-managed frontend deployment for RelayMD on HPC.
 This deployment model remains intentionally login-node based (not Slurm service mode).
 
 ## Paths and Layout
@@ -26,9 +26,9 @@ Default state/config layout:
 Pull and activate using explicit image URIs (backward-compatible mode):
 
 ```bash
-./deploy/hpc/relaymd-service-pull <release-version> \
-  docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
+relaymd upgrade <release-version> \
+  --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
+  --worker-image docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
 Each pull also installs a host-side `relaymd` CLI into the active release
@@ -37,13 +37,13 @@ directory and promotes it with the same `current` symlink.
 Auto-resolve URIs from a tag (no copy/paste):
 
 ```bash
-./deploy/hpc/relaymd-service-pull sha-<shortsha>
+relaymd upgrade sha-<shortsha>
 ```
 
 Auto-resolve latest pinned release set:
 
 ```bash
-./deploy/hpc/relaymd-service-pull latest
+relaymd upgrade latest
 ```
 
 `latest` first resolves from release manifest
@@ -63,34 +63,37 @@ Owner resolution for auto mode:
 - `RELAYMD_GHCR_OWNER` if set
 - else `gh repo view --json owner -q .owner.login`
 
-`relaymd-service-pull` defaults Apptainer temp/cache under `/tmp`:
+`relaymd upgrade` defaults Apptainer temp/cache under `/tmp`:
 
 - `/tmp/relaymd-service-$UID/apptainer/tmp`
 - `/tmp/relaymd-service-$UID/apptainer/cache`
 
-Start orchestrator:
+Start orchestrator and proxy:
 
 ```bash
-./deploy/hpc/relaymd-service-up
-```
-
-Start proxy:
-
-```bash
-./deploy/hpc/relaymd-service-proxy
+relaymd up
 ```
 
 Check live health:
 
 ```bash
-./deploy/hpc/relaymd-service-status
+relaymd status
+relaymd status --verbose
 ```
 
 Force takeover (only after confirming the other host is inactive):
 
 ```bash
-./deploy/hpc/relaymd-service-up --force
-./deploy/hpc/relaymd-service-proxy --force
+relaymd up --force
+```
+
+Stop, restart, tail logs, or attach:
+
+```bash
+relaymd down
+relaymd restart
+relaymd logs --follow
+relaymd attach --service orchestrator
 ```
 
 ## Runtime Reliability Behavior
@@ -114,7 +117,7 @@ Status metadata fields include:
 - `ORCHESTRATOR_LAST_START_AT`, `ORCHESTRATOR_LAST_EXIT_AT`, `ORCHESTRATOR_LAST_EXIT_CODE`
 - `PROXY_LAST_START_AT`, `PROXY_LAST_EXIT_AT`, `PROXY_LAST_EXIT_CODE`
 
-`relaymd-service-status` reports file metadata plus local tmux/port checks and
+`relaymd status` reports file metadata plus local tmux/port checks and
 returns exit code `0` only when orchestrator and proxy are both healthy on the
 expected host.
 
@@ -137,18 +140,17 @@ so operators can see when the remote lock looks stale before a manual takeover.
 Use these checks during incident response:
 
 ```bash
-relaymd-service-status
+relaymd status
 
 # local checks
 TMUX='' tmux ls
 ss -ltn | egrep ':(36158|36159)\b'
 
-tail -n 80 /depot/plow/data/pballane/relaymd-service/logs/service/orchestrator-wrapper.log
-tail -n 80 /depot/plow/data/pballane/relaymd-service/logs/service/proxy-wrapper.log
+relaymd logs -n 80
 ```
 
 Important: login-node services are non-durable and may be culled or restarted by
-cluster operations. Use `relaymd-service-status` and wrapper logs to detect
+cluster operations. Use `relaymd status` and wrapper logs to detect
 service drift quickly after reconnect/reboot windows.
 
 ## One-Time Setup
@@ -161,14 +163,14 @@ module use /depot/plow/apps/modulefiles
 module load relaymd/current
 ```
 
-After module load, wrappers and the RelayMD CLI are on `PATH`:
+After module load, the RelayMD CLI is on `PATH`:
 
 ```bash
 relaymd --help
-relaymd-service-pull ...
-relaymd-service-up
-relaymd-service-proxy
-relaymd-service-status
+relaymd config show-paths
+relaymd upgrade ...
+relaymd up
+relaymd status
 ```
 
 Run smoke verification:

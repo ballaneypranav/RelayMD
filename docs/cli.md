@@ -6,10 +6,28 @@
 curl -L https://github.com/<org>/relaymd/releases/latest/download/relaymd-linux-x86_64 -o ~/bin/relaymd && chmod +x ~/bin/relaymd
 ```
 
-## Config 
+## Config
 
-The CLI reads the same YAML config chain as the orchestrator (highest precedence first):
+On the HPC install, `module load relaymd/current` sets `RELAYMD_DATA_ROOT`; RelayMD then
+derives the rest of the install paths from that directory:
+
+- YAML config: `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
+- Private service env: `$RELAYMD_DATA_ROOT/config/relaymd-service.env`
+- Status file: `$RELAYMD_DATA_ROOT/state/relaymd-service.status`
+- Service logs: `$RELAYMD_DATA_ROOT/logs/service/`
+
+Inspect the active paths with:
+
+```bash
+relaymd config show-paths
+relaymd path data
+relaymd path config
+```
+
+For standalone/local use, the CLI reads the same YAML config chain as the
+orchestrator (highest precedence first):
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
+- `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
 - `./relaymd-config.yaml` (project-local override, gitignored)
 - `~/.config/relaymd/config.yaml` (user-global default)
 
@@ -37,6 +55,19 @@ Environment overrides (take precedence over YAML):
 
 ## Commands
 
+Service lifecycle:
+
+```bash
+relaymd upgrade latest
+relaymd up
+relaymd status
+relaymd status --verbose
+relaymd logs --follow
+relaymd attach --service orchestrator
+relaymd restart
+relaymd down
+```
+
 Submit job:
 
 ```bash
@@ -52,12 +83,12 @@ relaymd submit ./my-input --title "my job" --command "python run.py" --checkpoin
 Jobs:
 
 ```bash
-relaymd jobs list
-relaymd jobs list --pretty
-relaymd jobs status <job-id>
-relaymd jobs cancel <job-id>
-relaymd jobs cancel <job-id> --force
-relaymd jobs requeue <job-id>
+relaymd job list
+relaymd job list --pretty
+relaymd job show <job-id>
+relaymd job cancel <job-id>
+relaymd job cancel <job-id> --force
+relaymd job requeue <job-id>
 ```
 
 Strict transition rules apply:
@@ -74,22 +105,17 @@ relaymd monitor --interval-seconds 5.0
 Workers:
 
 ```bash
-relaymd workers list
+relaymd worker list
 ```
 
-## Orchestrator
+## Low-level Entrypoints
 
-Start orchestrator (defaults: `127.0.0.1:36158`):
+The service commands above are the public operator path. Container/runtime
+entrypoints remain available for packaging and debugging:
 
-```bash
-relaymd orchestrator up
-```
-
-Override bind host and port:
-
-```bash
-relaymd orchestrator up --host 127.0.0.1 --port 9000
-```
+- `relaymd-orchestrator`
+- `relaymd-dashboard-proxy`
+- `relaymd-worker`
 
 ## relaymd-worker.json
 

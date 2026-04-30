@@ -118,6 +118,28 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     assert settings.api_token == "explicit-token"
 
 
+def test_data_root_sets_default_config_path(monkeypatch, tmp_path) -> None:
+    data_root = tmp_path / "relaymd-service"
+    config_dir = data_root / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "relaymd-config.yaml").write_text(
+        "api_token: data-root-token\n",
+        encoding="utf-8",
+    )
+
+    cwd_dir = tmp_path / "project"
+    cwd_dir.mkdir()
+    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+
+    monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.chdir(cwd_dir)
+
+    settings = CliSettings()
+
+    assert settings.api_token == "data-root-token"
+
+
 def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> None:
     monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")

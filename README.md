@@ -29,7 +29,8 @@ make docker-push-orchestrator ORG=<org>
 ```
 
 Worker entrypoint: `python -m relaymd.worker`.
-Orchestrator entrypoint: `relaymd orchestrator up`.
+Orchestrator container entrypoint: `relaymd-orchestrator`.
+Installed service startup: `relaymd up`.
 Runtime requirement: set `INFISICAL_TOKEN=<client_id>:<client_secret>` for both
 worker bootstrap and orchestrator startup.
 

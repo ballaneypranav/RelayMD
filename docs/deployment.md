@@ -21,6 +21,7 @@ storage.
 
 Recommended defaults:
 
+- Data root: `/depot/plow/data/pballane/relaymd-service`
 - Config: `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
 - Service env file: `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
 - DB: `/depot/plow/data/pballane/relaymd-service/db/relaymd.db`
@@ -30,8 +31,13 @@ Recommended defaults:
 Config lookup order (highest precedence first):
 
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
+- `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
 - `./relaymd-config.yaml` (project-local override, gitignored)
 - `~/.config/relaymd/config.yaml` (user-global default)
+
+The modulefile sets `RELAYMD_SERVICE_ROOT` and `RELAYMD_DATA_ROOT`; RelayMD derives
+the config, env, status, and service-log paths from those roots. Inspect the
+active install with `relaymd config show-paths`.
 
 Worker checkpoint polling default:
 
@@ -60,14 +66,15 @@ Expected active SIFs:
 - `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
 - `/depot/plow/apps/relaymd/current/relaymd`
 
-## Operator Wrappers
+## Operator CLI
 
-Use the HPC wrappers in `deploy/hpc/`:
+Use the public `relaymd` CLI for service operations:
 
-- `relaymd-service-pull`
-- `relaymd-service-up`
-- `relaymd-service-proxy`
-- `relaymd-service-status`
+- `relaymd upgrade`
+- `relaymd up`
+- `relaymd status`
+- `relaymd logs`
+- `relaymd down`
 
 Install wrappers/modulefile once:
 
@@ -77,8 +84,8 @@ module use /depot/plow/apps/modulefiles
 module load relaymd/current
 ```
 
-After loading the module, `relaymd-service-*` wrappers and `relaymd` are on
-`PATH` (via `/depot/plow/apps/relaymd/bin`).
+After loading the module, `relaymd` is on `PATH` via
+`/depot/plow/apps/relaymd/bin`.
 
 Validate CLI exposure:
 
@@ -97,9 +104,9 @@ Automated smoke check:
 Pull and activate a release:
 
 ```bash
-./deploy/hpc/relaymd-service-pull <release-version> \
-  docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
+relaymd upgrade <release-version> \
+  --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
+  --worker-image docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
 This also downloads and activates a host-side `relaymd` CLI binary under
@@ -108,46 +115,40 @@ This also downloads and activates a host-side `relaymd` CLI binary under
 Auto-resolve by tag:
 
 ```bash
-./deploy/hpc/relaymd-service-pull sha-<shortsha>
+relaymd upgrade sha-<shortsha>
 ```
 
 Auto-resolve latest pinned release set:
 
 ```bash
-./deploy/hpc/relaymd-service-pull latest
+relaymd upgrade latest
 ```
 
 `latest` resolves from release manifest
 `relaymd-release-manifest.json` on GitHub release `latest`, so orchestrator,
 worker, and CLI are promoted as one pinned set. If manifest resolution fails,
-`relaymd-service-pull` falls back to newest shared `sha-*` image tag discovery.
+`relaymd upgrade` falls back to newest shared `sha-*` image tag discovery.
 
-`relaymd-service-pull` defaults Apptainer build temp/cache to
+`relaymd upgrade` defaults Apptainer build temp/cache to
 `/tmp/relaymd-service-$UID` (override with `RELAYMD_SCRATCH_ROOT`,
 `APPTAINER_TMPDIR`, or `APPTAINER_CACHEDIR`).
 
 Start service in tmux from the active release:
 
 ```bash
-./deploy/hpc/relaymd-service-up
-```
-
-Start the dashboard proxy in tmux:
-
-```bash
-./deploy/hpc/relaymd-service-proxy
+relaymd up
 ```
 
 Check live status (heartbeat freshness + tmux + ports):
 
 ```bash
-./deploy/hpc/relaymd-service-status
+relaymd status
 ```
 
-`relaymd-service-up` runs `relaymd orchestrator up` inside the orchestrator SIF
-and injects runtime env vars from `relaymd-service.env`/shell env into the
-container using `APPTAINERENV_*` so config and secrets remain external/private.
-Wrappers now persist service logs under
+`relaymd up` starts the orchestrator and dashboard proxy through the installed
+service wrappers. Runtime env vars from `relaymd-service.env`/shell env are
+injected into the container using `APPTAINERENV_*` so config and secrets remain
+external/private. Wrappers persist service logs under
 `/depot/plow/data/pballane/relaymd-service/logs/service/` and record
 start/exit metadata plus heartbeat updates in the shared status file.
 
@@ -155,19 +156,18 @@ start/exit metadata plus heartbeat updates in the shared status file.
 
 Use loopback binding and forward only proxy port `36159` to your laptop.
 
-1. start orchestrator with `relaymd-service-up`
-2. start proxy with `relaymd-service-proxy`
-3. forward `36159` in VS Code/SSH tunnel
+1. start services with `relaymd up`
+2. forward `36159` in VS Code/SSH tunnel
 
 The proxy injects `RELAYMD_API_TOKEN` upstream, so browsers never need direct
 API token handling.
 
 Note: login-node tmux services are non-durable and can be culled/restarted by
-cluster maintenance. Operationally, use `relaymd-service-status` and wrapper
+cluster maintenance. Operationally, use `relaymd status` and wrapper
 logs to verify service health after reconnects or host events.
 
 ## Rollout Order
 
 1. pull/promote orchestrator + worker release with immutable SHA tags
-2. start/restart orchestrator service from the new `current` symlink
+2. start/restart service from the new `current` symlink
 3. promote release; this also updates the active `relaymd` CLI binary

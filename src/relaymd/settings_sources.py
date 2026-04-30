@@ -8,15 +8,19 @@ from pydantic_settings import BaseSettings, EnvSettingsSource, YamlConfigSetting
 from pydantic_settings.sources import DefaultSettingsSource, PydanticBaseSettingsSource
 
 DEFAULT_RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
+DEFAULT_RELAYMD_DATA_ROOT_ENV_VAR = "RELAYMD_DATA_ROOT"
 
 
 def relaymd_config_paths(
     *,
     default_home_config_path: str,
     config_env_var: str = DEFAULT_RELAYMD_CONFIG_ENV_VAR,
+    data_root_env_var: str = DEFAULT_RELAYMD_DATA_ROOT_ENV_VAR,
 ) -> list[Path]:
     if explicit := os.getenv(config_env_var):
         return [Path(explicit).expanduser()]
+    if data_root := os.getenv(data_root_env_var):
+        return [Path(data_root).expanduser() / "config" / "relaymd-config.yaml"]
     return [
         Path(default_home_config_path).expanduser(),
         Path.cwd() / "relaymd-config.yaml",
