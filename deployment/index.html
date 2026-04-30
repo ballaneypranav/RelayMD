@@ -948,10 +948,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operator-wrappers" class="md-nav__link">
+  <a href="#operator-cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Operator Wrappers
+        Operator CLI
       
     </span>
   </a>
@@ -1164,10 +1164,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operator-wrappers" class="md-nav__link">
+  <a href="#operator-cli" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Operator Wrappers
+        Operator CLI
       
     </span>
   </a>
@@ -1232,18 +1232,23 @@ as Apptainer SIFs on the login node:</p>
 storage.</p>
 <p>Recommended defaults:</p>
 <ul>
+<li>Data root: <code>/depot/plow/data/pballane/relaymd-service</code></li>
 <li>Config: <code>/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml</code></li>
 <li>Service env file: <code>/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env</code></li>
 <li>DB: <code>/depot/plow/data/pballane/relaymd-service/db/relaymd.db</code></li>
 <li>Orchestrator logs: <code>/depot/plow/data/pballane/relaymd-service/logs/orchestrator</code></li>
 <li>SLURM worker logs: <code>/depot/plow/data/pballane/relaymd-service/logs/slurm/&lt;cluster&gt;</code></li>
 </ul>
-<p>Config lookup order (highest precedence first):</p>
+<p>Config path selection:</p>
 <ul>
 <li><code>RELAYMD_CONFIG=/absolute/path/to/config.yaml</code></li>
-<li><code>./relaymd-config.yaml</code> (project-local override, gitignored)</li>
-<li><code>~/.config/relaymd/config.yaml</code> (user-global default)</li>
+<li>if <code>RELAYMD_DATA_ROOT</code> is set: <code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code></li>
+<li>otherwise, standalone fallback paths: <code>~/.config/relaymd/config.yaml</code>, then
+  <code>./relaymd-config.yaml</code></li>
 </ul>
+<p>The modulefile sets <code>RELAYMD_SERVICE_ROOT</code> and <code>RELAYMD_DATA_ROOT</code>; RelayMD derives
+the config, env, status, and service-log paths from those roots. Inspect the
+active install with <code>relaymd config show-paths</code>.</p>
 <p>Worker checkpoint polling default:</p>
 <ul>
 <li><code>worker_checkpoint_poll_interval_seconds: 300</code> (default)</li>
@@ -1270,21 +1275,22 @@ symlink:</p>
 <li><code>/depot/plow/apps/relaymd/current/relaymd-worker.sif</code></li>
 <li><code>/depot/plow/apps/relaymd/current/relaymd</code></li>
 </ul>
-<h2 id="operator-wrappers">Operator Wrappers</h2>
-<p>Use the HPC wrappers in <code>deploy/hpc/</code>:</p>
+<h2 id="operator-cli">Operator CLI</h2>
+<p>Use the public <code>relaymd</code> CLI for service operations:</p>
 <ul>
-<li><code>relaymd-service-pull</code></li>
-<li><code>relaymd-service-up</code></li>
-<li><code>relaymd-service-proxy</code></li>
-<li><code>relaymd-service-status</code></li>
+<li><code>relaymd upgrade</code></li>
+<li><code>relaymd up</code></li>
+<li><code>relaymd status</code></li>
+<li><code>relaymd logs</code></li>
+<li><code>relaymd down</code></li>
 </ul>
 <p>Install wrappers/modulefile once:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/install-service-layout.sh
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>module<span class="w"> </span>use<span class="w"> </span>/depot/plow/apps/modulefiles
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>module<span class="w"> </span>load<span class="w"> </span>relaymd/current
 </span></code></pre></div>
-<p>After loading the module, <code>relaymd-service-*</code> wrappers and <code>relaymd</code> are on
-<code>PATH</code> (via <code>/depot/plow/apps/relaymd/bin</code>).</p>
+<p>After loading the module, <code>relaymd</code> is on <code>PATH</code> via
+<code>/depot/plow/apps/relaymd/bin</code>.</p>
 <p>Validate CLI exposure:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>which<span class="w"> </span>relaymd
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>relaymd<span class="w"> </span>--help
@@ -1294,56 +1300,52 @@ symlink:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./deploy/hpc/relaymd-module-smoke-check
 </span></code></pre></div>
 <p>Pull and activate a release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>--orchestrator-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>--worker-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
 </span></code></pre></div>
 <p>This also downloads and activates a host-side <code>relaymd</code> CLI binary under
 <code>/depot/plow/apps/relaymd/current/relaymd</code>.</p>
 <p>Auto-resolve by tag:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>sha-&lt;shortsha&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
 </span></code></pre></div>
 <p>Auto-resolve latest pinned release set:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>./deploy/hpc/relaymd-service-pull<span class="w"> </span>latest
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>latest
 </span></code></pre></div>
 <p><code>latest</code> resolves from release manifest
 <code>relaymd-release-manifest.json</code> on GitHub release <code>latest</code>, so orchestrator,
 worker, and CLI are promoted as one pinned set. If manifest resolution fails,
-<code>relaymd-service-pull</code> falls back to newest shared <code>sha-*</code> image tag discovery.</p>
-<p><code>relaymd-service-pull</code> defaults Apptainer build temp/cache to
+<code>relaymd upgrade</code> falls back to newest shared <code>sha-*</code> image tag discovery.</p>
+<p><code>relaymd upgrade</code> defaults Apptainer build temp/cache to
 <code>/tmp/relaymd-service-$UID</code> (override with <code>RELAYMD_SCRATCH_ROOT</code>,
 <code>APPTAINER_TMPDIR</code>, or <code>APPTAINER_CACHEDIR</code>).</p>
 <p>Start service in tmux from the active release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>./deploy/hpc/relaymd-service-up
-</span></code></pre></div>
-<p>Start the dashboard proxy in tmux:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>./deploy/hpc/relaymd-service-proxy
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>relaymd<span class="w"> </span>up
 </span></code></pre></div>
 <p>Check live status (heartbeat freshness + tmux + ports):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>./deploy/hpc/relaymd-service-status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>relaymd<span class="w"> </span>status
 </span></code></pre></div>
-<p><code>relaymd-service-up</code> runs <code>relaymd orchestrator up</code> inside the orchestrator SIF
-and injects runtime env vars from <code>relaymd-service.env</code>/shell env into the
-container using <code>APPTAINERENV_*</code> so config and secrets remain external/private.
-Wrappers now persist service logs under
+<p><code>relaymd up</code> starts the orchestrator and dashboard proxy through the installed
+service wrappers. Runtime env vars from <code>relaymd-service.env</code>/shell env are
+injected into the container using <code>APPTAINERENV_*</code> so config and secrets remain
+external/private. Wrappers persist service logs under
 <code>/depot/plow/data/pballane/relaymd-service/logs/service/</code> and record
 start/exit metadata plus heartbeat updates in the shared status file.</p>
 <h2 id="dashboard-access">Dashboard Access</h2>
 <p>Use loopback binding and forward only proxy port <code>36159</code> to your laptop.</p>
 <ol>
-<li>start orchestrator with <code>relaymd-service-up</code></li>
-<li>start proxy with <code>relaymd-service-proxy</code></li>
+<li>start services with <code>relaymd up</code></li>
 <li>forward <code>36159</code> in VS Code/SSH tunnel</li>
 </ol>
 <p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so browsers never need direct
 API token handling.</p>
 <p>Note: login-node tmux services are non-durable and can be culled/restarted by
-cluster maintenance. Operationally, use <code>relaymd-service-status</code> and wrapper
+cluster maintenance. Operationally, use <code>relaymd status</code> and wrapper
 logs to verify service health after reconnects or host events.</p>
 <h2 id="rollout-order">Rollout Order</h2>
 <ol>
 <li>pull/promote orchestrator + worker release with immutable SHA tags</li>
-<li>start/restart orchestrator service from the new <code>current</code> symlink</li>
+<li>start/restart service from the new <code>current</code> symlink</li>
 <li>promote release; this also updates the active <code>relaymd</code> CLI binary</li>
 </ol>
 

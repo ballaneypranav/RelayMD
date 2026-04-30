@@ -1374,7 +1374,7 @@
 </span></code></pre></div>
 <h3 id="operator-cli">Operator CLI</h3>
 <p>The <code>relaymd</code> CLI is a self-contained binary installed on the login node (or any machine from which the operator wants to submit jobs). It handles the full job submission workflow in a single command: packing the input directory into a tarball, uploading it to B2, and registering the job with the orchestrator. It also provides commands to list jobs, inspect status, cancel, and re-queue.</p>
-<p>The binary is compiled with PyInstaller and distributed via GitHub Releases. It reads its configuration from the same YAML file as the orchestrator (<code>~/.config/relaymd/config.yaml</code>). No Python environment is required to run it — it is a single static ELF binary.</p>
+<p>The binary is packaged with PyInstaller and distributed via GitHub Releases. In the HPC install it reads configuration from <code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code>, which is the same YAML file the orchestrator uses. No Python environment is required to run it — it is a standalone executable.</p>
 <p>The CLI is not present inside the worker container. It is strictly an operator tool for the login node.</p>
 <h3 id="orchestrator">Orchestrator</h3>
 <p>The orchestrator is the only stateful component. It runs as a FastAPI application on a persistent machine — in practice, a cluster login node — backed by a SQLite database. Its responsibilities are:</p>
@@ -1477,7 +1477,7 @@
 </table>
 <hr />
 <h2 id="operational-notes">Operational Notes</h2>
-<p><strong>The orchestrator must run on a persistent machine.</strong> A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use the wrappers in <code>deploy/hpc/</code> (<code>relaymd-service-up</code>, <code>relaymd-service-proxy</code>) with the active orchestrator SIF under <code>/depot/plow/apps/relaymd/current/</code>.</p>
+<p><strong>The orchestrator must run on a persistent machine.</strong> A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use <code>relaymd up</code> with the active orchestrator SIF under <code>/depot/plow/apps/relaymd/current/</code>.</p>
 <p><strong>Workers are cattle, not pets.</strong> Never attempt to rescue a worker that has gone silent. The orchestrator will re-queue its job automatically when the heartbeat times out. Just let it time out.</p>
 <p><strong>Typed transition conflicts are expected under races.</strong> Late worker callbacks (<code>checkpoint</code>, <code>complete</code>, <code>fail</code>) can receive a typed <code>409 job_transition_conflict</code>; this is expected safety behavior, not an incident.</p>
 <p><strong>Input bundles are immutable.</strong> Once uploaded and registered, the files in <code>jobs/{job_id}/input/</code> should never be modified. If the input needs to change, create a new job.</p>
