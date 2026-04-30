@@ -21,8 +21,8 @@ jobs:
       orchestrator_image: ${{ steps.filter.outputs.orchestrator_image }}
       cli: ${{ steps.filter.outputs.cli }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -58,6 +58,7 @@ jobs:
               - 'scripts/sync_workspace.sh'
               - '.github/workflows/ci.yml'
             cli:
+              - 'src/relaymd/**'
               - 'packages/relaymd-core/**'
               - 'packages/relaymd-api-client/**'
               - 'relaymd-cli.spec'
@@ -74,15 +75,15 @@ jobs:
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
       - run: uv run pytest
       - name: Upload coverage report
         if: '!cancelled()'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report
           path: coverage.xml
@@ -100,20 +101,20 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.worker_base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/relaymd-worker-base
           tags: |
             type=raw,value=latest
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -132,20 +133,20 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.orchestrator_base_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - uses: actions/checkout@v6
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base
           tags: |
             type=raw,value=latest
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v5
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         id: build
         with:
           context: .
@@ -164,24 +165,24 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-worker-base.result == 'success' || needs.build-worker-base.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/relaymd-worker
           tags: |
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build worker base locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
         run: docker build -f Dockerfile.worker-base -t relaymd-worker-base:ci .
@@ -192,7 +193,7 @@ jobs:
             --build-arg BASE_IMAGE=relaymd-worker-base:ci \
             -t relaymd-worker:ci \
             .
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: build
         if: ${{ github.event_name != 'pull_request' }}
         with:
@@ -225,24 +226,24 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-orchestrator-base.result == 'success' || needs.build-orchestrator-base.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator
           tags: |
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
       - name: Build orchestrator base locally (PR)
         if: ${{ github.event_name == 'pull_request' }}
         run: docker build -f Dockerfile.orchestrator-base -t relaymd-orchestrator-base:ci .
@@ -254,7 +255,7 @@ jobs:
             --build-arg BASE_IMAGE=relaymd-orchestrator-base:ci \
             -t relaymd-orchestrator:ci \
             .
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         if: ${{ github.event_name != 'pull_request' }}
         with:
           context: .
@@ -298,7 +299,7 @@ jobs:
 
           asyncio.run(main())
           PY
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: build
         if: ${{ github.event_name != 'pull_request' }}
         with:
@@ -335,8 +336,8 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.cli == 'true' && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.11"
       - run: ./scripts/sync_workspace.sh
@@ -347,7 +348,7 @@ jobs:
         run: mv dist/relaymd dist/relaymd-linux-x86_64
       - name: Upload immutable CLI release
         if: github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: sha-${{ steps.cli_sha.outputs.short_sha }}
           name: sha-${{ steps.cli_sha.outputs.short_sha }}
@@ -356,7 +357,7 @@ jobs:
           files: dist/relaymd-linux-x86_64
       - name: Upload to GitHub Release
         if: github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: Latest
@@ -440,7 +441,7 @@ jobs:
             }' > relaymd-release-manifest.json
 
       - name: Upload release manifest
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: latest
           name: Latest
