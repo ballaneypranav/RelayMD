@@ -54,7 +54,7 @@ Operator (you, on login node)
 
 The `relaymd` CLI is a self-contained binary installed on the login node (or any machine from which the operator wants to submit jobs). It handles the full job submission workflow in a single command: packing the input directory into a tarball, uploading it to B2, and registering the job with the orchestrator. It also provides commands to list jobs, inspect status, cancel, and re-queue.
 
-The binary is compiled with PyInstaller and distributed via GitHub Releases. It reads its configuration from the same YAML file as the orchestrator (`~/.config/relaymd/config.yaml`). No Python environment is required to run it — it is a single static ELF binary.
+The binary is packaged with PyInstaller and distributed via GitHub Releases. In the HPC install it reads configuration from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`, which is the same YAML file the orchestrator uses. No Python environment is required to run it — it is a standalone executable.
 
 The CLI is not present inside the worker container. It is strictly an operator tool for the login node.
 
@@ -140,7 +140,7 @@ The orchestrator API is not reachable from the public internet. A node must be o
 
 ## Operational Notes
 
-**The orchestrator must run on a persistent machine.** A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use the wrappers in `deploy/hpc/` (`relaymd-service-up`, `relaymd-service-proxy`) with the active orchestrator SIF under `/depot/plow/apps/relaymd/current/`.
+**The orchestrator must run on a persistent machine.** A cluster login node with a tmux session works. It is not compute-intensive — it is just a database and an HTTP process. On HPC, use `relaymd up` with the active orchestrator SIF under `/depot/plow/apps/relaymd/current/`.
 
 **Workers are cattle, not pets.** Never attempt to rescue a worker that has gone silent. The orchestrator will re-queue its job automatically when the heartbeat times out. Just let it time out.
 

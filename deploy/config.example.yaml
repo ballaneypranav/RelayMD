@@ -1,4 +1,5 @@
 # Copy this file to either:
+# - $RELAYMD_DATA_ROOT/config/relaymd-config.yaml (HPC module-managed install)
 # - ~/.config/relaymd/config.yaml (user-global default)
 # - ./relaymd-config.yaml (project-local override, gitignored)
 

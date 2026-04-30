@@ -106,7 +106,7 @@ def list_jobs(
             typer.echo(line)
 
 
-@app.command("status")
+@app.command("show")
 def job_status(job_id: str) -> None:
     try:
         job = JobsService(create_cli_context()).get_job(job_id=UUID(job_id))
@@ -115,6 +115,9 @@ def job_status(job_id: str) -> None:
         raise typer.Exit(code=1) from exc
 
     console.print(_render_job_status_panel(job_id, job.to_dict()))
+
+
+app.command("status", hidden=True)(job_status)
 
 
 @app.command("cancel")
