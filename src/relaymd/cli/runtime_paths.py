@@ -54,12 +54,13 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def _merged_env() -> dict[str, str]:
-    env = dict(os.environ)
-    data_root = Path(env.get("RELAYMD_DATA_ROOT", DEFAULT_DATA_ROOT)).expanduser()
+    process_env = dict(os.environ)
+    data_root = Path(process_env.get("RELAYMD_DATA_ROOT", DEFAULT_DATA_ROOT)).expanduser()
     env_file = Path(
-        env.get("RELAYMD_ENV_FILE", str(data_root / "config" / "relaymd-service.env"))
+        process_env.get("RELAYMD_ENV_FILE", str(data_root / "config" / "relaymd-service.env"))
     ).expanduser()
-    env.update(_parse_env_file(env_file))
+    env = _parse_env_file(env_file)
+    env.update(process_env)
     return env
 
 

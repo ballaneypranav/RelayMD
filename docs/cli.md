@@ -24,12 +24,12 @@ relaymd path data
 relaymd path config
 ```
 
-For standalone/local use, the CLI reads the same YAML config chain as the
-orchestrator (highest precedence first):
+Config path selection is:
+
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
-- `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
-- `./relaymd-config.yaml` (project-local override, gitignored)
-- `~/.config/relaymd/config.yaml` (user-global default)
+- if `RELAYMD_DATA_ROOT` is set: `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
+- otherwise, standalone fallback paths: `~/.config/relaymd/config.yaml`, then
+  `./relaymd-config.yaml`
 
 Start from the reference config file (`deploy/config.example.yaml` in the repo) and set:
 - `orchestrator_url` (Note: YAML configuration takes precedence over the `RELAYMD_ORCHESTRATOR_URL` environment variable)

@@ -28,12 +28,12 @@ Recommended defaults:
 - Orchestrator logs: `/depot/plow/data/pballane/relaymd-service/logs/orchestrator`
 - SLURM worker logs: `/depot/plow/data/pballane/relaymd-service/logs/slurm/<cluster>`
 
-Config lookup order (highest precedence first):
+Config path selection:
 
 - `RELAYMD_CONFIG=/absolute/path/to/config.yaml`
-- `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
-- `./relaymd-config.yaml` (project-local override, gitignored)
-- `~/.config/relaymd/config.yaml` (user-global default)
+- if `RELAYMD_DATA_ROOT` is set: `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`
+- otherwise, standalone fallback paths: `~/.config/relaymd/config.yaml`, then
+  `./relaymd-config.yaml`
 
 The modulefile sets `RELAYMD_SERVICE_ROOT` and `RELAYMD_DATA_ROOT`; RelayMD derives
 the config, env, status, and service-log paths from those roots. Inspect the

@@ -72,7 +72,11 @@ def _ensure_down_allowed(paths: RelaymdPaths, *, force: bool) -> None:
 
 
 def _tmux_kill(session_name: str) -> None:
-    subprocess.run(["tmux", "kill-session", "-t", session_name], check=False)
+    try:
+        subprocess.run(["tmux", "kill-session", "-t", session_name], check=False)
+    except FileNotFoundError as exc:
+        typer.echo("tmux is required to stop RelayMD service sessions.", err=True)
+        raise typer.Exit(code=127) from exc
 
 
 ForceOption = Annotated[

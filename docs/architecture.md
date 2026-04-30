@@ -54,7 +54,7 @@ Operator (you, on login node)
 
 The `relaymd` CLI is a self-contained binary installed on the login node (or any machine from which the operator wants to submit jobs). It handles the full job submission workflow in a single command: packing the input directory into a tarball, uploading it to B2, and registering the job with the orchestrator. It also provides commands to list jobs, inspect status, cancel, and re-queue.
 
-The binary is compiled with PyInstaller and distributed via GitHub Releases. In the HPC install it reads configuration from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`, which is the same YAML file the orchestrator uses. No Python environment is required to run it — it is a single static ELF binary.
+The binary is packaged with PyInstaller and distributed via GitHub Releases. In the HPC install it reads configuration from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml`, which is the same YAML file the orchestrator uses. No Python environment is required to run it — it is a standalone executable.
 
 The CLI is not present inside the worker container. It is strictly an operator tool for the login node.
 

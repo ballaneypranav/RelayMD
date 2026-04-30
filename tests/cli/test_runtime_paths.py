@@ -37,3 +37,28 @@ def test_resolve_paths_allows_explicit_path_overrides(monkeypatch, tmp_path: Pat
     assert paths.env_file == env_file
     assert paths.status_file == status
 
+
+def test_process_environment_overrides_service_env_file(monkeypatch, tmp_path: Path) -> None:
+    data_root = tmp_path / "relaymd-service"
+    env_file = data_root / "config" / "relaymd-service.env"
+    env_file.parent.mkdir(parents=True)
+    env_file.write_text(
+        "\n".join(
+            [
+                f"RELAYMD_CONFIG={tmp_path / 'from-env-file.yaml'}",
+                f"RELAYMD_STATUS_FILE={tmp_path / 'from-env-file.status'}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    explicit_config = tmp_path / "explicit.yaml"
+    explicit_status = tmp_path / "explicit.status"
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("RELAYMD_CONFIG", str(explicit_config))
+    monkeypatch.setenv("RELAYMD_STATUS_FILE", str(explicit_status))
+
+    paths = resolve_paths()
+
+    assert paths.yaml_config == explicit_config
+    assert paths.status_file == explicit_status

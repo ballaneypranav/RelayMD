@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+import typer
+
 from relaymd.cli.commands import service as service_cmd
 
 
@@ -69,3 +72,21 @@ def test_down_kills_sessions_and_marks_status_inactive(monkeypatch, tmp_path: Pa
     assert "ORCHESTRATOR_ACTIVE=0\n" in status_text
     assert "PROXY_ACTIVE=0\n" in status_text
 
+
+def test_down_exits_cleanly_when_tmux_is_missing(monkeypatch, tmp_path: Path) -> None:
+    data_root = tmp_path / "relaymd-service"
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    status_file.write_text("HOST=testhost\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.setattr(service_cmd, "_current_host", lambda: "testhost")
+    monkeypatch.setattr(
+        service_cmd.subprocess,
+        "run",
+        Mock(side_effect=FileNotFoundError("tmux")),
+    )
+
+    with pytest.raises(typer.Exit) as exc:
+        service_cmd.down()
+
+    assert exc.value.exit_code == 127
