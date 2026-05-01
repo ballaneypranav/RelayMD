@@ -12,10 +12,17 @@ from relaymd.cli.commands.monitor import monitor
 from relaymd.cli.commands.path import app as path_app
 from relaymd.cli.commands.submit import submit
 from relaymd.cli.commands.workers import app as workers_app
+from relaymd.cli.remote_dispatch import maybe_dispatch_from_argv
 from relaymd.dashboard_proxy import DashboardProxySettings, create_dashboard_proxy_app
 
 app = typer.Typer(help="RelayMD operator CLI")
 orchestrator_app = typer.Typer(help="Orchestrator commands", hidden=True)
+
+
+@app.callback()
+def dispatch_api_commands() -> None:
+    """Delegate API-backed commands to the active service host when needed."""
+    maybe_dispatch_from_argv()
 
 
 @orchestrator_app.command()
