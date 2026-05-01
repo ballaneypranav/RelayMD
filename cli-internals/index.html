@@ -1218,19 +1218,20 @@
 
 <h1 id="relaymd-operator-cli-internals">RelayMD: Operator CLI Internals</h1>
 <h2 id="framework">Framework</h2>
-<p><code>typer</code> combined with <code>rich</code> for terminal output. Grouped into service commands (<code>up</code>, <code>down</code>, <code>restart</code>, <code>status</code>, <code>logs</code>, <code>attach</code>, <code>upgrade</code>) and operator subcommands (<code>submit</code>, <code>job</code>, <code>worker</code>, <code>monitor</code>, <code>path</code>, <code>config</code>). The old plural <code>jobs</code>/<code>workers</code> and low-level <code>orchestrator</code> commands remain as hidden compatibility aliases.</p>
+<p><code>typer</code> combined with <code>rich</code> for terminal output. Grouped into service commands (<code>up</code>, <code>down</code>, <code>restart</code>, <code>status</code>, <code>logs</code>, <code>attach</code>, <code>upgrade</code>) and operator subcommands (<code>submit</code>, <code>jobs</code>, <code>workers</code>, <code>monitor</code>, <code>path</code>, <code>config</code>). Singular <code>job</code>/<code>worker</code> remain hidden compatibility aliases. Low-level <code>orchestrator</code> commands remain hidden.</p>
 <h2 id="shared-context">Shared Context</h2>
 <p>A dependency injection workaround using <code>typer.Context.obj</code>. The root callback initializes a <code>CliContext</code> object (containing the <code>CliSettings</code>, <code>StorageClient</code>, and <code>httpx.Client</code>) which is passed down to API-facing subcommands. This avoids instantiating a new B2 connection for every invoked command.</p>
 <h2 id="relaymd-submit-workflow"><code>relaymd submit</code> Workflow</h2>
 <p>The <code>submit</code> command is the most complex component of the CLI. It does:</p>
 <ol>
-<li>Validates the input directory and ensures <code>relaymd-worker.json</code> or <code>.toml</code> exists (writes it if missing but <code>--command</code> is provided).</li>
-<li>Generates a new <code>UUIDv4</code> for the job.</li>
-<li>Streams the input directory into a <code>/tmp</code> gzip tarball using <code>tarfile</code>, skipping hidden files and <code>.git</code> via <code>ignore_unpacked_files()</code>.</li>
-<li>Uploads the tarball directly to B2 via <code>StorageClient</code> using the path <code>jobs/{uuid}/input/bundle.tar.gz</code>. Shows a Rich progress bar.</li>
-<li>Registers the job with the orchestrator via <code>POST /jobs</code>.</li>
+<li>Validates the input directory and ensures <code>relaymd-worker.json</code> or <code>.toml</code> exists (or writes it when <code>--command</code> is provided).</li>
+<li>Generates one canonical <code>UUIDv4</code> for the job.</li>
+<li>Streams the input directory into a <code>/tmp</code> gzip tarball using <code>tarfile</code>.</li>
+<li>Uploads the tarball directly to B2 via <code>StorageClient</code> at <code>jobs/{job_id}/input/bundle.tar.gz</code>.</li>
+<li>Registers the job with the orchestrator via <code>POST /jobs</code> with the same <code>id={job_id}</code>.</li>
 </ol>
 <p>Because the upload goes directly to B2, there is no file upload proxying through the orchestrator. The CLI just tells the orchestrator where the file is.</p>
+<p>JSON mode (<code>--json</code>) is supported for automation-facing commands. In JSON mode, stdout is reserved for JSON payloads.</p>
 <h2 id="pyinstaller-distribution">PyInstaller Distribution</h2>
 <p>The CLI is compiled to a static binary via PyInstaller on Linux x86_64. The build process runs inside a <code>manylinux2014</code> Docker container (via <code>make release-cli</code>) to ensure compatibility across older glibc versions (essential for CentOS/Rocky Linux HPC login nodes).</p>
 <p>The build script strips unnecessary dependencies (like <code>pydantic</code>'s compiled cores) from the binary to reduce size.</p>

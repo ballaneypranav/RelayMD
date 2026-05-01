@@ -1300,23 +1300,39 @@ derives the rest of the install paths from that directory:</p>
 <p>Submit with command shortcut (writes <code>relaymd-worker.json</code> before packing):</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./my-input<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;my job&quot;</span><span class="w"> </span>--command<span class="w"> </span><span class="s2">&quot;python run.py&quot;</span><span class="w"> </span>--checkpoint-glob<span class="w"> </span><span class="s2">&quot;*.cpt&quot;</span>
 </span></code></pre></div>
+<p>Submit machine-readable output:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./my-input<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;my job&quot;</span><span class="w"> </span>--json
+</span></code></pre></div>
 <p>Jobs:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>relaymd<span class="w"> </span>job<span class="w"> </span>list
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>relaymd<span class="w"> </span>job<span class="w"> </span>list<span class="w"> </span>--pretty
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>relaymd<span class="w"> </span>job<span class="w"> </span>show<span class="w"> </span>&lt;job-id&gt;
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>relaymd<span class="w"> </span>job<span class="w"> </span>cancel<span class="w"> </span>&lt;job-id&gt;
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>relaymd<span class="w"> </span>job<span class="w"> </span>cancel<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--force
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>relaymd<span class="w"> </span>job<span class="w"> </span>requeue<span class="w"> </span>&lt;job-id&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--pretty
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>show<span class="w"> </span>&lt;job-id&gt;
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>cancel<span class="w"> </span>&lt;job-id&gt;
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>cancel<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--force
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>requeue<span class="w"> </span>&lt;job-id&gt;
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>checkpoint<span class="w"> </span>download<span class="w"> </span>&lt;job-id&gt;
+</span></code></pre></div>
+<p>Jobs JSON mode:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--json
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>show<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>cancel<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>requeue<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>checkpoint<span class="w"> </span>download<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
 </span></code></pre></div>
 <p>Strict transition rules apply:
 - cancelling a running job without <code>--force</code> returns a conflict
 - requeue is allowed only for terminal jobs (<code>completed</code>, <code>failed</code>, <code>cancelled</code>)</p>
 <p>Monitor all jobs and workers concurrently (auto-refreshes every 3 seconds by default):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd<span class="w"> </span>monitor
-</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>relaymd<span class="w"> </span>monitor<span class="w"> </span>--interval-seconds<span class="w"> </span><span class="m">5</span>.0
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>relaymd<span class="w"> </span>monitor
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>relaymd<span class="w"> </span>monitor<span class="w"> </span>--interval-seconds<span class="w"> </span><span class="m">5</span>.0
 </span></code></pre></div>
 <p>Workers:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>relaymd<span class="w"> </span>worker<span class="w"> </span>list
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>relaymd<span class="w"> </span>workers<span class="w"> </span>list
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>relaymd<span class="w"> </span>workers<span class="w"> </span>list<span class="w"> </span>--json
+</span></code></pre></div>
+<p>Paths and config JSON mode:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>relaymd<span class="w"> </span>config<span class="w"> </span>show-paths<span class="w"> </span>--json
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>relaymd<span class="w"> </span>path<span class="w"> </span>config<span class="w"> </span>--json
 </span></code></pre></div>
 <h2 id="low-level-entrypoints">Low-level Entrypoints</h2>
 <p>The service commands above are the public operator path. Container/runtime
@@ -1327,19 +1343,21 @@ entrypoints remain available for packaging and debugging:</p>
 <li><code>relaymd-worker</code></li>
 </ul>
 <h2 id="relaymd-workerjson">relaymd-worker.json</h2>
-<p><code>relaymd submit</code> requires a worker config in the input directory (<code>relaymd-worker.json</code> or <code>relaymd-worker.toml</code>) unless you pass <code>--command</code>.</p>
+<p><code>relaymd submit</code> requires a worker config in the input directory (<code>relaymd-worker.json</code> or <code>relaymd-worker.toml</code>) unless you pass <code>--command</code>.
+When <code>--command</code> is used, <code>--checkpoint-glob</code> is required.</p>
 <p>Example JSON:</p>
-<div class="language-json highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python run.py&quot;</span><span class="p">,</span>
-</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">&quot;checkpoint_glob_pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;*.cpt&quot;</span>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="p">}</span>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;python run.py&quot;</span><span class="p">,</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;checkpoint_glob_pattern&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;*.cpt&quot;</span><span class="p">,</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">&quot;checkpoint_poll_interval_seconds&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">60</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="release-versioning">Release Versioning</h2>
 <p>Use the helper script to bump version, update lockfile, commit, and tag in one step:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1
 </span></code></pre></div>
 <p>Push immediately after tagging:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1<span class="w"> </span><span class="nv">PUSH</span><span class="o">=</span><span class="m">1</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1<span class="w"> </span><span class="nv">PUSH</span><span class="o">=</span><span class="m">1</span>
 </span></code></pre></div>
 
 

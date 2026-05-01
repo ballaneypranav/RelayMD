@@ -1404,7 +1404,8 @@
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">orchestrator_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">30.0</span>
 </span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">sigterm_checkpoint_wait_seconds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">60</span>
 </span></code></pre></div>
-<p><code>checkpoint_poll_interval_seconds</code> defaults to <code>300</code> seconds and can be overridden via <code>CHECKPOINT_POLL_INTERVAL_SECONDS</code> (worker env var) or <code>worker_checkpoint_poll_interval_seconds</code> (orchestrator config rendered into the SLURM worker environment).</p>
+<p><code>checkpoint_poll_interval_seconds</code> defaults to <code>300</code> seconds and can be overridden via <code>CHECKPOINT_POLL_INTERVAL_SECONDS</code> (worker env var) or <code>worker_checkpoint_poll_interval_seconds</code> (orchestrator config rendered into the SLURM worker environment).
+Per-job bundle config can override this default using <code>checkpoint_poll_interval_seconds</code> in <code>relaymd-worker.json</code> or <code>.toml</code>. Bundle values must be integers <code>&gt;= 1</code>.</p>
 <p>On HPC, <code>SLURM_JOB_ID</code> is automatically present in the environment. The worker reads it and passes it as <code>slurm_job_id</code> in <code>POST /workers/register</code>. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.</p>
 <h3 id="secret-bootstrap">Secret Bootstrap</h3>
 <p>The bootstrap token is injected via SLURM's <code>--export</code> env var (never written to disk) or the Salad dashboard environment. From it, Infisical provides all other secrets: B2 credentials, the Tailscale ephemeral auth key, the orchestrator API token.</p>
@@ -1423,7 +1424,7 @@
 - <code>JobExecution</code> for non-blocking subprocess lifecycle and checkpoint polling</p>
 <hr />
 <h2 id="checkpoint-strategy">Checkpoint Strategy</h2>
-<p>Filesystem polling every 5 minutes by default (<code>300s</code>). The worker polls the simulation working directory for a file matching the <code>checkpoint_glob_pattern</code> from <code>relaymd-worker.json</code>. When a newer one is found, it uploads to B2 and reports immediately.</p>
+<p>Filesystem polling defaults to every 5 minutes (<code>300s</code>) unless overridden by the bundle. The worker polls the simulation working directory for a file matching the <code>checkpoint_glob_pattern</code> from <code>relaymd-worker.json</code>. When a newer one is found, it uploads to B2 and reports immediately.</p>
 <p>On wall-time margin (<code>slurm_sigterm_margin_seconds</code>, default 300s via <code>#SBATCH --signal=TERM@300</code>), the worker sends SIGTERM to the subprocess and snapshots a pre-shutdown checkpoint mtime baseline. It then waits up to <code>sigterm_checkpoint_wait_seconds</code> (default 60s) for a checkpoint that is strictly newer than that baseline. This prevents stale re-uploads during handoff races. If no newer checkpoint appears, the worker exits without uploading an older one.</p>
 <p>The exact glob pattern for AToM-OpenMM checkpoints is to be confirmed during end-to-end testing.</p>
 <hr />
@@ -1432,6 +1433,7 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>relaymd-worker.json   (or .toml)
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  └── command: &quot;python run_atom.py --config simulation.json&quot;
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  └── checkpoint_glob_pattern: &quot;*.chk&quot;
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  └── checkpoint_poll_interval_seconds: 60   # optional, per-job override
 </span></code></pre></div>
 <p>The archive root must be flat — no leading path component. The worker extracts it to a temp directory and runs the command from within that directory.</p>
 
