@@ -124,6 +124,35 @@ relaymd upgrade <release-version> \
 This also downloads and activates a host-side `relaymd` CLI binary under
 `/depot/plow/apps/relaymd/current/relaymd`.
 
+## Branch, Version, and Release Flow
+
+All deployment and release changes should start on a new branch. Do not push
+directly to `main`; merge through a pull request so GitHub Actions can build and
+publish a coherent release set.
+
+Every pushed branch that changes source, tests, deployment assets, release
+automation, or operator docs should carry an explicit version bump. For CLI-
+affecting changes, bump the root RelayMD version with:
+
+```bash
+make release-cli VERSION=X.Y.Z
+```
+
+That keeps `pyproject.toml`, `src/relaymd/_version.py`, and `uv.lock` aligned
+and creates the matching `vX.Y.Z` tag. Push both the branch and tag:
+
+```bash
+git push -u origin <branch>
+git push origin vX.Y.Z
+```
+
+On protected-branch CI, GitHub Actions publishes immutable `sha-<shortsha>`
+release artifacts, refreshes the `latest` GitHub Release, and uploads
+`relaymd-release-manifest.json`. The manifest is the source of truth tying the
+orchestrator image, worker image, CLI URI, CLI version, and source commit
+together. Do not hand-edit release manifests or reuse an old tag for new
+artifacts.
+
 Auto-resolve by tag:
 
 ```bash

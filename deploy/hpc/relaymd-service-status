@@ -44,13 +44,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
 RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
 ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
 PROXY_PORT="${PROXY_PORT:-36159}"
 RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
 RELAYMD_HEARTBEAT_STALE_SECONDS="${RELAYMD_HEARTBEAT_STALE_SECONDS:-120}"
-CURRENT_HOST="$(hostname -s 2>/dev/null || hostname)"
+CURRENT_HOST_ACTUAL="$(hostname -s 2>/dev/null || hostname)"
+CURRENT_HOST="${RELAYMD_STATUS_REQUEST_HOST:-${CURRENT_HOST_ACTUAL}}"
 
 if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
     set -a
@@ -60,6 +63,8 @@ if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
 fi
 
 RELAYMD_STATUS_FILE="${RELAYMD_STATUS_FILE:-${RELAYMD_DATA_ROOT}/state/relaymd-service.status}"
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
+CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-36158}"
 PROXY_PORT="${PROXY_PORT:-36159}"
 RELAYMD_PRIMARY_HOST="${RELAYMD_PRIMARY_HOST:-}"
@@ -156,6 +161,19 @@ status_color() {
     esac
 }
 
+readiness_summary() {
+    local json="$1"
+    local key="$2"
+    local label="$3"
+    local state="fail"
+
+    if printf '%s' "${json}" | grep -q "\"${key}\"[[:space:]]*:[[:space:]]*{[^}]*\"ok\"[[:space:]]*:[[:space:]]*true"; then
+        state="ok"
+    fi
+    printf "%s%s%s: %s\n" \
+        "$(status_color "${state}")" "${label}" "${C_RESET}" "${state^^}"
+}
+
 host="$(status_get HOST)"
 updated_at="$(status_get UPDATED_AT)"
 updated_by="$(status_get UPDATED_BY)"
@@ -228,6 +246,71 @@ if [[ -z "${expected_host}" ]]; then
     expected_host="${CURRENT_HOST}"
 fi
 
+if [[ "${CURRENT_HOST}" != "${expected_host}" && "${RELAYMD_STATUS_REMOTE_CHECK:-}" != "1" ]]; then
+    remote_args=()
+    if [[ "${VERBOSE}" -eq 1 ]]; then
+        remote_args+=("--verbose")
+    fi
+    if [[ "${JSON_MODE}" -eq 1 ]]; then
+        remote_args+=("--json")
+    fi
+    if [[ "${NO_COLOR_FLAG}" -eq 1 ]]; then
+        remote_args+=("--no-color")
+    fi
+
+    printf -v remote_command "RELAYMD_STATUS_REMOTE_CHECK=1 RELAYMD_STATUS_REQUEST_HOST=%q %q" \
+        "${CURRENT_HOST}" "${SCRIPT_DIR}/relaymd-service-status"
+    for remote_arg in "${remote_args[@]}"; do
+        printf -v remote_command "%s %q" "${remote_command}" "${remote_arg}"
+    done
+
+    set +e
+    remote_output="$(ssh -- "${expected_host}" "${remote_command}" 2>&1)"
+    remote_rc=$?
+    set -e
+
+    if [[ "${remote_rc}" -eq 0 || "${remote_output}" =~ ^[[:space:]]*\{ ]]; then
+        printf '%s\n' "${remote_output}"
+        exit "${remote_rc}"
+    fi
+
+    if [[ "${JSON_MODE}" -eq 1 ]]; then
+        cat <<JSON
+{
+  "overall": "unhealthy",
+  "healthy": 0,
+  "readiness_ok": 0,
+  "status_file": "$(json_escape "${RELAYMD_STATUS_FILE}")",
+  "lock_host": "$(json_escape "${host}")",
+  "current_host": "$(json_escape "${CURRENT_HOST}")",
+  "expected_host": "$(json_escape "${expected_host}")",
+  "access_mode": "ssh_delegated",
+  "remote_check": {
+    "ok": false,
+    "host": "$(json_escape "${expected_host}")",
+    "error": "$(json_escape "${remote_output}")"
+  },
+  "readiness": {
+    "_ok": false,
+    "remote_check": {
+      "ok": false,
+      "host": "$(json_escape "${expected_host}")",
+      "error": "$(json_escape "${remote_output}")"
+    }
+  }
+}
+JSON
+        exit 1
+    fi
+
+    printf "%sRelayMD Status: %sUNHEALTHY%s\n" "${C_BOLD}" "${C_RED}" "${C_RESET}"
+    printf "Host: %s (expected %s)\n" "${CURRENT_HOST}" "${expected_host}"
+    printf "Access: ssh_delegated\n"
+    printf "Remote Check: %sFAIL%s | ssh to %s failed: %s\n" \
+        "${C_RED}" "${C_RESET}" "${expected_host}" "${remote_output}"
+    exit 1
+fi
+
 orch_service_ok=1
 if [[ "${orch_active}" != "1" || "${orch_fresh}" != "fresh" || "${orch_tmux}" != "up" || "${orch_port}" != "listening" ]]; then
     orch_service_ok=0
@@ -265,6 +348,26 @@ if [[ "${orch_service_ok}" -ne 1 || "${proxy_service_ok}" -ne 1 ]]; then
     healthy=0
 fi
 
+readiness_json='{"_ok":false,"diagnostics":{"ok":false,"error":"not checked"}}'
+readiness_ok=0
+diagnose_bin="${CURRENT_LINK}/relaymd"
+if [[ -x "${diagnose_bin}" ]]; then
+    set +e
+    readiness_json="$("${diagnose_bin}" config diagnose --json 2>&1)"
+    diagnose_rc=$?
+    set -e
+    if [[ "${diagnose_rc}" -ne 0 || ! "${readiness_json}" =~ ^[[:space:]]*\{ ]]; then
+        readiness_json="{\"_ok\":false,\"diagnostics\":{\"ok\":false,\"error\":\"$(json_escape "${readiness_json}")\"}}"
+    fi
+else
+    readiness_json="{\"_ok\":false,\"release\":{\"ok\":false,\"error\":\"RelayMD CLI is not executable at $(json_escape "${diagnose_bin}")\"}}"
+fi
+if printf '%s' "${readiness_json}" | grep -q '"_ok"[[:space:]]*:[[:space:]]*true'; then
+    readiness_ok=1
+else
+    healthy=0
+fi
+
 if [[ "${JSON_MODE}" -eq 1 ]]; then
     overall_state="unhealthy"
     if [[ "${healthy}" -eq 1 ]]; then
@@ -280,6 +383,7 @@ if [[ "${JSON_MODE}" -eq 1 ]]; then
   "current_host": "$(json_escape "${CURRENT_HOST}")",
   "expected_host": "$(json_escape "${expected_host}")",
   "access_mode": "$(json_escape "${access_mode}")",
+  "readiness_ok": ${readiness_ok},
   "updated_at": "$(json_escape "${updated_at}")",
   "updated_by": "$(json_escape "${updated_by}")",
   "orchestrator": {
@@ -309,7 +413,8 @@ if [[ "${JSON_MODE}" -eq 1 ]]; then
     "last_start_at": "$(json_escape "${proxy_start}")",
     "last_exit_at": "$(json_escape "${proxy_exit_at}")",
     "last_exit_code": "$(json_escape "${proxy_exit_code}")"
-  }
+  },
+  "readiness": ${readiness_json}
 }
 JSON
 
@@ -350,6 +455,19 @@ printf "Proxy:        %s%s%s | active=%s tmux=%s port=%s/%s hb=%s (%s)\n" \
     "$(format_tmux "${proxy_tmux}")" \
     "${PROXY_PORT}" "${proxy_port}" \
     "${proxy_fresh}" "$(format_age "${proxy_age}")"
+readiness_line_state="fail"
+if [[ "${readiness_ok}" -eq 1 ]]; then
+    readiness_line_state="ok"
+fi
+printf "Readiness:   %s%s%s\n" \
+    "$(status_color "${readiness_line_state}")" "${readiness_line_state^^}" "${C_RESET}"
+readiness_summary "${readiness_json}" "config" "Config"
+readiness_summary "${readiness_json}" "secrets" "Secrets"
+readiness_summary "${readiness_json}" "release" "Release"
+readiness_summary "${readiness_json}" "proxy_auth" "Proxy Auth"
+readiness_summary "${readiness_json}" "scheduler" "Scheduler"
+readiness_summary "${readiness_json}" "cli_submit" "Storage"
+readiness_summary "${readiness_json}" "network" "Network"
 
 if [[ "${VERBOSE}" -eq 1 ]]; then
     printf "\n%sDetails%s\n" "${C_BOLD}" "${C_RESET}"
@@ -358,6 +476,8 @@ if [[ "${VERBOSE}" -eq 1 ]]; then
     print_pair "access_mode" "${access_mode}"
     print_pair "updated_at" "${updated_at}"
     print_pair "updated_by" "${updated_by}"
+    print_pair "readiness_ok" "${readiness_ok}"
+    print_pair "readiness_json" "${readiness_json}"
 
     printf "\n%sOrchestrator%s\n" "${C_BOLD}" "${C_RESET}"
     print_pair "session" "${orch_session}"

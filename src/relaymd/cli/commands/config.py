@@ -4,6 +4,7 @@ import json
 
 import typer
 
+from relaymd.cli.diagnostics import collect_readiness
 from relaymd.cli.runtime_paths import resolve_paths
 
 app = typer.Typer(help="Inspect RelayMD configuration paths.")
@@ -61,3 +62,20 @@ relaymd_cd() {
 }
 """.strip()
     )
+
+
+@app.command("diagnose", hidden=True)
+def diagnose(
+    json_mode: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
+    """Emit internal readiness diagnostics for service wrappers."""
+    readiness = collect_readiness()
+    if json_mode:
+        typer.echo(json.dumps(readiness, sort_keys=True))
+        return
+
+    for name, status in readiness.items():
+        if name == "_ok" or not isinstance(status, dict):
+            continue
+        state = "ok" if status.get("ok") else "fail"
+        typer.echo(f"{name}\t{state}")

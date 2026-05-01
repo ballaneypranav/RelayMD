@@ -143,6 +143,20 @@ relaymd config show-paths --json
 relaymd path config --json
 ```
 
+Service status includes both process health and submit/service readiness:
+
+```bash
+relaymd status
+relaymd status --json
+```
+
+On module-managed HPC installs, `relaymd status` performs live Infisical
+hydration checks and reports redacted readiness blocks for config, secrets,
+release assets, proxy auth, scheduler access, storage credentials, and network
+socket state. From a non-service login node, status SSHes to the locked service
+host so host-local checks such as tmux, ports, `sbatch`, SIF paths, and the
+Tailscale socket are evaluated on the host that owns the service.
+
 ## Low-level Entrypoints
 
 The service commands above are the public operator path. Container/runtime
@@ -173,20 +187,34 @@ Work on a branch and merge through a pull request. Direct pushes to `main` are
 blocked by repository policy, and release-producing changes should land through
 CI with an explicit version bump.
 
-Every branch that changes CLI-affecting files must include a root
-`pyproject.toml` version bump before it is merged. Use the helper script to bump
-version, update the lockfile, commit, and tag in one step:
+Every pushed branch that changes source, tests, deployment assets, release
+automation, or operator documentation should include an explicit version bump.
+CLI-affecting branches must include a root `pyproject.toml` version bump before
+merge. Keep `pyproject.toml`, `src/relaymd/_version.py`, and `uv.lock` in sync.
+
+Use the helper script to bump version, update the lockfile, commit, and tag in
+one step:
 
 ```bash
 make release-cli VERSION=0.1.1
 ```
 
-Push the branch and tag after bumping:
+Push the feature branch and matching tag after bumping:
 
 ```bash
-make release-cli VERSION=0.1.1 PUSH=1
+git push -u origin <branch>
+git push origin v0.1.1
 ```
+
+`make release-cli VERSION=0.1.1 PUSH=1` can push the generated commit and tag
+when you are already on the intended branch.
 
 Pull requests that change CLI-affecting files must bump the root
 `pyproject.toml` version. CI enforces this so deployed `relaymd --version`
 can be used to confirm a session is running the expected binary.
+
+GitHub Actions builds immutable SHA-tagged CLI, worker, and orchestrator
+artifacts, refreshes the `latest` GitHub Release, and publishes
+`relaymd-release-manifest.json`. The manifest pins release version, image URIs,
+CLI binary URI, CLI version, and source commit together; do not hand-edit it or
+reuse old tags for new artifacts.

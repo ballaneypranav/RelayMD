@@ -164,16 +164,20 @@ def test_build_remote_dispatch_target_quotes_cwd_executable_and_args(tmp_path: P
     executable.touch()
     cwd = tmp_path / "project with spaces"
     cwd.mkdir()
+    env_file = tmp_path / "data" / "relaymd-service.env"
 
     target = remote_dispatch.build_remote_dispatch_target(
         argv=[str(executable), "submit", "input dir", "--title", "a job", "--json"],
         target_host="gilbreth-fe01",
         cwd=cwd,
+        env_file=env_file,
     )
 
     assert target.command[0:3] == ["ssh", "--", "gilbreth-fe01"]
     assert "cd" in target.remote_command
     assert "project with spaces" in target.remote_command
+    assert f"[ -f {env_file} ]" in target.remote_command
+    assert f". {env_file}" in target.remote_command
     assert f"{remote_dispatch.REMOTE_DISPATCH_ENV}=1" in target.remote_command
     assert "'input dir'" in target.remote_command
     assert "'a job'" in target.remote_command
@@ -195,4 +199,5 @@ def test_maybe_dispatch_runs_ssh_and_exits_with_remote_code(monkeypatch, tmp_pat
     assert exc.value.code == 42
     command = run.call_args.args[0]
     assert command[0:3] == ["ssh", "--", "gilbreth-fe01"]
+    assert f". {paths.env_file}" in command[3]
     assert command[3].endswith("relaymd submit input --json")

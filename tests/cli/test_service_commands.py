@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,20 @@ import pytest
 import typer
 
 from relaymd.cli.commands import service as service_cmd
+
+
+def _fake_readiness_json(*, ok: bool = True) -> str:
+    payload = {
+        "_ok": ok,
+        "config": {"ok": True},
+        "secrets": {"ok": ok, **({} if ok else {"error": "missing"})},
+        "release": {"ok": True},
+        "proxy_auth": {"ok": True},
+        "scheduler": {"ok": True},
+        "cli_submit": {"ok": True},
+        "network": {"ok": True},
+    }
+    return json.dumps(payload, separators=(",", ":"))
 
 
 def test_up_runs_orchestrator_then_proxy_wrappers(monkeypatch, tmp_path: Path) -> None:
@@ -128,7 +143,17 @@ def test_hpc_cli_wrapper_uses_current_link_from_service_env(tmp_path: Path) -> N
 def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
     tmp_path: Path,
 ) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
     data_root = tmp_path / "relaymd-service"
+    current = service_root / "current"
+    current.mkdir(parents=True)
+    cli = current / "relaymd"
+    cli.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' '{_fake_readiness_json()}'\n",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
     status_file = data_root / "state" / "relaymd-service.status"
     status_file.parent.mkdir(parents=True)
     heartbeat = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -153,9 +178,13 @@ def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
         capture_output=True,
         text=True,
         env={
+            "RELAYMD_SERVICE_ROOT": str(service_root),
             "RELAYMD_DATA_ROOT": str(data_root),
+            "CURRENT_LINK": str(current),
             "RELAYMD_STATUS_FILE": str(status_file),
             "RELAYMD_PRIMARY_HOST": "relaymd-remote-test-host",
+            "RELAYMD_STATUS_REMOTE_CHECK": "1",
+            "RELAYMD_STATUS_REQUEST_HOST": "relaymd-local-test-host",
             "RELAYMD_HEARTBEAT_STALE_SECONDS": "99999999999",
             "PATH": "/usr/bin:/bin",
         },
@@ -166,6 +195,202 @@ def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
     assert payload["overall"] == "healthy"
     assert payload["healthy"] == 1
     assert payload["access_mode"] == "ssh_delegated"
+    assert payload["readiness_ok"] == 1
+    assert payload["readiness"]["_ok"] is True
+
+
+def test_status_wrapper_json_reports_readiness_blocks(tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    data_root = tmp_path / "relaymd-service"
+    current = service_root / "current"
+    current.mkdir(parents=True)
+    cli = current / "relaymd"
+    cli.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' '{_fake_readiness_json(ok=False)}'\n",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    heartbeat = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    status_file.write_text(
+        "\n".join(
+            [
+                "HOST=relaymd-local-test-host",
+                "ORCHESTRATOR_ACTIVE=1",
+                f"ORCHESTRATOR_HEARTBEAT_AT={heartbeat}",
+                "PROXY_ACTIVE=1",
+                f"PROXY_HEARTBEAT_AT={heartbeat}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script = Path("deploy/hpc/relaymd-service-status").resolve()
+
+    result = subprocess.run(
+        [str(script), "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_SERVICE_ROOT": str(service_root),
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "CURRENT_LINK": str(current),
+            "RELAYMD_STATUS_FILE": str(status_file),
+            "RELAYMD_PRIMARY_HOST": "relaymd-local-test-host",
+            "RELAYMD_STATUS_REMOTE_CHECK": "1",
+            "RELAYMD_STATUS_REQUEST_HOST": "relaymd-local-test-host",
+            "RELAYMD_HEARTBEAT_STALE_SECONDS": "99999999999",
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["readiness_ok"] == 0
+    assert payload["readiness"]["secrets"]["ok"] is False
+
+
+def test_status_wrapper_sshes_to_expected_host_for_off_host_status(tmp_path: Path) -> None:
+    data_root = tmp_path / "relaymd-service"
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    heartbeat = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    status_file.write_text(
+        "\n".join(
+            [
+                "HOST=relaymd-remote-test-host",
+                "ORCHESTRATOR_ACTIVE=1",
+                f"ORCHESTRATOR_HEARTBEAT_AT={heartbeat}",
+                "PROXY_ACTIVE=1",
+                f"PROXY_HEARTBEAT_AT={heartbeat}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log_path = tmp_path / "ssh.log"
+    ssh = bin_dir / "ssh"
+    ssh.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$@\" > {log_path}\n"
+        "printf '%s\\n' '{\"overall\":\"healthy\",\"healthy\":1,\"readiness_ok\":1}'\n",
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
+    script = Path("deploy/hpc/relaymd-service-status").resolve()
+
+    result = subprocess.run(
+        [str(script), "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "RELAYMD_STATUS_FILE": str(status_file),
+            "RELAYMD_PRIMARY_HOST": "relaymd-remote-test-host",
+            "PATH": f"{bin_dir}{os.pathsep}/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout)["healthy"] == 1
+    assert "relaymd-remote-test-host" in log_path.read_text(encoding="utf-8")
+    assert "RELAYMD_STATUS_REMOTE_CHECK=1" in log_path.read_text(encoding="utf-8")
+
+
+def test_status_wrapper_json_reports_ssh_failure(tmp_path: Path) -> None:
+    data_root = tmp_path / "relaymd-service"
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    status_file.write_text(
+        "HOST=relaymd-remote-test-host\nORCHESTRATOR_ACTIVE=1\nPROXY_ACTIVE=1\n",
+        encoding="utf-8",
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ssh = bin_dir / "ssh"
+    ssh.write_text(
+        "#!/usr/bin/env bash\nprintf 'ssh unavailable\\n' >&2\nexit 255\n",
+        encoding="utf-8",
+    )
+    ssh.chmod(0o755)
+    script = Path("deploy/hpc/relaymd-service-status").resolve()
+
+    result = subprocess.run(
+        [str(script), "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "RELAYMD_STATUS_FILE": str(status_file),
+            "RELAYMD_PRIMARY_HOST": "relaymd-remote-test-host",
+            "PATH": f"{bin_dir}{os.pathsep}/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["remote_check"]["ok"] is False
+    assert payload["readiness"]["remote_check"]["ok"] is False
+
+
+def test_status_wrapper_human_output_includes_readiness_lines(tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    data_root = tmp_path / "relaymd-service"
+    current = service_root / "current"
+    current.mkdir(parents=True)
+    cli = current / "relaymd"
+    cli.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' '{_fake_readiness_json()}'\n",
+        encoding="utf-8",
+    )
+    cli.chmod(0o755)
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    heartbeat = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    status_file.write_text(
+        "\n".join(
+            [
+                "HOST=relaymd-local-test-host",
+                "ORCHESTRATOR_ACTIVE=1",
+                f"ORCHESTRATOR_HEARTBEAT_AT={heartbeat}",
+                "PROXY_ACTIVE=1",
+                f"PROXY_HEARTBEAT_AT={heartbeat}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script = Path("deploy/hpc/relaymd-service-status").resolve()
+
+    result = subprocess.run(
+        [str(script), "--no-color"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_SERVICE_ROOT": str(service_root),
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "CURRENT_LINK": str(current),
+            "RELAYMD_STATUS_FILE": str(status_file),
+            "RELAYMD_PRIMARY_HOST": "relaymd-local-test-host",
+            "RELAYMD_STATUS_REMOTE_CHECK": "1",
+            "RELAYMD_STATUS_REQUEST_HOST": "relaymd-local-test-host",
+            "RELAYMD_HEARTBEAT_STALE_SECONDS": "99999999999",
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert "Readiness:" in result.stdout
+    assert "Secrets: OK" in result.stdout
+    assert "Storage: OK" in result.stdout
 
 
 def test_down_kills_sessions_and_marks_status_inactive(monkeypatch, tmp_path: Path) -> None:

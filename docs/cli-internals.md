@@ -33,16 +33,32 @@ the same command on the locked host with SSH and exits with the remote command's
 status code.
 
 The remote command changes to the original working directory and uses the same
-RelayMD executable path when possible. stdout and stderr are not wrapped, so
-JSON mode remains machine-readable. An internal
+RelayMD executable path when possible. Before invoking the executable, it sources
+the configured module-managed service env file when present so secret hydration
+inputs are available on the remote login node. stdout and stderr are not wrapped,
+so JSON mode remains machine-readable. An internal
 `RELAYMD_CLI_REMOTE_DISPATCH=1` environment variable prevents recursive
 delegation on the remote host.
 
 Commands that manage or inspect the local service process (`up`, `down`,
 `restart`, `status`, `logs`, `attach`, `upgrade`) are not SSH-delegated.
-`relaymd status --json` is remote-aware: a fresh off-host service lock reports
-`overall: "healthy"`, `healthy: 1`, and `access_mode: "ssh_delegated"` even
-though local tmux and port checks would not see the loopback-bound service.
+`relaymd status` has its own remote path: when invoked off-host, the HPC status
+wrapper SSHes to the locked service host and runs the same status check there
+with `RELAYMD_STATUS_REMOTE_CHECK=1` to avoid recursion.
+
+## Status Readiness Diagnostics
+
+`relaymd status` combines wrapper-level process health with Python readiness
+diagnostics from the hidden `relaymd config diagnose --json` command. The
+diagnostics command validates the resolved env/config paths, performs live
+Infisical hydration for CLI and orchestrator settings, and reports redacted
+readiness for submit credentials, service secrets, release assets, proxy auth,
+SLURM access, configured SIF paths, the Tailscale socket, and the database URL.
+Secret values are never printed.
+
+In JSON mode, status preserves the existing process fields and adds
+`readiness_ok` plus a `readiness` object. Overall `healthy` requires both process
+health and readiness to pass.
 
 ## PyInstaller Distribution
 
