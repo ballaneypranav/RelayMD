@@ -43,6 +43,8 @@ Worker checkpoint polling default:
 
 - `worker_checkpoint_poll_interval_seconds: 300` (default)
 - Rendered to worker runtime as `CHECKPOINT_POLL_INTERVAL_SECONDS`
+- Treated as a fallback default; bundle-level `checkpoint_poll_interval_seconds`
+  takes precedence per job.
 
 Worker runtime contract for AToM jobs:
 
@@ -93,6 +95,16 @@ Validate CLI exposure:
 which relaymd
 relaymd --help
 relaymd submit --help
+```
+
+Machine output for automation:
+
+```bash
+relaymd submit ./input --title "job" --json
+relaymd jobs list --json
+relaymd workers list --json
+relaymd status --json
+relaymd jobs checkpoint download <job-id> --json
 ```
 
 Automated smoke check:

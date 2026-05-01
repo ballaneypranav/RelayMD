@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from relaymd_api_client.api.default import (
@@ -42,7 +43,7 @@ class JobsService:
             raise RuntimeError("Failed to parse get job response")
         return job
 
-    def cancel_job(self, *, job_id: UUID, force: bool) -> None:
+    def cancel_job(self, *, job_id: UUID, force: bool) -> JobRead:
         with self._context.api_client() as client:
             response = cancel_job_jobs_job_id_delete.sync(
                 job_id=job_id,
@@ -52,6 +53,7 @@ class JobsService:
             )
         if isinstance(response, HTTPValidationError | JobConflict):
             raise RuntimeError(response.to_dict())
+        return self.get_job(job_id=job_id)
 
     def requeue_job(self, *, job_id: UUID) -> JobRead:
         with self._context.api_client() as client:
@@ -65,3 +67,32 @@ class JobsService:
         if response is None or not isinstance(response, JobRead):
             raise RuntimeError("Failed to parse requeue response")
         return response
+
+    def download_latest_checkpoint(self, *, job_id: UUID, output: Path | None) -> dict[str, object]:
+        job = self.get_job(job_id=job_id)
+        if not job.latest_checkpoint_path:
+            raise RuntimeError(
+                json_dumps_error("no_checkpoint", "Job has no checkpoint yet")
+            )
+
+        key = job.latest_checkpoint_path
+        if output is None:
+            local_path = Path.cwd() / f"{job_id}-checkpoint"
+        elif output.exists() and output.is_dir():
+            local_path = output / Path(key).name
+        else:
+            local_path = output
+
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        self._context.storage_client().download_file(key, local_path)
+        file_size = local_path.stat().st_size
+        return {
+            "job_id": str(job_id),
+            "checkpoint_path": key,
+            "local_path": str(local_path),
+            "bytes": file_size,
+        }
+
+
+def json_dumps_error(code: str, message: str) -> str:
+    return f'{{"error": {{"code": "{code}", "message": "{message}"}}}}'

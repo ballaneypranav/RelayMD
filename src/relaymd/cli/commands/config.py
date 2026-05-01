@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import typer
 
 from relaymd.cli.runtime_paths import resolve_paths
@@ -8,7 +10,9 @@ app = typer.Typer(help="Inspect RelayMD configuration paths.")
 
 
 @app.command("show-paths")
-def show_paths() -> None:
+def show_paths(
+    json_mode: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
     """Print the resolved install, config, state, and log paths."""
     paths = resolve_paths()
     rows = [
@@ -23,6 +27,19 @@ def show_paths() -> None:
         ("orchestrator_log", paths.orchestrator_wrapper_log),
         ("proxy_log", paths.proxy_wrapper_log),
     ]
+    if json_mode:
+        payload = {
+            "service_root": str(paths.service_root),
+            "data_root": str(paths.data_root),
+            "config_path": str(paths.yaml_config),
+            "env_path": str(paths.env_file),
+            "status_path": str(paths.status_file),
+            "logs_dir": str(paths.service_log_dir),
+            "current_release": str(paths.current_release),
+        }
+        typer.echo(json.dumps(payload))
+        return
+
     for key, value in rows:
         typer.echo(f"{key}\t{value}")
 
@@ -44,4 +61,3 @@ relaymd_cd() {
 }
 """.strip()
     )
-

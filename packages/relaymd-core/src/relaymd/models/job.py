@@ -24,6 +24,7 @@ class Job(SQLModel, table=True):
 
 
 class JobCreate(SQLModel):
+    id: uuid.UUID | None = None
     title: str
     input_bundle_path: str
 

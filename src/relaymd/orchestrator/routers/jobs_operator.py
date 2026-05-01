@@ -27,6 +27,7 @@ async def create_job(
 ) -> JobRead:
     now = datetime.now(UTC).replace(tzinfo=None)
     job = Job(
+        id=payload.id or None,
         title=payload.title,
         input_bundle_path=payload.input_bundle_path,
         status=JobStatus.queued,
@@ -34,7 +35,18 @@ async def create_job(
         updated_at=now,
     )
     session.add(job)
-    await session.commit()
+    try:
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        if payload.id is not None:
+            existing = await session.get(Job, payload.id)
+            if existing is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Job with id {payload.id} already exists",
+                ) from exc
+        raise
     await session.refresh(job)
     logger.info(
         "job_created",

@@ -80,15 +80,32 @@ Submit with command shortcut (writes `relaymd-worker.json` before packing):
 relaymd submit ./my-input --title "my job" --command "python run.py" --checkpoint-glob "*.cpt"
 ```
 
+Submit machine-readable output:
+
+```bash
+relaymd submit ./my-input --title "my job" --json
+```
+
 Jobs:
 
 ```bash
-relaymd job list
-relaymd job list --pretty
-relaymd job show <job-id>
-relaymd job cancel <job-id>
-relaymd job cancel <job-id> --force
-relaymd job requeue <job-id>
+relaymd jobs list
+relaymd jobs list --pretty
+relaymd jobs show <job-id>
+relaymd jobs cancel <job-id>
+relaymd jobs cancel <job-id> --force
+relaymd jobs requeue <job-id>
+relaymd jobs checkpoint download <job-id>
+```
+
+Jobs JSON mode:
+
+```bash
+relaymd jobs list --json
+relaymd jobs show <job-id> --json
+relaymd jobs cancel <job-id> --json
+relaymd jobs requeue <job-id> --json
+relaymd jobs checkpoint download <job-id> --json
 ```
 
 Strict transition rules apply:
@@ -105,7 +122,15 @@ relaymd monitor --interval-seconds 5.0
 Workers:
 
 ```bash
-relaymd worker list
+relaymd workers list
+relaymd workers list --json
+```
+
+Paths and config JSON mode:
+
+```bash
+relaymd config show-paths --json
+relaymd path config --json
 ```
 
 ## Low-level Entrypoints
@@ -120,13 +145,15 @@ entrypoints remain available for packaging and debugging:
 ## relaymd-worker.json
 
 `relaymd submit` requires a worker config in the input directory (`relaymd-worker.json` or `relaymd-worker.toml`) unless you pass `--command`.
+When `--command` is used, `--checkpoint-glob` is required.
 
 Example JSON:
 
 ```json
 {
   "command": "python run.py",
-  "checkpoint_glob_pattern": "*.cpt"
+  "checkpoint_glob_pattern": "*.cpt",
+  "checkpoint_poll_interval_seconds": 60
 }
 ```
 

@@ -8,6 +8,28 @@ Start reading with:
 - [Tech Stack & Development Guidelines](docs/tech-stack.md)
 - [Deployment Guide](docs/deployment.md)
 
+## Contract Updates
+
+RelayMD currently uses a single canonical job UUID end-to-end:
+
+- `relaymd submit` generates the job UUID.
+- Bundle upload path is `jobs/{job_id}/input/bundle.tar.gz`.
+- The same `job_id` is sent to `POST /jobs`.
+- Worker checkpoints are stored at `jobs/{job_id}/checkpoints/latest`.
+
+Automation should use JSON mode instead of parsing human terminal output. Key commands:
+
+```bash
+relaymd submit ... --json
+relaymd status --json
+relaymd jobs list --json
+relaymd jobs show <job-id> --json
+relaymd workers list --json
+relaymd jobs checkpoint download <job-id> --json
+relaymd config show-paths --json
+relaymd path <name> --json
+```
+
 ### Live Documentation
 
 The full documentation is deployed to GitHub Pages at [https://ballaneypranav.github.io/RelayMD/](https://ballaneypranav.github.io/RelayMD/).

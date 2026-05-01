@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import typer
 from rich.console import Console
 from rich.markup import escape
@@ -34,12 +36,22 @@ def _render_workers_plain_lines(workers: list[dict[str, object]]) -> list[str]:
 
 
 @app.command("list")
-def list_workers() -> None:
+def list_workers(
+    json_mode: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
     try:
         workers = WorkersService(create_cli_context()).list_workers()
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to list workers:[/red] {escape(str(exc))}")
+        if json_mode:
+            typer.echo(json.dumps({"error": {"code": "list_failed", "message": str(exc)}}))
+        else:
+            console.print(f"[red]Failed to list workers:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
-    for line in _render_workers_plain_lines([worker.to_dict() for worker in workers]):
+    workers_payload = [worker.to_dict() for worker in workers]
+    if json_mode:
+        typer.echo(json.dumps({"workers": workers_payload}))
+        return
+
+    for line in _render_workers_plain_lines(workers_payload):
         typer.echo(line)

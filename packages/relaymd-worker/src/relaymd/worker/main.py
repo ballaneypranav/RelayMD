@@ -37,6 +37,7 @@ PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
 class BundleExecutionConfig:
     command: list[str]
     checkpoint_glob_pattern: str
+    checkpoint_poll_interval_seconds: int | None = None
 
 
 def _get_pynvml_module() -> ModuleType:
@@ -118,9 +119,18 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
 
         if not command:
             continue
+        bundle_interval = parsed.get("checkpoint_poll_interval_seconds")
+        if bundle_interval is not None and (
+            isinstance(bundle_interval, bool)
+            or not isinstance(bundle_interval, int)
+            or bundle_interval <= 0
+        ):
+            raise RuntimeError("Invalid checkpoint_poll_interval_seconds in bundle config")
+
         return BundleExecutionConfig(
             command=command,
             checkpoint_glob_pattern=str(checkpoint_pattern),
+            checkpoint_poll_interval_seconds=bundle_interval,
         )
 
     raise RuntimeError("No valid worker bundle config found in input bundle")
@@ -273,7 +283,21 @@ def _run_assigned_job(
         execution.start()
 
         last_uploaded_mtime: float | None = None
-        checkpoint_poll_interval_seconds = float(context.checkpoint_poll_interval_seconds)
+        effective_checkpoint_poll_interval_seconds = (
+            execution_config.checkpoint_poll_interval_seconds
+            if execution_config.checkpoint_poll_interval_seconds is not None
+            else context.checkpoint_poll_interval_seconds
+        )
+        job_log.info(
+            "checkpoint_poll_interval_resolved",
+            checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+            source=(
+                "bundle"
+                if execution_config.checkpoint_poll_interval_seconds is not None
+                else "runtime_default"
+            ),
+        )
+        checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
         next_checkpoint_poll_time = time.monotonic()
         try:
             while True:
