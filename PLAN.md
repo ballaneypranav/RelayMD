@@ -404,9 +404,15 @@ Add or update tests for:
 
 - `JobCreate(id=...)` schema and API creation.
 - API rejects duplicate caller-provided job IDs.
+- Generated `JobCreate` client model is called with a `UUID`, not a string, so
+  pyright passes.
 - `relaymd submit` uploads to `jobs/{job_id}/input/bundle.tar.gz`.
 - `relaymd submit` posts the same UUID it used for the upload path.
 - `relaymd submit --json` emits valid JSON only on stdout.
+- `relaymd submit --json` emits JSON errors, and no Rich/prose output, for:
+  invalid input directory, missing settings, upload failure, registration
+  failure, missing `--checkpoint-glob`, and invalid
+  `--checkpoint-poll-interval-seconds`.
 - `relaymd submit --command ... --checkpoint-glob ... --checkpoint-poll-interval-seconds N`
   writes all three fields into generated `relaymd-worker.json`.
 - `relaymd submit --command ...` without `--checkpoint-glob` fails before upload.
@@ -420,6 +426,117 @@ Add or update tests for:
   job.
 - JSON output for list/show/status/config/path commands is stable.
 - Generated OpenAPI client compiles/imports after regeneration.
+- `uv run pyright` passes for touched CLI, worker, and model files.
+
+## Implementation Follow-Up Fixes
+
+The first implementation pass exposed three concrete issues that must be fixed
+before treating this plan as complete.
+
+### UUID Type In Generated Client Calls
+
+Problem:
+
+- The regenerated API client types `JobCreate.id` as `UUID | None | Unset`.
+- `SubmitService.register_job` currently accepts/passes a `str` job ID.
+- Runtime may serialize it, but pyright correctly rejects the call.
+
+Required fix:
+
+- Make the submit path carry a `uuid.UUID` object until display/JSON output.
+- Prefer this shape:
+
+```python
+def register_job(self, *, job_id: UUID, title: str, b2_key: str) -> JobRead:
+    body = JobCreate(id=job_id, title=title, input_bundle_path=b2_key)
+```
+
+- In `relaymd submit`, generate `job_id = uuid.uuid4()`.
+- Build storage keys with `str(job_id)`.
+- Use `str(created_job.id)` only when rendering human or JSON output.
+
+Validation:
+
+- Run targeted pyright on:
+
+```bash
+uv run pyright \
+  src/relaymd/cli/commands/submit.py \
+  src/relaymd/cli/services/submit_service.py \
+  src/relaymd/cli/services/jobs_service.py \
+  packages/relaymd-worker/src/relaymd/worker/main.py \
+  packages/relaymd-core/src/relaymd/models/job.py
+```
+
+### JSON Mode Must Keep Stdout Pure
+
+Problem:
+
+- Some `relaymd submit --json` failure paths still print Rich/prose output to
+  stdout, including invalid input directory, settings load failure, upload
+  failure, registration failure, missing `--checkpoint-glob`, and invalid
+  checkpoint poll interval.
+- Automation should not need to distinguish JSON success from human error text.
+
+Required fix:
+
+- Introduce a small CLI helper for JSON-mode errors, for example:
+
+```python
+def emit_json_error(code: str, message: str) -> None:
+    typer.echo(json.dumps({"error": {"code": code, "message": message}}))
+```
+
+- Thread `json_mode` into worker-config validation or split validation from
+  rendering so validation raises typed/local exceptions and the command handler
+  renders either JSON or human output.
+- In JSON mode, never call Rich `console.print(...)` for expected user/runtime
+  errors.
+- In JSON mode, do not start Rich progress/spinner output.
+- Keep nonzero exit codes.
+
+Required `relaymd submit --json` error codes:
+
+- `invalid_input_dir`
+- `missing_settings`
+- `upload_failed`
+- `registration_failed`
+- `missing_checkpoint_glob`
+- `invalid_checkpoint_poll_interval`
+- `missing_worker_config`
+
+Tests should use Typer `CliRunner` or equivalent stdout capture and assert that
+stdout parses as JSON for each error case.
+
+### Typed 409 Conflict For Duplicate Job IDs
+
+Problem:
+
+- The API returns `409` for duplicate caller-supplied job IDs.
+- The route does not declare a `409` response model for `POST /jobs`, so the
+  generated client treats it as an unexpected status instead of a typed conflict.
+
+Required fix:
+
+- Add a typed conflict response model to the create-job route.
+- Prefer reusing `JobConflict` or adding a small generic conflict model if
+  `JobConflict` is too transition-specific.
+- Return a structured response body, not only a string `detail`.
+- Regenerate the OpenAPI schema and API client after changing the route.
+- Update `SubmitService.register_job` to surface duplicate ID conflicts as a
+  clear user-facing error.
+
+Suggested API response:
+
+```json
+{
+  "message": "Job with id 00000000-0000-0000-0000-000000000000 already exists",
+  "job_id": "00000000-0000-0000-0000-000000000000"
+}
+```
+
+If reusing `JobConflict`, include whatever fields that model requires and
+document the meaning for create-time conflicts.
 
 ## Documentation
 

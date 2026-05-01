@@ -25,4 +25,9 @@ class JobConflict(SQLModel):
     requested_status: JobStatus | None = None
 
 
+class JobCreateConflict(SQLModel):
+    message: str
+    job_id: uuid.UUID
+
+
 JobRequestResponse = JobAssigned | NoJobAvailable

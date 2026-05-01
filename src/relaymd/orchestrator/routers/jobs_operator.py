@@ -6,10 +6,11 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi.responses import JSONResponse
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobConflict, JobCreate, JobRead, JobStatus
+from relaymd.models import Job, JobConflict, JobCreate, JobCreateConflict, JobRead, JobStatus
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
@@ -20,11 +21,20 @@ router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_toke
 logger = structlog.get_logger(__name__)
 
 
-@router.post("", response_model=JobRead)
+@router.post(
+    "",
+    response_model=JobRead,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobCreateConflict,
+            "description": "Caller-provided job id already exists",
+        }
+    },
+)
 async def create_job(
     payload: JobCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> JobRead:
+) -> JobRead | JSONResponse:
     now = datetime.now(UTC).replace(tzinfo=None)
     job = Job(
         id=payload.id or None,
@@ -37,15 +47,19 @@ async def create_job(
     session.add(job)
     try:
         await session.commit()
-    except Exception as exc:
+    except Exception:
         await session.rollback()
         if payload.id is not None:
             existing = await session.get(Job, payload.id)
             if existing is not None:
-                raise HTTPException(
+                conflict = JobCreateConflict(
+                    message=f"Job with id {payload.id} already exists",
+                    job_id=payload.id,
+                )
+                return JSONResponse(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Job with id {payload.id} already exists",
-                ) from exc
+                    content=conflict.model_dump(mode="json"),
+                )
         raise
     await session.refresh(job)
     logger.info(

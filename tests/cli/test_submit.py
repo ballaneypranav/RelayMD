@@ -10,8 +10,15 @@ from unittest.mock import Mock
 import pytest
 import typer
 from relaymd_api_client.models.job_read import JobRead
+from typer.testing import CliRunner
 
 from relaymd.cli.commands import submit as submit_cmd
+
+
+def _submit_cli_app() -> typer.Typer:
+    app = typer.Typer()
+    app.command()(submit_cmd.submit)
+    return app
 
 
 def test_create_bundle_archive_uses_flat_archive_root(tmp_path: Path) -> None:
@@ -70,12 +77,12 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
                 assert worker_json is not None
                 uploaded["worker_config"] = json.loads(worker_json.read().decode("utf-8"))
 
-        def register_job(self, *, job_id: str, title: str, b2_key: str):
-            assert uuid.UUID(job_id)
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+            assert isinstance(job_id, uuid.UUID)
             assert title == "test-job"
             assert b2_key.startswith("jobs/")
             assert b2_key.endswith("/input/bundle.tar.gz")
-            created_job.id = uuid.UUID(job_id)
+            created_job.id = job_id
             return created_job
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
@@ -108,7 +115,7 @@ def test_submit_aborts_when_worker_config_missing_and_no_command(tmp_path: Path)
     input_dir.mkdir()
     (input_dir / "hello.txt").write_text("hello", encoding="utf-8")
 
-    with pytest.raises(typer.Exit) as exc:
+    with pytest.raises(submit_cmd.SubmitCommandError) as exc:
         submit_cmd.ensure_worker_config(
             input_dir,
             command=None,
@@ -116,7 +123,7 @@ def test_submit_aborts_when_worker_config_missing_and_no_command(tmp_path: Path)
             checkpoint_poll_interval_seconds=None,
         )
 
-    assert exc.value.exit_code == 1
+    assert exc.value.code == "missing_worker_config"
 
 
 def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path: Path) -> None:
@@ -132,7 +139,7 @@ def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path
             _ = (local_archive, b2_key)
             raise RuntimeError("bad markup token [/:] from upstream")
 
-        def register_job(self, *, title: str, b2_key: str) -> str:
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
             _ = (title, b2_key)
             raise AssertionError("register_job should not be called after upload failure")
 
@@ -148,11 +155,188 @@ def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path
 def test_submit_command_requires_checkpoint_glob(tmp_path: Path) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir()
-    with pytest.raises(typer.Exit) as exc:
+    with pytest.raises(submit_cmd.SubmitCommandError) as exc:
         submit_cmd.ensure_worker_config(
             input_dir,
             command="python run.py",
             checkpoint_glob=None,
             checkpoint_poll_interval_seconds=None,
         )
-    assert exc.value.exit_code == 1
+    assert exc.value.code == "missing_checkpoint_glob"
+
+
+def test_submit_json_invalid_input_dir_emits_json_error_only(tmp_path: Path) -> None:
+    runner = CliRunner()
+    missing = tmp_path / "missing-input"
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(missing), "--title", "x", "--json"],
+    )
+    assert result.exit_code == 1
+    assert result.stdout
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "invalid_input_dir"
+
+
+def test_submit_json_missing_checkpoint_glob_emits_json_error_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "f.txt").write_text("x", encoding="utf-8")
+
+    class FakeSubmitService:
+        def __init__(self, context) -> None:
+            _ = context
+
+        def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+            _ = (local_archive, b2_key)
+
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+            raise AssertionError("register_job should not be reached")
+
+    monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
+    monkeypatch.setattr(submit_cmd, "create_cli_context", Mock(return_value=object()))
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(input_dir), "--title", "x", "--command", "python run.py", "--json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "missing_checkpoint_glob"
+
+
+def test_submit_json_missing_settings_emits_json_error_only(monkeypatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "relaymd-worker.json").write_text('{"command": "run"}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        submit_cmd,
+        "create_cli_context",
+        Mock(side_effect=RuntimeError("settings boom")),
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(input_dir), "--title", "x", "--json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "missing_settings"
+
+
+def test_submit_json_local_validation_precedes_settings_load(monkeypatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "f.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(
+        submit_cmd,
+        "create_cli_context",
+        Mock(side_effect=RuntimeError("settings boom")),
+    )
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(input_dir), "--title", "x", "--command", "python run.py", "--json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "missing_checkpoint_glob"
+
+
+def test_submit_json_upload_failed_emits_json_error_only(monkeypatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "relaymd-worker.json").write_text('{"command": "run"}\n', encoding="utf-8")
+
+    class FailingSubmitService:
+        def __init__(self, context) -> None:
+            _ = context
+
+        def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+            _ = (local_archive, b2_key)
+            raise RuntimeError("upload boom")
+
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+            _ = (job_id, title, b2_key)
+            raise AssertionError("register_job should not be reached")
+
+    monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
+    monkeypatch.setattr(submit_cmd, "create_cli_context", Mock(return_value=object()))
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(input_dir), "--title", "x", "--json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "upload_failed"
+
+
+def test_submit_json_registration_failed_emits_json_error_only(monkeypatch, tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "relaymd-worker.json").write_text('{"command": "run"}\n', encoding="utf-8")
+
+    class FailingSubmitService:
+        def __init__(self, context) -> None:
+            _ = context
+
+        def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+            _ = (local_archive, b2_key)
+
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+            _ = (job_id, title, b2_key)
+            raise RuntimeError("register boom")
+
+    monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
+    monkeypatch.setattr(submit_cmd, "create_cli_context", Mock(return_value=object()))
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [str(input_dir), "--title", "x", "--json"],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "registration_failed"
+
+
+def test_submit_json_invalid_checkpoint_poll_interval_emits_json_error_only(
+    monkeypatch, tmp_path: Path
+) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "f.txt").write_text("x", encoding="utf-8")
+
+    class FakeSubmitService:
+        def __init__(self, context) -> None:
+            _ = context
+
+        def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
+            _ = (local_archive, b2_key)
+
+        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+            raise AssertionError("register_job should not be reached")
+
+    monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
+    monkeypatch.setattr(submit_cmd, "create_cli_context", Mock(return_value=object()))
+    runner = CliRunner()
+    result = runner.invoke(
+        _submit_cli_app(),
+        [
+            str(input_dir),
+            "--title",
+            "x",
+            "--command",
+            "python run.py",
+            "--checkpoint-glob",
+            "*.chk",
+            "--checkpoint-poll-interval-seconds",
+            "0",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["error"]["code"] == "invalid_checkpoint_poll_interval"
