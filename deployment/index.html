@@ -959,6 +959,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#branch-version-and-release-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch, Version, and Release Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dashboard-access" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1175,6 +1186,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#branch-version-and-release-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Branch, Version, and Release Flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dashboard-access" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1315,11 +1337,31 @@ symlink:</p>
 </span></code></pre></div>
 <p>This also downloads and activates a host-side <code>relaymd</code> CLI binary under
 <code>/depot/plow/apps/relaymd/current/relaymd</code>.</p>
+<h2 id="branch-version-and-release-flow">Branch, Version, and Release Flow</h2>
+<p>All deployment and release changes should start on a new branch. Do not push
+directly to <code>main</code>; merge through a pull request so GitHub Actions can build and
+publish a coherent release set.</p>
+<p>Every pushed branch that changes source, tests, deployment assets, release
+automation, or operator docs should carry an explicit version bump. For CLI-
+affecting changes, bump the root RelayMD version with:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span>X.Y.Z
+</span></code></pre></div>
+<p>That keeps <code>pyproject.toml</code>, <code>src/relaymd/_version.py</code>, and <code>uv.lock</code> aligned
+and creates the matching <code>vX.Y.Z</code> tag. Push both the branch and tag:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>&lt;branch&gt;
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>vX.Y.Z
+</span></code></pre></div>
+<p>On protected-branch CI, GitHub Actions publishes immutable <code>sha-&lt;shortsha&gt;</code>
+release artifacts, refreshes the <code>latest</code> GitHub Release, and uploads
+<code>relaymd-release-manifest.json</code>. The manifest is the source of truth tying the
+orchestrator image, worker image, CLI URI, CLI version, and source commit
+together. Do not hand-edit release manifests or reuse an old tag for new
+artifacts.</p>
 <p>Auto-resolve by tag:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
 </span></code></pre></div>
 <p>Auto-resolve latest pinned release set:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>latest
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>latest
 </span></code></pre></div>
 <p><code>latest</code> resolves from release manifest
 <code>relaymd-release-manifest.json</code> on GitHub release <code>latest</code>, so orchestrator,
@@ -1329,10 +1371,10 @@ worker, and CLI are promoted as one pinned set. If manifest resolution fails,
 <code>/tmp/relaymd-service-$UID</code> (override with <code>RELAYMD_SCRATCH_ROOT</code>,
 <code>APPTAINER_TMPDIR</code>, or <code>APPTAINER_CACHEDIR</code>).</p>
 <p>Start service in tmux from the active release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>relaymd<span class="w"> </span>up
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>relaymd<span class="w"> </span>up
 </span></code></pre></div>
 <p>Check live status (heartbeat freshness + tmux + ports):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>relaymd<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>relaymd<span class="w"> </span>status
 </span></code></pre></div>
 <p><code>relaymd up</code> starts the orchestrator and dashboard proxy through the installed
 service wrappers. Runtime env vars from <code>relaymd-service.env</code>/shell env are

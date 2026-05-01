@@ -761,6 +761,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#status-readiness-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Readiness Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pyinstaller-distribution" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1197,6 +1208,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#status-readiness-diagnostics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Readiness Diagnostics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pyinstaller-distribution" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1263,15 +1285,28 @@ the locked host has fresh orchestrator and proxy heartbeats, the CLI re-executes
 the same command on the locked host with SSH and exits with the remote command's
 status code.</p>
 <p>The remote command changes to the original working directory and uses the same
-RelayMD executable path when possible. stdout and stderr are not wrapped, so
-JSON mode remains machine-readable. An internal
+RelayMD executable path when possible. Before invoking the executable, it sources
+the configured module-managed service env file when present so secret hydration
+inputs are available on the remote login node. stdout and stderr are not wrapped,
+so JSON mode remains machine-readable. An internal
 <code>RELAYMD_CLI_REMOTE_DISPATCH=1</code> environment variable prevents recursive
 delegation on the remote host.</p>
 <p>Commands that manage or inspect the local service process (<code>up</code>, <code>down</code>,
 <code>restart</code>, <code>status</code>, <code>logs</code>, <code>attach</code>, <code>upgrade</code>) are not SSH-delegated.
-<code>relaymd status --json</code> is remote-aware: a fresh off-host service lock reports
-<code>overall: "healthy"</code>, <code>healthy: 1</code>, and <code>access_mode: "ssh_delegated"</code> even
-though local tmux and port checks would not see the loopback-bound service.</p>
+<code>relaymd status</code> has its own remote path: when invoked off-host, the HPC status
+wrapper SSHes to the locked service host and runs the same status check there
+with <code>RELAYMD_STATUS_REMOTE_CHECK=1</code> to avoid recursion.</p>
+<h2 id="status-readiness-diagnostics">Status Readiness Diagnostics</h2>
+<p><code>relaymd status</code> combines wrapper-level process health with Python readiness
+diagnostics from the hidden <code>relaymd config diagnose --json</code> command. The
+diagnostics command validates the resolved env/config paths, performs live
+Infisical hydration for CLI and orchestrator settings, and reports redacted
+readiness for submit credentials, service secrets, release assets, proxy auth,
+SLURM access, configured SIF paths, the Tailscale socket, and the database URL.
+Secret values are never printed.</p>
+<p>In JSON mode, status preserves the existing process fields and adds
+<code>readiness_ok</code> plus a <code>readiness</code> object. Overall <code>healthy</code> requires both process
+health and readiness to pass.</p>
 <h2 id="pyinstaller-distribution">PyInstaller Distribution</h2>
 <p>The CLI is compiled to a static binary via PyInstaller on Linux x86_64. The build process runs inside a <code>manylinux2014</code> Docker container (via <code>make release-cli</code>) to ensure compatibility across older glibc versions (essential for CentOS/Rocky Linux HPC login nodes).</p>
 <p>The build script strips unnecessary dependencies (like <code>pydantic</code>'s compiled cores) from the binary to reduce size.</p>
