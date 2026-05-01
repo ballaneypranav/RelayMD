@@ -4,6 +4,15 @@ set -euo pipefail
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
 RELAYMD_ENV_FILE="${RELAYMD_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
+
+if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${RELAYMD_ENV_FILE}"
+    set +a
+fi
+
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 CLI_BIN="${CURRENT_LINK}/relaymd"
 
@@ -11,13 +20,6 @@ if [[ ! -x "${CLI_BIN}" ]]; then
     echo "RelayMD CLI binary is not available at ${CLI_BIN}." >&2
     echo "Run relaymd-service-pull to activate a release with CLI artifacts." >&2
     exit 1
-fi
-
-if [[ -f "${RELAYMD_ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${RELAYMD_ENV_FILE}"
-    set +a
 fi
 
 exec "${CLI_BIN}" "$@"

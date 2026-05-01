@@ -87,6 +87,44 @@ def test_hpc_cli_wrapper_sources_service_env_before_exec(tmp_path: Path) -> None
     assert result.stdout.splitlines() == ["client:secret", "api-token"]
 
 
+def test_hpc_cli_wrapper_uses_current_link_from_service_env(tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    data_root = tmp_path / "data" / "relaymd-service"
+    default_current = service_root / "current"
+    override_current = service_root / "override-current"
+    default_current.mkdir(parents=True)
+    override_current.mkdir(parents=True)
+    env_file = data_root / "config" / "relaymd-service.env"
+    env_file.parent.mkdir(parents=True)
+    env_file.write_text(f'CURRENT_LINK="{override_current}"\n', encoding="utf-8")
+    (default_current / "relaymd").write_text(
+        "#!/usr/bin/env bash\nprintf 'default\\n'\n",
+        encoding="utf-8",
+    )
+    (override_current / "relaymd").write_text(
+        "#!/usr/bin/env bash\nprintf 'override\\n'\n",
+        encoding="utf-8",
+    )
+    (default_current / "relaymd").chmod(0o755)
+    (override_current / "relaymd").chmod(0o755)
+    wrapper = Path("deploy/hpc/relaymd").resolve()
+
+    result = subprocess.run(
+        [str(wrapper), "--version"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_SERVICE_ROOT": str(service_root),
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 0
+    assert result.stdout == "override\n"
+
+
 def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
     tmp_path: Path,
 ) -> None:
