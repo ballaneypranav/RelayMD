@@ -121,7 +121,9 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
             continue
         bundle_interval = parsed.get("checkpoint_poll_interval_seconds")
         if bundle_interval is not None and (
-            not isinstance(bundle_interval, int) or bundle_interval <= 0
+            isinstance(bundle_interval, bool)
+            or not isinstance(bundle_interval, int)
+            or bundle_interval <= 0
         ):
             raise RuntimeError("Invalid checkpoint_poll_interval_seconds in bundle config")
 

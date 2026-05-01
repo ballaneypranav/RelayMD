@@ -105,6 +105,18 @@ def test_load_bundle_execution_config_rejects_non_positive_checkpoint_poll_inter
         _load_bundle_execution_config(tmp_path)
 
 
+def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "relaymd-worker.json").write_text(
+        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
+        '"checkpoint_poll_interval_seconds": true}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
+        _load_bundle_execution_config(tmp_path)
+
+
 def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

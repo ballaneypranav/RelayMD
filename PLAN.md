@@ -128,13 +128,13 @@ Required commands:
 
 - `relaymd submit --json`
 - `relaymd status --json`
-- `relaymd job list --json`
-- `relaymd job show <id> --json`
-- `relaymd worker list --json`
+- `relaymd jobs list --json`
+- `relaymd jobs show <id> --json`
+- `relaymd workers list --json`
 - `relaymd config show-paths --json`
 - `relaymd path <name> --json`
-- `relaymd job cancel <id> --json`
-- `relaymd job requeue <id> --json`
+- `relaymd jobs cancel <id> --json`
+- `relaymd jobs requeue <id> --json`
 - `relaymd jobs checkpoint download <job-id> --json`
 
 Out of scope for this plan:
@@ -171,7 +171,7 @@ Out of scope for this plan:
 }
 ```
 
-`relaymd job list --json` should emit an object with a `jobs` array:
+`relaymd jobs list --json` should emit an object with a `jobs` array:
 
 ```json
 {
@@ -189,13 +189,13 @@ Out of scope for this plan:
 }
 ```
 
-`relaymd job show <id> --json` should emit one job object with the same fields
+`relaymd jobs show <id> --json` should emit one job object with the same fields
 as entries in `job list`.
 
-`relaymd job cancel <id> --json` and `relaymd job requeue <id> --json` should
+`relaymd jobs cancel <id> --json` and `relaymd jobs requeue <id> --json` should
 emit the resulting job object after the transition.
 
-`relaymd worker list --json` should emit an object with a `workers` array:
+`relaymd workers list --json` should emit an object with a `workers` array:
 
 ```json
 {
