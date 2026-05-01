@@ -1303,6 +1303,11 @@ derives the rest of the install paths from that directory:</p>
 <p>Submit machine-readable output:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./my-input<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;my job&quot;</span><span class="w"> </span>--json
 </span></code></pre></div>
+<p>On shared HPC installs, API-backed commands automatically delegate over SSH to
+the host that owns the active RelayMD service lock when run from another login
+node. This keeps the orchestrator bound to loopback on the service host while
+allowing <code>submit</code>, <code>jobs</code>, <code>workers</code>, and <code>monitor</code> commands to be run from any
+login shell with SSH access to the service host.</p>
 <p>Jobs:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--pretty
@@ -1312,6 +1317,9 @@ derives the rest of the install paths from that directory:</p>
 </span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>requeue<span class="w"> </span>&lt;job-id&gt;
 </span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>checkpoint<span class="w"> </span>download<span class="w"> </span>&lt;job-id&gt;
 </span></code></pre></div>
+<p>When checkpoint download is delegated from a non-service login node, the
+download command runs on the service host. Use an <code>--output</code> path on shared
+storage if the file must be visible from the original shell.</p>
 <p>Jobs JSON mode:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--json
 </span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>show<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json

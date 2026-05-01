@@ -750,6 +750,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cross-host-api-command-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Host API Command Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pyinstaller-distribution" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1175,6 +1186,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cross-host-api-command-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Host API Command Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pyinstaller-distribution" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1232,6 +1254,24 @@
 </ol>
 <p>Because the upload goes directly to B2, there is no file upload proxying through the orchestrator. The CLI just tells the orchestrator where the file is.</p>
 <p>JSON mode (<code>--json</code>) is supported for automation-facing commands. In JSON mode, stdout is reserved for JSON payloads.</p>
+<h2 id="cross-host-api-command-dispatch">Cross-Host API Command Dispatch</h2>
+<p>On module-managed HPC installs, the service status file identifies the host that
+owns the active RelayMD service lock. API-backed operator commands (<code>submit</code>,
+<code>jobs</code>, <code>workers</code>, and <code>monitor</code>, including hidden singular aliases) check this
+status before executing. If the current shell is on a different login node and
+the locked host has fresh orchestrator and proxy heartbeats, the CLI re-executes
+the same command on the locked host with SSH and exits with the remote command's
+status code.</p>
+<p>The remote command changes to the original working directory and uses the same
+RelayMD executable path when possible. stdout and stderr are not wrapped, so
+JSON mode remains machine-readable. An internal
+<code>RELAYMD_CLI_REMOTE_DISPATCH=1</code> environment variable prevents recursive
+delegation on the remote host.</p>
+<p>Commands that manage or inspect the local service process (<code>up</code>, <code>down</code>,
+<code>restart</code>, <code>status</code>, <code>logs</code>, <code>attach</code>, <code>upgrade</code>) are not SSH-delegated.
+<code>relaymd status --json</code> is remote-aware: a fresh off-host service lock reports
+<code>overall: "healthy"</code>, <code>healthy: 1</code>, and <code>access_mode: "ssh_delegated"</code> even
+though local tmux and port checks would not see the loopback-bound service.</p>
 <h2 id="pyinstaller-distribution">PyInstaller Distribution</h2>
 <p>The CLI is compiled to a static binary via PyInstaller on Linux x86_64. The build process runs inside a <code>manylinux2014</code> Docker container (via <code>make release-cli</code>) to ensure compatibility across older glibc versions (essential for CentOS/Rocky Linux HPC login nodes).</p>
 <p>The build script strips unnecessary dependencies (like <code>pydantic</code>'s compiled cores) from the binary to reduce size.</p>
