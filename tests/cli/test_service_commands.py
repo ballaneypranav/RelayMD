@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -47,6 +50,49 @@ def test_status_delegates_to_status_wrapper_with_flags(monkeypatch, tmp_path: Pa
         [str(status_script), "--verbose", "--json", "--no-color"],
         check=True,
     )
+
+
+def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
+    tmp_path: Path,
+) -> None:
+    data_root = tmp_path / "relaymd-service"
+    status_file = data_root / "state" / "relaymd-service.status"
+    status_file.parent.mkdir(parents=True)
+    heartbeat = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    status_file.write_text(
+        "\n".join(
+            [
+                "HOST=relaymd-remote-test-host",
+                "ORCHESTRATOR_ACTIVE=1",
+                f"ORCHESTRATOR_HEARTBEAT_AT={heartbeat}",
+                "PROXY_ACTIVE=1",
+                f"PROXY_HEARTBEAT_AT={heartbeat}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    script = Path("deploy/hpc/relaymd-service-status").resolve()
+
+    result = subprocess.run(
+        [str(script), "--json"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "RELAYMD_STATUS_FILE": str(status_file),
+            "RELAYMD_PRIMARY_HOST": "relaymd-remote-test-host",
+            "RELAYMD_HEARTBEAT_STALE_SECONDS": "99999999999",
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["overall"] == "healthy"
+    assert payload["healthy"] == 1
+    assert payload["access_mode"] == "ssh_delegated"
 
 
 def test_down_kills_sessions_and_marks_status_inactive(monkeypatch, tmp_path: Path) -> None:

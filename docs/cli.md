@@ -86,6 +86,12 @@ Submit machine-readable output:
 relaymd submit ./my-input --title "my job" --json
 ```
 
+On shared HPC installs, API-backed commands automatically delegate over SSH to
+the host that owns the active RelayMD service lock when run from another login
+node. This keeps the orchestrator bound to loopback on the service host while
+allowing `submit`, `jobs`, `workers`, and `monitor` commands to be run from any
+login shell with SSH access to the service host.
+
 Jobs:
 
 ```bash
@@ -97,6 +103,10 @@ relaymd jobs cancel <job-id> --force
 relaymd jobs requeue <job-id>
 relaymd jobs checkpoint download <job-id>
 ```
+
+When checkpoint download is delegated from a non-service login node, the
+download command runs on the service host. Use an `--output` path on shared
+storage if the file must be visible from the original shell.
 
 Jobs JSON mode:
 

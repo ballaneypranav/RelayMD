@@ -22,6 +22,28 @@ Because the upload goes directly to B2, there is no file upload proxying through
 
 JSON mode (`--json`) is supported for automation-facing commands. In JSON mode, stdout is reserved for JSON payloads.
 
+## Cross-Host API Command Dispatch
+
+On module-managed HPC installs, the service status file identifies the host that
+owns the active RelayMD service lock. API-backed operator commands (`submit`,
+`jobs`, `workers`, and `monitor`, including hidden singular aliases) check this
+status before executing. If the current shell is on a different login node and
+the locked host has fresh orchestrator and proxy heartbeats, the CLI re-executes
+the same command on the locked host with SSH and exits with the remote command's
+status code.
+
+The remote command changes to the original working directory and uses the same
+RelayMD executable path when possible. stdout and stderr are not wrapped, so
+JSON mode remains machine-readable. An internal
+`RELAYMD_CLI_REMOTE_DISPATCH=1` environment variable prevents recursive
+delegation on the remote host.
+
+Commands that manage or inspect the local service process (`up`, `down`,
+`restart`, `status`, `logs`, `attach`, `upgrade`) are not SSH-delegated.
+`relaymd status --json` is remote-aware: a fresh off-host service lock reports
+`overall: "healthy"`, `healthy: 1`, and `access_mode: "ssh_delegated"` even
+though local tmux and port checks would not see the loopback-bound service.
+
 ## PyInstaller Distribution
 
 The CLI is compiled to a static binary via PyInstaller on Linux x86_64. The build process runs inside a `manylinux2014` Docker container (via `make release-cli`) to ensure compatibility across older glibc versions (essential for CentOS/Rocky Linux HPC login nodes).
