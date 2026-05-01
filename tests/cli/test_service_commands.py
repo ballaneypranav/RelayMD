@@ -278,6 +278,9 @@ def test_status_wrapper_sshes_to_expected_host_for_off_host_status(tmp_path: Pat
     ssh.write_text(
         "#!/usr/bin/env bash\n"
         f"printf '%s\\n' \"$@\" > {log_path}\n"
+        "printf '%s\\n' '************************************************************'\n"
+        "printf '%s\\n' '***** Use of Purdue BoilerKey or SSH keys is Required ******'\n"
+        "printf '%s\\n' '************************************************************'\n"
         "printf '%s\\n' '{\"overall\":\"healthy\",\"healthy\":1,\"readiness_ok\":1}'\n",
         encoding="utf-8",
     )
@@ -299,6 +302,7 @@ def test_status_wrapper_sshes_to_expected_host_for_off_host_status(tmp_path: Pat
 
     assert result.returncode == 0
     assert json.loads(result.stdout)["healthy"] == 1
+    assert "BoilerKey" not in result.stdout
     assert "relaymd-remote-test-host" in log_path.read_text(encoding="utf-8")
     assert "RELAYMD_STATUS_REMOTE_CHECK=1" in log_path.read_text(encoding="utf-8")
 
