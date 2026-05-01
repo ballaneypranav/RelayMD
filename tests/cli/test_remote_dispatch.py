@@ -135,6 +135,30 @@ def test_should_not_delegate_with_recursion_guard(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("host", ["-oProxyCommand=sh", "bad host", "user@host", "host/path"])
+def test_should_not_delegate_unsafe_ssh_destination(tmp_path: Path, host: str) -> None:
+    paths = _paths(tmp_path)
+    _write_status(paths, host=host)
+
+    assert (
+        remote_dispatch.should_delegate_to_remote_host(
+            args=["submit", "input"],
+            paths=paths,
+            current_host_name="gilbreth-fe00",
+        )
+        is None
+    )
+
+
+def test_build_remote_dispatch_target_rejects_unsafe_ssh_destination(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="Unsafe SSH destination"):
+        remote_dispatch.build_remote_dispatch_target(
+            argv=["relaymd", "submit", "input"],
+            target_host="-oProxyCommand=sh",
+            cwd=tmp_path,
+        )
+
+
 def test_build_remote_dispatch_target_quotes_cwd_executable_and_args(tmp_path: Path) -> None:
     executable = tmp_path / "relaymd"
     executable.touch()
@@ -147,7 +171,7 @@ def test_build_remote_dispatch_target_quotes_cwd_executable_and_args(tmp_path: P
         cwd=cwd,
     )
 
-    assert target.command[0:2] == ["ssh", "gilbreth-fe01"]
+    assert target.command[0:3] == ["ssh", "--", "gilbreth-fe01"]
     assert "cd" in target.remote_command
     assert "project with spaces" in target.remote_command
     assert f"{remote_dispatch.REMOTE_DISPATCH_ENV}=1" in target.remote_command
@@ -170,5 +194,5 @@ def test_maybe_dispatch_runs_ssh_and_exits_with_remote_code(monkeypatch, tmp_pat
 
     assert exc.value.code == 42
     command = run.call_args.args[0]
-    assert command[0:2] == ["ssh", "gilbreth-fe01"]
-    assert command[2].endswith("relaymd submit input --json")
+    assert command[0:3] == ["ssh", "--", "gilbreth-fe01"]
+    assert command[3].endswith("relaymd submit input --json")

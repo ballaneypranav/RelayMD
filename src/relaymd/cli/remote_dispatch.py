@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -22,6 +23,8 @@ API_COMMANDS = {
     "worker",
     "monitor",
 }
+
+SSH_DESTINATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,252}$")
 
 
 @dataclass(frozen=True)
@@ -92,6 +95,10 @@ def _stale_after_seconds() -> int:
     return max(value, 1)
 
 
+def is_safe_ssh_destination(value: str) -> bool:
+    return bool(SSH_DESTINATION_RE.fullmatch(value))
+
+
 def should_delegate_to_remote_host(
     *,
     args: list[str],
@@ -109,6 +116,9 @@ def should_delegate_to_remote_host(
     locked_host = (pairs.get("HOST") or "").strip()
     target_host = (paths.primary_host or locked_host).strip()
     if not target_host or target_host == current_host_name:
+        return None
+
+    if not is_safe_ssh_destination(target_host):
         return None
 
     if locked_host and locked_host != target_host:
@@ -147,6 +157,9 @@ def build_remote_dispatch_target(
     target_host: str,
     cwd: Path,
 ) -> RemoteDispatchTarget:
+    if not is_safe_ssh_destination(target_host):
+        raise ValueError(f"Unsafe SSH destination: {target_host!r}")
+
     executable = _same_cli_executable(argv[0] if argv else "relaymd")
     args = argv[1:] if argv else []
     remote_command = " ".join(
@@ -161,7 +174,7 @@ def build_remote_dispatch_target(
     )
     return RemoteDispatchTarget(
         host=target_host,
-        command=["ssh", target_host, remote_command],
+        command=["ssh", "--", target_host, remote_command],
         remote_command=remote_command,
     )
 
