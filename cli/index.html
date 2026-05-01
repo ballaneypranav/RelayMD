@@ -1361,12 +1361,20 @@ When <code>--command</code> is used, <code>--checkpoint-glob</code> is required.
 </span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">}</span>
 </span></code></pre></div>
 <h2 id="release-versioning">Release Versioning</h2>
-<p>Use the helper script to bump version, update lockfile, commit, and tag in one step:</p>
+<p>Work on a branch and merge through a pull request. Direct pushes to <code>main</code> are
+blocked by repository policy, and release-producing changes should land through
+CI with an explicit version bump.</p>
+<p>Every branch that changes CLI-affecting files must include a root
+<code>pyproject.toml</code> version bump before it is merged. Use the helper script to bump
+version, update the lockfile, commit, and tag in one step:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1
 </span></code></pre></div>
-<p>Push immediately after tagging:</p>
+<p>Push the branch and tag after bumping:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.1.1<span class="w"> </span><span class="nv">PUSH</span><span class="o">=</span><span class="m">1</span>
 </span></code></pre></div>
+<p>Pull requests that change CLI-affecting files must bump the root
+<code>pyproject.toml</code> version. CI enforces this so deployed <code>relaymd --version</code>
+can be used to confirm a session is running the expected binary.</p>
 
 
 
