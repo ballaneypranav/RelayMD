@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 from relaymd_api_client.api.default import create_job_jobs_post
 from relaymd_api_client.errors import UnexpectedStatus
+from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_create import JobCreate
+from relaymd_api_client.models.job_create_conflict import JobCreateConflict
 from relaymd_api_client.models.job_read import JobRead
 
 from relaymd.cli.context import CliContext
@@ -43,7 +46,7 @@ class SubmitService:
         self._validate_storage_settings()
         self._context.storage_client().upload_file(local_archive, b2_key)
 
-    def register_job(self, *, job_id: str, title: str, b2_key: str) -> JobRead:
+    def register_job(self, *, job_id: UUID, title: str, b2_key: str) -> JobRead:
         try:
             with self._context.api_client() as client:
                 body = JobCreate(id=job_id, title=title, input_bundle_path=b2_key)
@@ -64,6 +67,10 @@ class SubmitService:
                 ) from exc
             raise
 
+        if isinstance(response, JobCreateConflict):
+            raise RuntimeError(response.message)
+        if isinstance(response, HTTPValidationError):
+            raise RuntimeError(str(response.to_dict()))
         if response is None or not isinstance(response, JobRead):
             raise RuntimeError("Failed to parse create job response")
         return response

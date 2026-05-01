@@ -86,6 +86,8 @@ async def test_create_list_get_and_cancel_paths() -> None:
             },
         )
         assert duplicate_id_response.status_code == 409
+        assert duplicate_id_response.json()["job_id"] == job_id
+        assert "already exists" in duplicate_id_response.json()["message"]
 
         list_response = await client.get("/jobs", headers=headers)
         assert list_response.status_code == 200

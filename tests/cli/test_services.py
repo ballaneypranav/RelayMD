@@ -4,12 +4,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from relaymd_api_client.errors import UnexpectedStatus
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_conflict import JobConflict
+from relaymd_api_client.models.job_create_conflict import JobCreateConflict
 from relaymd_api_client.models.job_read import JobRead
 from relaymd_api_client.models.worker_read import WorkerRead
 
@@ -219,7 +220,7 @@ def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="Failed to parse create job response"):
         SubmitService(_as_cli_context(context)).register_job(
-            job_id=str(uuid4()),
+            job_id=uuid4(),
             title="train",
             b2_key="jobs/a/input/bundle.tar.gz",
         )
@@ -242,7 +243,28 @@ def test_submit_service_register_job_surfaces_helpful_404_hint(monkeypatch) -> N
 
     with pytest.raises(RuntimeError, match="POST /jobs returned 404 from http://127.0.0.1:36158"):
         SubmitService(_as_cli_context(context)).register_job(
-            job_id=str(uuid4()),
+            job_id=uuid4(),
+            title="train",
+            b2_key="jobs/a/input/bundle.tar.gz",
+        )
+
+
+def test_submit_service_register_job_surfaces_duplicate_id_conflict(monkeypatch) -> None:
+    context = _FakeContext()
+    conflict_id = UUID("00000000-0000-0000-0000-000000000123")
+    monkeypatch.setattr(
+        "relaymd.cli.services.submit_service.create_job_jobs_post.sync",
+        Mock(
+            return_value=JobCreateConflict(
+                message=f"Job with id {conflict_id} already exists",
+                job_id=conflict_id,
+            )
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="already exists"):
+        SubmitService(_as_cli_context(context)).register_job(
+            job_id=conflict_id,
             title="train",
             b2_key="jobs/a/input/bundle.tar.gz",
         )
