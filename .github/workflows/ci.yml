@@ -93,6 +93,35 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  cli-version-guard:
+    needs: changes
+    permissions:
+      contents: read
+    if: ${{ (github.event_name == 'pull_request' || github.event_name == 'push') && needs.changes.outputs.cli == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Require CLI version bump
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          current_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
+          base_version="$(git show "${BASE_SHA}:pyproject.toml" | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1)"
+
+          if [[ -z "${current_version}" || -z "${base_version}" ]]; then
+            echo "Unable to read RelayMD version from pyproject.toml." >&2
+            exit 1
+          fi
+
+          if [[ "${current_version}" == "${base_version}" ]]; then
+            echo "CLI-affecting files changed, but pyproject.toml version is still ${current_version}." >&2
+            echo "Run: make release-cli VERSION=<next-semver>" >&2
+            exit 1
+          fi
+
   build-worker-base:
     needs: [changes]
     permissions:
@@ -433,12 +462,13 @@ jobs:
           files: dist/relaymd-linux-x86_64
 
   publish-release-manifest:
-    needs: [changes, test, build-worker, build-orchestrator, build-cli]
+    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli]
     permissions:
       contents: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
       - name: Generate release manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -466,6 +496,13 @@ jobs:
           prev_worker_image="$(jq -r '.worker_image // empty' "${prev_manifest}")"
           prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
           prev_cli_uri="$(jq -r '.cli_uri // empty' "${prev_manifest}")"
+          prev_cli_version="$(jq -r '.cli_version // empty' "${prev_manifest}")"
+          current_cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
+
+          if [[ -z "${current_cli_version}" ]]; then
+            echo "Unable to read RelayMD CLI version from pyproject.toml." >&2
+            exit 1
+          fi
 
           if [[ "${WORKER_CHANGED}" == "true" ]]; then
             worker_image="docker://ghcr.io/${OWNER}/relaymd-worker:sha-${short_sha}"
@@ -481,8 +518,10 @@ jobs:
 
           if [[ "${CLI_CHANGED}" == "true" ]]; then
             cli_uri="https://github.com/${OWNER}/relaymd/releases/download/sha-${short_sha}/relaymd-linux-x86_64"
+            cli_version="${current_cli_version}"
           else
             cli_uri="${prev_cli_uri:-https://github.com/${OWNER}/relaymd/releases/latest/download/relaymd-linux-x86_64}"
+            cli_version="${prev_cli_version:-${current_cli_version}}"
           fi
 
           if [[ "${WORKER_CHANGED}" == "true" || "${ORCH_CHANGED}" == "true" || "${CLI_CHANGED}" == "true" ]]; then
@@ -496,6 +535,7 @@ jobs:
             --arg orchestrator_image "${orchestrator_image}" \
             --arg worker_image "${worker_image}" \
             --arg cli_uri "${cli_uri}" \
+            --arg cli_version "${cli_version}" \
             --arg source_commit "${SOURCE_SHA}" \
             --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{
@@ -503,6 +543,7 @@ jobs:
               orchestrator_image: $orchestrator_image,
               worker_image: $worker_image,
               cli_uri: $cli_uri,
+              cli_version: $cli_version,
               source_commit: $source_commit,
               generated_at: $generated_at
             }' > relaymd-release-manifest.json

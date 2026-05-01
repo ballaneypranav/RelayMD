@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from relaymd.models import Job, JobStatus
 
+from relaymd import __version__
 from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
@@ -35,7 +36,7 @@ async def test_healthz_no_auth_required() -> None:
         response = await client.get("/healthz")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
-        assert response.json()["version"] == "0.1.0"
+        assert response.json()["version"] == __version__
 
 
 @pytest.mark.asyncio

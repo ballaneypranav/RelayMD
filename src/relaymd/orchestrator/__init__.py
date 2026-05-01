@@ -1,1 +1,3 @@
-__version__ = "0.1.0"
+from relaymd._version import __version__
+
+__all__ = ["__version__"]
