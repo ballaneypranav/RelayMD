@@ -76,6 +76,17 @@ async def test_create_list_get_and_cancel_paths() -> None:
         )
         assert second_create_response.status_code == 200
 
+        duplicate_id_response = await client.post(
+            "/jobs",
+            headers=headers,
+            json={
+                "id": job_id,
+                "title": "duplicate",
+                "input_bundle_path": "jobs/dup/input/bundle.tar.gz",
+            },
+        )
+        assert duplicate_id_response.status_code == 409
+
         list_response = await client.get("/jobs", headers=headers)
         assert list_response.status_code == 200
         listed_jobs = list_response.json()
@@ -190,3 +201,21 @@ async def test_requeue_missing_job_returns_404() -> None:
             headers=headers,
         )
         assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_job_accepts_caller_supplied_id() -> None:
+    headers = {"X-API-Token": "test-token"}
+    expected_id = "0b7edcb6-c482-4abf-9545-7c1a252ea0fd"
+    async with app_client(make_settings()) as (_app, client):
+        create_response = await client.post(
+            "/jobs",
+            headers=headers,
+            json={
+                "id": expected_id,
+                "title": "job-with-id",
+                "input_bundle_path": "jobs/with-id/input/bundle.tar.gz",
+            },
+        )
+        assert create_response.status_code == 200
+        assert create_response.json()["id"] == expected_id

@@ -219,6 +219,7 @@ def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:
 
     with pytest.raises(RuntimeError, match="Failed to parse create job response"):
         SubmitService(_as_cli_context(context)).register_job(
+            job_id=str(uuid4()),
             title="train",
             b2_key="jobs/a/input/bundle.tar.gz",
         )
@@ -241,6 +242,7 @@ def test_submit_service_register_job_surfaces_helpful_404_hint(monkeypatch) -> N
 
     with pytest.raises(RuntimeError, match="POST /jobs returned 404 from http://127.0.0.1:36158"):
         SubmitService(_as_cli_context(context)).register_job(
+            job_id=str(uuid4()),
             title="train",
             b2_key="jobs/a/input/bundle.tar.gz",
         )

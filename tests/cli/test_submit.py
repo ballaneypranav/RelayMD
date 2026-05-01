@@ -70,11 +70,13 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
                 assert worker_json is not None
                 uploaded["worker_config"] = json.loads(worker_json.read().decode("utf-8"))
 
-        def register_job(self, *, title: str, b2_key: str) -> str:
+        def register_job(self, *, job_id: str, title: str, b2_key: str):
+            assert uuid.UUID(job_id)
             assert title == "test-job"
             assert b2_key.startswith("jobs/")
             assert b2_key.endswith("/input/bundle.tar.gz")
-            return str(created_job.id)
+            created_job.id = uuid.UUID(job_id)
+            return created_job
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
     create_context = Mock(return_value=object())
@@ -85,6 +87,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
         title="test-job",
         command="python run.py",
         checkpoint_glob="*.cpt",
+        checkpoint_poll_interval_seconds=60,
     )
 
     worker_json = input_dir / "relaymd-worker.json"
@@ -92,6 +95,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     assert uploaded["worker_config"] == {
         "command": "python run.py",
         "checkpoint_glob_pattern": "*.cpt",
+        "checkpoint_poll_interval_seconds": 60,
     }
     assert "relaymd-worker.json" in uploaded["tar_names"]
     assert uploaded["key"].startswith("jobs/")
@@ -105,7 +109,12 @@ def test_submit_aborts_when_worker_config_missing_and_no_command(tmp_path: Path)
     (input_dir / "hello.txt").write_text("hello", encoding="utf-8")
 
     with pytest.raises(typer.Exit) as exc:
-        submit_cmd.ensure_worker_config(input_dir, command=None, checkpoint_glob=None)
+        submit_cmd.ensure_worker_config(
+            input_dir,
+            command=None,
+            checkpoint_glob=None,
+            checkpoint_poll_interval_seconds=None,
+        )
 
     assert exc.value.exit_code == 1
 
@@ -133,4 +142,17 @@ def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path
     with pytest.raises(typer.Exit) as exc:
         submit_cmd.submit(input_dir=input_dir, title="failing-job")
 
+    assert exc.value.exit_code == 1
+
+
+def test_submit_command_requires_checkpoint_glob(tmp_path: Path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    with pytest.raises(typer.Exit) as exc:
+        submit_cmd.ensure_worker_config(
+            input_dir,
+            command="python run.py",
+            checkpoint_glob=None,
+            checkpoint_poll_interval_seconds=None,
+        )
     assert exc.value.exit_code == 1

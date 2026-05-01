@@ -20,15 +20,33 @@ from relaymd.cli.services.submit_service import SubmitService
 console = Console()
 
 
-def ensure_worker_config(input_dir: Path, command: str | None, checkpoint_glob: str | None) -> None:
+def ensure_worker_config(
+    input_dir: Path,
+    command: str | None,
+    checkpoint_glob: str | None,
+    checkpoint_poll_interval_seconds: int | None,
+) -> None:
     worker_json = input_dir / "relaymd-worker.json"
     worker_toml = input_dir / "relaymd-worker.toml"
 
     if command is not None:
+        if not checkpoint_glob:
+            console.print(
+                "[red]Missing --checkpoint-glob:[/red] --command requires "
+                "--checkpoint-glob so checkpoint uploads can be discovered."
+            )
+            raise typer.Exit(code=1)
         worker_payload: dict[str, Any] = {
             "command": command,
             "checkpoint_glob_pattern": checkpoint_glob,
         }
+        if checkpoint_poll_interval_seconds is not None:
+            if checkpoint_poll_interval_seconds < 1:
+                console.print(
+                    "[red]Invalid --checkpoint-poll-interval-seconds:[/red] value must be >= 1."
+                )
+                raise typer.Exit(code=1)
+            worker_payload["checkpoint_poll_interval_seconds"] = checkpoint_poll_interval_seconds
         worker_json.write_text(f"{json.dumps(worker_payload, indent=2)}\n", encoding="utf-8")
         return
 
@@ -68,9 +86,15 @@ def upload_bundle(
         progress.update(task_id, description="Upload complete")
 
 
-def register_job(title: str, b2_key: str, *, service: SubmitService | None = None) -> str:
+def register_job(
+    job_id: str,
+    title: str,
+    b2_key: str,
+    *,
+    service: SubmitService | None = None,
+):
     submit_service = service or SubmitService(create_cli_context())
-    return submit_service.register_job(title=title, b2_key=b2_key)
+    return submit_service.register_job(job_id=job_id, title=title, b2_key=b2_key)
 
 
 def submit(
@@ -80,6 +104,13 @@ def submit(
         str | None,
         typer.Option("--command", help="Command to write to relaymd-worker.json."),
     ] = None,
+    checkpoint_poll_interval_seconds: Annotated[
+        int | None,
+        typer.Option(
+            "--checkpoint-poll-interval-seconds",
+            help="Checkpoint poll interval to write alongside --command in relaymd-worker.json.",
+        ),
+    ] = None,
     checkpoint_glob: Annotated[
         str | None,
         typer.Option(
@@ -87,6 +118,10 @@ def submit(
             help="Checkpoint glob pattern to write alongside --command.",
         ),
     ] = None,
+    json_mode: Annotated[
+        bool,
+        typer.Option("--json", help="Emit machine-readable JSON."),
+    ] = False,
 ) -> None:
     if not input_dir.exists() or not input_dir.is_dir():
         console.print(
@@ -107,11 +142,19 @@ def submit(
         with tempfile.TemporaryDirectory() as tmpdir:
             staged_input_dir = Path(tmpdir) / "input"
             shutil.copytree(input_dir, staged_input_dir)
-            ensure_worker_config(staged_input_dir, command, checkpoint_glob)
+            ensure_worker_config(
+                staged_input_dir,
+                command,
+                checkpoint_glob,
+                checkpoint_poll_interval_seconds,
+            )
 
             archive_path = Path(tmpdir) / "bundle.tar.gz"
             create_bundle_archive(staged_input_dir, archive_path)
-            upload_bundle(archive_path, b2_key, service=submit_service)
+            if json_mode:
+                submit_service.upload_bundle(local_archive=archive_path, b2_key=b2_key)
+            else:
+                upload_bundle(archive_path, b2_key, service=submit_service)
     except typer.Exit:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -119,14 +162,27 @@ def submit(
         raise typer.Exit(code=1) from exc
 
     try:
-        created_job_id = register_job(title, b2_key, service=submit_service)
+        created_job = register_job(job_id, title, b2_key, service=submit_service)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]Failed to register job:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
+    if json_mode:
+        typer.echo(
+            json.dumps(
+                {
+                    "job_id": str(created_job.id),
+                    "title": created_job.title,
+                    "input_bundle_path": created_job.input_bundle_path,
+                    "status": str(created_job.status.value),
+                }
+            )
+        )
+        return
+
     console.print(
         Panel.fit(
-            f"[bold green]Job submitted[/bold green]\n[bold]{created_job_id}[/bold]",
+            f"[bold green]Job submitted[/bold green]\n[bold]{created_job.id}[/bold]",
             title="RelayMD",
         )
     )

@@ -18,6 +18,12 @@ The generated package source is not committed. Regenerate it whenever API contra
 Transition-sensitive endpoints now also expose a typed `409` payload (`JobConflict`) for invalid
 or stale state transitions.
 
+`JobCreate` accepts an optional caller-provided `id`. RelayMD CLI submit uses this to make one canonical job ID span:
+
+- orchestrator DB row identity
+- bundle object path `jobs/{job_id}/input/bundle.tar.gz`
+- checkpoint object path `jobs/{job_id}/checkpoints/latest`
+
 Bootstrap workspace (recommended):
 
 ```bash

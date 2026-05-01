@@ -2,7 +2,7 @@
 
 ## Framework
 
-`typer` combined with `rich` for terminal output. Grouped into service commands (`up`, `down`, `restart`, `status`, `logs`, `attach`, `upgrade`) and operator subcommands (`submit`, `job`, `worker`, `monitor`, `path`, `config`). The old plural `jobs`/`workers` and low-level `orchestrator` commands remain as hidden compatibility aliases.
+`typer` combined with `rich` for terminal output. Grouped into service commands (`up`, `down`, `restart`, `status`, `logs`, `attach`, `upgrade`) and operator subcommands (`submit`, `jobs`, `workers`, `monitor`, `path`, `config`). Singular `job`/`worker` remain hidden compatibility aliases. Low-level `orchestrator` commands remain hidden.
 
 ## Shared Context
 
@@ -12,13 +12,15 @@ A dependency injection workaround using `typer.Context.obj`. The root callback i
 
 The `submit` command is the most complex component of the CLI. It does:
 
-1. Validates the input directory and ensures `relaymd-worker.json` or `.toml` exists (writes it if missing but `--command` is provided).
-2. Generates a new `UUIDv4` for the job.
-3. Streams the input directory into a `/tmp` gzip tarball using `tarfile`, skipping hidden files and `.git` via `ignore_unpacked_files()`.
-4. Uploads the tarball directly to B2 via `StorageClient` using the path `jobs/{uuid}/input/bundle.tar.gz`. Shows a Rich progress bar.
-5. Registers the job with the orchestrator via `POST /jobs`.
+1. Validates the input directory and ensures `relaymd-worker.json` or `.toml` exists (or writes it when `--command` is provided).
+2. Generates one canonical `UUIDv4` for the job.
+3. Streams the input directory into a `/tmp` gzip tarball using `tarfile`.
+4. Uploads the tarball directly to B2 via `StorageClient` at `jobs/{job_id}/input/bundle.tar.gz`.
+5. Registers the job with the orchestrator via `POST /jobs` with the same `id={job_id}`.
 
 Because the upload goes directly to B2, there is no file upload proxying through the orchestrator. The CLI just tells the orchestrator where the file is.
+
+JSON mode (`--json`) is supported for automation-facing commands. In JSON mode, stdout is reserved for JSON payloads.
 
 ## PyInstaller Distribution
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import json
+from pathlib import Path
+from typing import Annotated, Any
 from uuid import UUID
 
 import typer
@@ -13,6 +15,7 @@ from relaymd.cli.context import create_cli_context
 from relaymd.cli.services.jobs_service import JobsService
 
 app = typer.Typer(help="Manage jobs.")
+checkpoint_app = typer.Typer(help="Manage job checkpoints.")
 console = Console()
 
 
@@ -70,19 +73,26 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
 
 @app.command("list")
 def list_jobs(
-    pretty: str = typer.Option(
+    pretty: bool = typer.Option(
         False,
         "--pretty",
         help="Format output as a rich table instead of parsed text.",
     ),
+    json_mode: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
 ) -> None:
     try:
         jobs = JobsService(create_cli_context()).list_jobs()
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to list jobs:[/red] {escape(str(exc))}")
+        if json_mode:
+            typer.echo(json.dumps({"error": {"code": "list_failed", "message": str(exc)}}))
+        else:
+            console.print(f"[red]Failed to list jobs:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
     jobs_payload = [job.to_dict() for job in jobs]
+    if json_mode:
+        typer.echo(json.dumps({"jobs": jobs_payload}))
+        return
     if pretty:
         table = Table(title="Jobs")
         table.add_column("ID", style="cyan")
@@ -107,13 +117,19 @@ def list_jobs(
 
 
 @app.command("show")
-def job_status(job_id: str) -> None:
+def job_status(job_id: str, json_mode: bool = typer.Option(False, "--json")) -> None:
     try:
         job = JobsService(create_cli_context()).get_job(job_id=UUID(job_id))
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to get job status:[/red] {escape(str(exc))}")
+        if json_mode:
+            typer.echo(json.dumps({"error": {"code": "get_failed", "message": str(exc)}}))
+        else:
+            console.print(f"[red]Failed to get job status:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
+    if json_mode:
+        typer.echo(json.dumps(job.to_dict()))
+        return
     console.print(_render_job_status_panel(job_id, job.to_dict()))
 
 
@@ -124,22 +140,78 @@ app.command("status", hidden=True)(job_status)
 def cancel_job(
     job_id: str,
     force: bool = typer.Option(False, "--force", help="Cancel running job."),
+    json_mode: bool = typer.Option(False, "--json"),
 ) -> None:
     try:
-        JobsService(create_cli_context()).cancel_job(job_id=UUID(job_id), force=force)
+        job = JobsService(create_cli_context()).cancel_job(job_id=UUID(job_id), force=force)
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to cancel job:[/red] {escape(str(exc))}")
+        if json_mode:
+            typer.echo(json.dumps({"error": {"code": "cancel_failed", "message": str(exc)}}))
+        else:
+            console.print(f"[red]Failed to cancel job:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
+    if json_mode:
+        typer.echo(json.dumps(job.to_dict()))
+        return
     console.print(f"[green]Cancelled job[/green] {job_id}")
 
 
 @app.command("requeue")
-def requeue_job(job_id: str) -> None:
+def requeue_job(job_id: str, json_mode: bool = typer.Option(False, "--json")) -> None:
     try:
         response = JobsService(create_cli_context()).requeue_job(job_id=UUID(job_id))
     except Exception as exc:  # noqa: BLE001
-        console.print(f"[red]Failed to requeue job:[/red] {escape(str(exc))}")
+        if json_mode:
+            typer.echo(json.dumps({"error": {"code": "requeue_failed", "message": str(exc)}}))
+        else:
+            console.print(f"[red]Failed to requeue job:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
+    if json_mode:
+        typer.echo(json.dumps(response.to_dict()))
+        return
     console.print(f"[green]Requeued job[/green] {response.id}")
+
+
+@checkpoint_app.command("download")
+def download_checkpoint(
+    job_id: str,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Output file or directory path."),
+    ] = None,
+    json_mode: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    try:
+        payload = JobsService(create_cli_context()).download_latest_checkpoint(
+            job_id=UUID(job_id),
+            output=output,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if json_mode:
+            try:
+                json.loads(str(exc))
+                typer.echo(str(exc))
+            except Exception:
+                typer.echo(
+                    json.dumps(
+                        {
+                            "error": {
+                                "code": "checkpoint_download_failed",
+                                "message": str(exc),
+                            }
+                        }
+                    )
+                )
+        else:
+            console.print(f"[red]Failed to download checkpoint:[/red] {escape(str(exc))}")
+        raise typer.Exit(code=1) from exc
+
+    if json_mode:
+        typer.echo(json.dumps(payload))
+    else:
+        console.print(f"[green]Downloaded checkpoint[/green] {payload['local_path']}")
+
+
+app.add_typer(checkpoint_app, name="checkpoint")

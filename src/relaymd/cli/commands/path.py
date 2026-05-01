@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import typer
 
 from relaymd.cli.runtime_paths import named_path
@@ -13,10 +15,17 @@ PathName = typer.Argument(
 
 
 @app.callback(invoke_without_command=True)
-def path(name: str = PathName) -> None:
+def path(
+    name: str = PathName,
+    json_mode: bool = typer.Option(False, "--json", help="Emit machine-readable JSON."),
+) -> None:
     """Print a resolved RelayMD path."""
     try:
-        typer.echo(str(named_path(name)))
+        resolved = named_path(name)
+        if json_mode:
+            typer.echo(json.dumps({"name": name, "path": str(resolved)}))
+        else:
+            typer.echo(str(resolved))
     except KeyError as exc:
         raise typer.BadParameter(
             "expected one of: data, config, logs, status, current, release, env, yaml"

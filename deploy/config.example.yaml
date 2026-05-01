@@ -48,6 +48,9 @@ slurm_sigterm_margin_seconds: 300
 
 # Worker runtime defaults injected into sbatch environments.
 worker_heartbeat_interval_seconds: 60
+# Global fallback default for checkpoint polling.
+# Per-job bundle config (`relaymd-worker.json` / `.toml`) can override this via
+# `checkpoint_poll_interval_seconds`.
 worker_checkpoint_poll_interval_seconds: 300
 worker_orchestrator_timeout_seconds: 30.0
 worker_sigterm_checkpoint_wait_seconds: 60

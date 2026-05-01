@@ -9,8 +9,9 @@ Operator prepares simulation input directory
 relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
          │
          ├── packs directory into bundle.tar.gz
-         ├── uploads to B2 at jobs/{uuid}/input/bundle.tar.gz
-         └── POST /jobs → job enters "queued" state in orchestrator DB
+         ├── generates canonical job_id UUID once
+         ├── uploads to B2 at jobs/{job_id}/input/bundle.tar.gz
+         └── POST /jobs with id={job_id} → job enters "queued" state in orchestrator DB
                   │
                   ▼
          Orchestrator sbatch loop fires (every 60s)
@@ -37,7 +38,11 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
                   │
                   ├── every 60s: POST /workers/{id}/heartbeat
                   │
-                  ├── every 5min (poll; default 300s): new checkpoint found?
+                  ├── checkpoint polling interval:
+                  │       bundle `checkpoint_poll_interval_seconds` (if present)
+                  │       else worker runtime default (global)
+                  │
+                  ├── every poll interval: new checkpoint found?
                   │       → upload to B2
                   │       → POST /jobs/{id}/checkpoint
                   │       → if job already terminal: typed 409 conflict (safe to ignore)
@@ -81,8 +86,9 @@ The input bundle for an AToM job contains all simulation input files plus a `rel
 ```json
 {
   "command": "python run_atom.py --config simulation.json",
-  "checkpoint_glob_pattern": "*.chk"
+  "checkpoint_glob_pattern": "*.chk",
+  "checkpoint_poll_interval_seconds": 60
 }
 ```
 
-The `--command` flag on `relaymd submit` can write this file automatically so it does not need to be included in the source directory.
+The `--command` flag on `relaymd submit` can write this file automatically so it does not need to be included in the source directory. When `--command` is used, `--checkpoint-glob` is required.
