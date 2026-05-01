@@ -59,10 +59,18 @@ Infisical before use. CLI startup fails fast when the token is missing/invalid o
 hydrated values are missing. The optional download bearer token is also read from Infisical when
 present.
 
+`relaymd status` also performs live Infisical validation through the internal
+`relaymd config diagnose --json` command. The status output reports only redacted
+presence and hydration state, such as whether the bootstrap token is present and
+whether CLI/orchestrator hydration succeeded. It must not print token values,
+token prefixes, B2 keys, dashboard credentials, or bearer tokens.
+
 ## Security Notes
 
 - Secret loading follows a fail-fast model: missing bootstrap token or missing required hydrated
 	secrets causes startup/config load failure.
+- Status diagnostics follow a fail-closed model: if Infisical validation fails,
+	`relaymd status` is unhealthy even when tmux sessions and ports are running.
 
 ## Limitations / Operational Caveats
 

@@ -156,22 +156,47 @@ def build_remote_dispatch_target(
     argv: list[str],
     target_host: str,
     cwd: Path,
+    env_file: Path | None = None,
 ) -> RemoteDispatchTarget:
     if not is_safe_ssh_destination(target_host):
         raise ValueError(f"Unsafe SSH destination: {target_host!r}")
 
     executable = _same_cli_executable(argv[0] if argv else "relaymd")
     args = argv[1:] if argv else []
-    remote_command = " ".join(
+    command_parts = [
+        "cd",
+        shlex.quote(str(cwd)),
+        "&&",
+    ]
+    if env_file is not None:
+        quoted_env_file = shlex.quote(str(env_file))
+        command_parts.extend(
+            [
+                "if",
+                "[",
+                "-f",
+                quoted_env_file,
+                "];",
+                "then",
+                "set",
+                "-a;",
+                ".",
+                quoted_env_file,
+                ";",
+                "set",
+                "+a;",
+                "fi",
+                "&&",
+            ]
+        )
+    command_parts.extend(
         [
-            "cd",
-            shlex.quote(str(cwd)),
-            "&&",
             f"{REMOTE_DISPATCH_ENV}=1",
             shlex.quote(executable),
             *[shlex.quote(arg) for arg in args],
         ]
     )
+    remote_command = " ".join(command_parts)
     return RemoteDispatchTarget(
         host=target_host,
         command=["ssh", "--", target_host, remote_command],
@@ -194,6 +219,7 @@ def maybe_dispatch_from_argv(argv: list[str] | None = None) -> None:
         argv=active_argv,
         target_host=target_host,
         cwd=Path.cwd(),
+        env_file=paths.env_file,
     )
     try:
         result = subprocess.run(target.command, check=False)

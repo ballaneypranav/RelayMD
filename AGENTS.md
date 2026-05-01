@@ -118,17 +118,33 @@ temporary patch.
   version. Keep `src/relaymd/_version.py` fallback version in sync with it.
 - `relaymd --version`, `src/relaymd/cli`, and orchestrator `/healthz.version`
   should report the same root package version for a given release.
-- CLI-affecting changes require a version bump. Use:
+- Always work on a new branch before editing or committing. Never commit or push
+  directly from `main`; repository policy expects branch + pull request flow.
+- Every pushed branch that changes source, tests, deployment assets, release
+  automation, or operator docs must include an explicit version bump. CLI-
+  affecting changes require the root package version bump. Use:
 
 ```bash
 make release-cli VERSION=X.Y.Z
 ```
 
-  This updates `pyproject.toml`, `src/relaymd/_version.py`, and `uv.lock`.
+  This updates `pyproject.toml`, `src/relaymd/_version.py`, and `uv.lock`,
+  creates a commit, and tags `vX.Y.Z`. If committing manually, make the same
+  version edits and create/push the matching `vX.Y.Z` tag.
 - Work on a branch and merge through a pull request. Direct pushes to `main` are
   blocked by repository policy.
 - CI enforces a version bump when CLI-affecting files change on PRs and pushes.
   Do not bypass this by editing generated artifacts or release manifests manually.
+- GitHub Actions publishes immutable SHA-tagged release artifacts and refreshes
+  the `latest` GitHub Release/manifest after protected-branch CI succeeds. Do not
+  hand-edit release manifests or reuse an old tag for new artifacts.
+- Push both the branch and the release tag when a version bump is included:
+
+```bash
+git push -u origin <branch>
+git push origin vX.Y.Z
+```
+
 - The GitHub Actions release manifest pins the orchestrator image, worker image,
   CLI binary URI, source commit, and CLI version together. Keep manifest fields
   aligned when changing release workflows.

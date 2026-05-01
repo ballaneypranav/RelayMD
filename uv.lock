@@ -1153,7 +1153,7 @@ wheels = [
 
 [[package]]
 name = "relaymd"
-version = "0.1.6"
+version = "0.1.8"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -1162,6 +1162,7 @@ dependencies = [
     { name = "boto3" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "infisical-python" },
     { name = "jinja2" },
     { name = "orjson" },
     { name = "pydantic-settings", extra = ["yaml"] },
@@ -1201,6 +1202,7 @@ requires-dist = [
     { name = "boto3" },
     { name = "fastapi", specifier = ">=0.111" },
     { name = "httpx" },
+    { name = "infisical-python", specifier = ">=2.0,<2.2" },
     { name = "jinja2" },
     { name = "orjson" },
     { name = "pydantic-settings", extras = ["yaml"], specifier = ">=2.0" },
