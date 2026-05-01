@@ -52,6 +52,41 @@ def test_status_delegates_to_status_wrapper_with_flags(monkeypatch, tmp_path: Pa
     )
 
 
+def test_hpc_cli_wrapper_sources_service_env_before_exec(tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    data_root = tmp_path / "data" / "relaymd-service"
+    current = service_root / "current"
+    current.mkdir(parents=True)
+    env_file = data_root / "config" / "relaymd-service.env"
+    env_file.parent.mkdir(parents=True)
+    env_file.write_text(
+        'INFISICAL_TOKEN="client:secret"\nRELAYMD_API_TOKEN="api-token"\n',
+        encoding="utf-8",
+    )
+    cli_bin = current / "relaymd"
+    cli_bin.write_text(
+        "#!/usr/bin/env bash\nprintf '%s\\n' \"${INFISICAL_TOKEN:-}\" \"${RELAYMD_API_TOKEN:-}\"\n",
+        encoding="utf-8",
+    )
+    cli_bin.chmod(0o755)
+    wrapper = Path("deploy/hpc/relaymd").resolve()
+
+    result = subprocess.run(
+        [str(wrapper), "submit", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            "RELAYMD_SERVICE_ROOT": str(service_root),
+            "RELAYMD_DATA_ROOT": str(data_root),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.splitlines() == ["client:secret", "api-token"]
+
+
 def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
     tmp_path: Path,
 ) -> None:
