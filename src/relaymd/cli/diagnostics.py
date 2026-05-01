@@ -134,12 +134,7 @@ def _orchestrator_section() -> tuple[
             None,
         )
 
-    needs_tailscale = bool(settings.slurm_cluster_configs) or bool(
-        settings.salad_api_key
-        and settings.salad_org
-        and settings.salad_project
-        and settings.salad_container_group
-    )
+    needs_tailscale = _requires_tailscale(settings)
     tailscale_state = _present(settings.tailscale_auth_key) if needs_tailscale else "not_required"
     return (
         _section(
@@ -152,6 +147,15 @@ def _orchestrator_section() -> tuple[
             slurm_clusters=len(settings.slurm_cluster_configs),
         ),
         settings,
+    )
+
+
+def _requires_tailscale(settings: orchestrator_config.OrchestratorSettings) -> bool:
+    return bool(settings.slurm_cluster_configs) or bool(
+        settings.salad_api_key
+        and settings.salad_org
+        and settings.salad_project
+        and settings.salad_container_group
     )
 
 
@@ -249,7 +253,17 @@ def _network_section(
         return _section(
             False,
             tailscale_socket="unknown",
+            required=True,
             error="orchestrator settings unavailable",
+        )
+
+    if not _requires_tailscale(settings):
+        return _section(
+            True,
+            tailscale_socket="not_required",
+            tailscale_socket_path=str(Path(settings.tailscale_socket).expanduser()),
+            required=False,
+            checked=False,
         )
 
     socket_path = Path(settings.tailscale_socket).expanduser()
@@ -258,6 +272,8 @@ def _network_section(
         exists,
         tailscale_socket="present" if exists else "missing",
         tailscale_socket_path=str(socket_path),
+        required=True,
+        checked=True,
     )
 
 

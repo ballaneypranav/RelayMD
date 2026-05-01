@@ -66,6 +66,24 @@ def _fake_orchestrator_settings(tmp_path: Path) -> SimpleNamespace:
     )
 
 
+def _fake_orchestrator_settings_without_provisioning(tmp_path: Path) -> SimpleNamespace:
+    missing_socket_path = tmp_path / "missing-tailscale.sock"
+    db_dir = tmp_path / "db-no-provisioning"
+    db_dir.mkdir()
+    return SimpleNamespace(
+        api_token="api-token",
+        axiom_token="axiom-token",
+        tailscale_auth_key="",
+        slurm_cluster_configs=[],
+        salad_api_key=None,
+        salad_org=None,
+        salad_project=None,
+        salad_container_group=None,
+        tailscale_socket=str(missing_socket_path),
+        database_url=f"sqlite+aiosqlite:///{db_dir / 'relaymd.db'}",
+    )
+
+
 def _prepare_release(paths: RelaymdPaths) -> None:
     paths.env_file.parent.mkdir(parents=True)
     paths.env_file.write_text("INFISICAL_TOKEN=client:secret\n", encoding="utf-8")
@@ -170,3 +188,27 @@ def test_collect_readiness_reports_missing_proxy_auth(monkeypatch, tmp_path: Pat
     assert readiness["_ok"] is False
     assert readiness["proxy_auth"]["ok"] is False
     assert readiness["proxy_auth"]["password"] == "missing"
+
+
+def test_collect_readiness_does_not_require_tailscale_without_provisioning(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    _prepare_release(paths)
+    monkeypatch.setenv("INFISICAL_TOKEN", "client:secret")
+    monkeypatch.setenv("RELAYMD_API_TOKEN", "api-token")
+    monkeypatch.setenv("RELAYMD_DASHBOARD_USERNAME", "operator")
+    monkeypatch.setenv("RELAYMD_DASHBOARD_PASSWORD", "password")
+    monkeypatch.setattr(diagnostics.cli_config, "load_settings", _fake_cli_settings)
+    orch_settings = _fake_orchestrator_settings_without_provisioning(tmp_path)
+    _patch_orchestrator_settings(monkeypatch, orch_settings)
+
+    readiness = diagnostics.collect_readiness(paths)
+
+    assert readiness["_ok"] is True
+    assert readiness["orchestrator_config"]["tailscale_auth_key"] == "not_required"
+    assert readiness["network"]["ok"] is True
+    assert readiness["network"]["tailscale_socket"] == "not_required"
+    assert readiness["network"]["required"] is False
+    assert readiness["network"]["checked"] is False
