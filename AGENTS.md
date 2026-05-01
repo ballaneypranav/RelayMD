@@ -112,6 +112,32 @@ This updates:
 Do not hand-edit generated client files unless the user explicitly asks for a
 temporary patch.
 
+## Versioning and Release Artifacts
+
+- The root package version in `pyproject.toml` is the RelayMD CLI/operator
+  version. Keep `src/relaymd/_version.py` fallback version in sync with it.
+- `relaymd --version`, `src/relaymd/cli`, and orchestrator `/healthz.version`
+  should report the same root package version for a given release.
+- CLI-affecting changes require a version bump. Use:
+
+```bash
+make release-cli VERSION=X.Y.Z
+```
+
+  This updates `pyproject.toml`, `src/relaymd/_version.py`, and `uv.lock`.
+- Work on a branch and merge through a pull request. Direct pushes to `main` are
+  blocked by repository policy.
+- CI enforces a version bump when CLI-affecting files change on PRs and pushes.
+  Do not bypass this by editing generated artifacts or release manifests manually.
+- The GitHub Actions release manifest pins the orchestrator image, worker image,
+  CLI binary URI, source commit, and CLI version together. Keep manifest fields
+  aligned when changing release workflows.
+- The HPC install layout uses stable wrappers in `/depot/plow/apps/relaymd/bin`
+  that dispatch to `/depot/plow/apps/relaymd/current/relaymd`. Do not remove the
+  wrapper scripts unless replacing the service model.
+- Use `relaymd --version`, `readlink -f /depot/plow/apps/relaymd/current`, and
+  `/healthz` to diagnose stale binaries or mismatched installed artifacts.
+
 ## Testing Guidance
 
 - Run the narrowest relevant tests while iterating.
@@ -160,4 +186,3 @@ npm --cache ./.npm test
 - Avoid committing generated caches, virtual environments, coverage output,
   `__pycache__`, `.pytest_cache`, or `frontend/.npm`.
 - Do not run destructive git commands unless the user explicitly requests them.
-

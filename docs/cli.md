@@ -169,14 +169,24 @@ Example JSON:
 
 ## Release Versioning
 
-Use the helper script to bump version, update lockfile, commit, and tag in one step:
+Work on a branch and merge through a pull request. Direct pushes to `main` are
+blocked by repository policy, and release-producing changes should land through
+CI with an explicit version bump.
+
+Every branch that changes CLI-affecting files must include a root
+`pyproject.toml` version bump before it is merged. Use the helper script to bump
+version, update the lockfile, commit, and tag in one step:
 
 ```bash
 make release-cli VERSION=0.1.1
 ```
 
-Push immediately after tagging:
+Push the branch and tag after bumping:
 
 ```bash
 make release-cli VERSION=0.1.1 PUSH=1
 ```
+
+Pull requests that change CLI-affecting files must bump the root
+`pyproject.toml` version. CI enforces this so deployed `relaymd --version`
+can be used to confirm a session is running the expected binary.

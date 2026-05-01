@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Annotated
 
 import typer
 
+from relaymd.cli import __version__
 from relaymd.cli.commands import service as service_commands
 from relaymd.cli.commands.config import app as config_app
 from relaymd.cli.commands.jobs import app as jobs_app
@@ -19,9 +21,27 @@ app = typer.Typer(help="RelayMD operator CLI")
 orchestrator_app = typer.Typer(help="Orchestrator commands", hidden=True)
 
 
+def _version_callback(value: bool) -> None:
+    if not value:
+        return
+    typer.echo(f"relaymd {__version__}")
+    raise typer.Exit()
+
+
 @app.callback()
-def dispatch_api_commands() -> None:
+def dispatch_api_commands(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            help="Show the RelayMD CLI version and exit.",
+            is_eager=True,
+        ),
+    ] = False,
+) -> None:
     """Delegate API-backed commands to the active service host when needed."""
+    _ = version
     maybe_dispatch_from_argv()
 
 

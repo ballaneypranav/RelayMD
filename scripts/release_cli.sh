@@ -35,7 +35,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 PYPROJECT_PATH="pyproject.toml"
-INIT_PATH="src/relaymd/cli/__init__.py"
+VERSION_PATH="src/relaymd/_version.py"
 
 CURRENT_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' "$PYPROJECT_PATH" | head -n 1)"
 if [[ -z "$CURRENT_VERSION" ]]; then
@@ -54,11 +54,11 @@ if git rev-parse "v$VERSION" >/dev/null 2>&1; then
 fi
 
 sed -i "s/^version = \".*\"$/version = \"$VERSION\"/" "$PYPROJECT_PATH"
-sed -i "s/^__version__ = \".*\"$/__version__ = \"$VERSION\"/" "$INIT_PATH"
+sed -i "s/^FALLBACK_VERSION = \".*\"$/FALLBACK_VERSION = \"$VERSION\"/" "$VERSION_PATH"
 
 UV_CACHE_DIR=/tmp/uv-cache uv lock
 
-git add "$PYPROJECT_PATH" "$INIT_PATH" uv.lock
+git add "$PYPROJECT_PATH" "$VERSION_PATH" uv.lock
 git commit -m "Bump relaymd version to $VERSION"
 git tag "v$VERSION"
 
