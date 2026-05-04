@@ -1,6 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This hook was moved to pre-commit.
-# You can add pytest or other pre-push checks here later.
+# Source paths whose changes require a version bump via make release-cli.
+CLI_PATHS=(
+    "src/relaymd/"
+    "relaymd-cli.spec"
+    "packages/"
+)
+
+while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
+    # Skip branch deletions.
+    [[ "$local_sha" == "0000000000000000000000000000000000000000" ]] && continue
+
+    # Find the common ancestor with origin/main to scope the diff to this branch.
+    main_sha=$(git rev-parse "origin/main" 2>/dev/null || true)
+    [[ -z "$main_sha" ]] && continue
+
+    base_sha=$(git merge-base "$local_sha" "$main_sha" 2>/dev/null || true)
+    [[ -z "$base_sha" ]] && continue
+
+    # Check whether any CLI-affecting file changed on this branch.
+    changed=$(git diff --name-only "$base_sha" "$local_sha" -- "${CLI_PATHS[@]}" 2>/dev/null || true)
+    [[ -z "$changed" ]] && continue
+
+    # CLI files changed — verify the version was bumped relative to origin/main.
+    local_version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)
+    main_version=$(git show "$main_sha":pyproject.toml 2>/dev/null \
+        | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1 || true)
+
+    if [[ "$local_version" == "$main_version" ]]; then
+        echo ""
+        echo "CLI-affecting files changed, but pyproject.toml version is still $local_version."
+        echo "Run: make release-cli VERSION=<next-semver>"
+        echo ""
+        exit 1
+    fi
+done
+
 exit 0

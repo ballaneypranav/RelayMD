@@ -42,9 +42,7 @@ def _write_status(
     fresh: bool = True,
 ) -> None:
     timestamp = (
-        datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        if fresh
-        else "2000-01-01T00:00:00Z"
+        datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ") if fresh else "2000-01-01T00:00:00Z"
     )
     active_value = "1" if active else "0"
     paths.status_file.parent.mkdir(parents=True)

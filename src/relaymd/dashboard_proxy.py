@@ -112,9 +112,10 @@ def create_dashboard_proxy_app(
 ) -> FastAPI:
     # Derive a stable secret from the password so sessions survive restarts.
     # Rotating the password automatically invalidates all sessions.
-    _secret = settings.session_secret or hashlib.sha256(
-        f"relaymd-dashboard-session:{settings.password}".encode()
-    ).hexdigest()
+    _secret = (
+        settings.session_secret
+        or hashlib.sha256(f"relaymd-dashboard-session:{settings.password}".encode()).hexdigest()
+    )
 
     app = FastAPI()
 

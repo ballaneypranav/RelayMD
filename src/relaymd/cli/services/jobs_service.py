@@ -71,9 +71,7 @@ class JobsService:
     def download_latest_checkpoint(self, *, job_id: UUID, output: Path | None) -> dict[str, object]:
         job = self.get_job(job_id=job_id)
         if not job.latest_checkpoint_path:
-            raise RuntimeError(
-                json_dumps_error("no_checkpoint", "Job has no checkpoint yet")
-            )
+            raise RuntimeError(json_dumps_error("no_checkpoint", "Job has no checkpoint yet"))
 
         key = job.latest_checkpoint_path
         if output is None:

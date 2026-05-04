@@ -101,6 +101,7 @@ extraPaths = [
     "src",
     "packages/relaymd-core/src",
 ]
+exclude = ["build/"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/relaymd"]
