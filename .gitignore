@@ -47,3 +47,6 @@ frontend/dist/
 frontend/.npm/
 frontend/tsconfig.tsbuildinfo
 node_modules
+
+# Graphify
+graphify-out
