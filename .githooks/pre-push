@@ -35,6 +35,8 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
         echo ""
         echo "CLI-affecting files changed but version is still $local_version — bumping to $next_version."
         make release-cli VERSION="$next_version"
+        echo "Please commit the version bump and push again."
+        exit 1
         echo ""
     fi
 done
