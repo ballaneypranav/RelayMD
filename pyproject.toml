@@ -19,6 +19,8 @@ dependencies = [
     "orjson",
     "structlog",
     "jinja2",
+    "itsdangerous>=2.0",
+    "python-multipart>=0.0.7",
     "httpx",
     "boto3",
     "infisical-python>=2.0,<2.2",
