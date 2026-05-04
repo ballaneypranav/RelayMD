@@ -91,12 +91,12 @@ class _SessionAuthMiddleware:
 
         session: dict = scope.get("session", {})
         if not session.get("authenticated"):
-            next_path = quote(path, safe="/")
+            next_path = path
             query_string = scope.get("query_string", b"").decode()
             if query_string:
                 next_path = f"{next_path}?{query_string}"
             response = RedirectResponse(
-                f"/login?next={next_path}",
+                f"/login?next={quote(next_path, safe='')}",
                 status_code=status.HTTP_303_SEE_OTHER,
             )
             await response(scope, receive, send)
