@@ -265,7 +265,9 @@ def _wait_for_peer_reachable(
     peer_ip: str,
     socket_path: str,
     *,
-    timeout_seconds: float = 15.0,
+    timeout_seconds: float = 120.0,
+    ping_timeout_seconds: float = 15.0,
+    poll_interval_seconds: float = 5.0,
 ) -> None:
     """Attempt to drive the WireGuard handshake for *peer_ip* to completion.
 
@@ -273,45 +275,62 @@ def _wait_for_peer_reachable(
     lazily on first contact.  Without priming the route, the SOCKS5 proxy may
     return ``General SOCKS server failure`` (0x01) if the worker tries to reach
     the orchestrator before the handshake completes.
-
-    This is intentionally best-effort: if the ping times out or reports
-    ``no reply`` (e.g. because the orchestrator is not currently on the
-    tailnet), a warning is logged and execution continues.  The gateway retry
-    loop will then surface a clear "failed to register after N attempts" error
-    rather than failing here with a low-level tailscale message.
     """
-    try:
-        result = subprocess.run(  # noqa: S603
-            [
-                "tailscale",
-                f"--socket={socket_path}",
-                "ping",
-                f"--timeout={int(timeout_seconds)}s",
-                "--c=1",
-                peer_ip,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_seconds + 5.0,
-        )
-        if result.returncode != 0:
-            # "no reply" means the peer is not (yet) on the tailnet — the
-            # orchestrator may be starting up or temporarily unreachable.
-            # Log and proceed; the gateway will retry the actual connection.
+    deadline = time.monotonic() + timeout_seconds
+    attempt = 0
+    last_output = ""
+    while True:
+        attempt += 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        per_ping_timeout = max(1, int(min(ping_timeout_seconds, remaining)))
+        try:
+            result = subprocess.run(  # noqa: S603
+                [
+                    "tailscale",
+                    f"--socket={socket_path}",
+                    "ping",
+                    f"--timeout={per_ping_timeout}s",
+                    "--c=1",
+                    peer_ip,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=per_ping_timeout + 5.0,
+            )
+        except subprocess.TimeoutExpired:
+            LOG.warning(
+                "tailscale_peer_ping_timeout",
+                peer_ip=peer_ip,
+                attempt=attempt,
+                timeout_seconds=per_ping_timeout,
+                remaining_seconds=max(0.0, deadline - time.monotonic()),
+            )
+        else:
+            last_output = result.stderr.strip() or result.stdout.strip()
+            if result.returncode == 0:
+                LOG.info("tailscale_peer_reachable", peer_ip=peer_ip, attempt=attempt)
+                return
             LOG.warning(
                 "tailscale_peer_ping_failed",
                 peer_ip=peer_ip,
-                output=(result.stderr.strip() or result.stdout.strip()),
+                attempt=attempt,
+                output=last_output,
+                remaining_seconds=max(0.0, deadline - time.monotonic()),
             )
-        else:
-            LOG.info("tailscale_peer_reachable", peer_ip=peer_ip)
-    except subprocess.TimeoutExpired:
-        LOG.warning(
-            "tailscale_peer_ping_timeout",
-            peer_ip=peer_ip,
-            timeout_seconds=timeout_seconds,
-        )
+        sleep_seconds = min(poll_interval_seconds, max(0.0, deadline - time.monotonic()))
+        if sleep_seconds <= 0:
+            break
+        time.sleep(sleep_seconds)
+
+    detail = f": {last_output}" if last_output else ""
+    raise RuntimeError(
+        f"Tailscale peer {peer_ip!r} was not reachable within {timeout_seconds:.0f}s"
+        f"{detail}. Verify RELAYMD_ORCHESTRATOR_URL points at the live orchestrator "
+        "Tailscale node and that the orchestrator Tailscale service is connected."
+    )
 
 
 def _initialize_tailscale_runtime() -> Path:

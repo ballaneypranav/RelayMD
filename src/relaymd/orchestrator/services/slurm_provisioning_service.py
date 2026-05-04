@@ -18,7 +18,7 @@ from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
 logger = structlog.get_logger(__name__)
 
-SubmitSlurmJobFn = Callable[[ClusterConfig, OrchestratorSettings], Awaitable[str]]
+SubmitSlurmJobFn = Callable[..., Awaitable[str]]
 
 
 class SlurmProviderJobStatus(NamedTuple):
@@ -327,10 +327,15 @@ class SlurmProvisioningService:
         logger.info(
             "slurm_submission_started", cluster_name=cluster.name, job_id=str(queued_job.id)
         )
-        raw_slurm_id = await self._submit_job(cluster, self._settings)
+        placeholder_id = uuid4()
+        raw_slurm_id = await self._submit_job(
+            cluster,
+            self._settings,
+            worker_id=placeholder_id,
+        )
         now = datetime.now(UTC).replace(tzinfo=None)
         placeholder = Worker(
-            id=uuid4(),
+            id=placeholder_id,
             platform=Platform.hpc,
             gpu_model=cluster.gpu_type,
             gpu_count=cluster.gpu_count,

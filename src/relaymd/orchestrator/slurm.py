@@ -6,7 +6,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import structlog
 from jinja2 import Environment, PackageLoader
@@ -171,12 +171,15 @@ def _render_sbatch_script(
     cluster: ClusterConfig,
     *,
     settings: OrchestratorSettings,
+    worker_id: UUID | None = None,
 ) -> str:
+    worker_id = worker_id or uuid4()
     docker_username = settings.apptainer_docker_username.strip()
     docker_password = settings.apptainer_docker_password
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
+        worker_id_short=worker_id.hex[:8],
         partition=cluster.partition,
         account=cluster.account,
         gres=cluster.slurm_gres,
@@ -249,10 +252,16 @@ def _redact_sbatch_script_for_disk(rendered_script: str) -> str:
     )
 
 
-async def submit_slurm_job(cluster: ClusterConfig, settings: OrchestratorSettings) -> str:
+async def submit_slurm_job(
+    cluster: ClusterConfig,
+    settings: OrchestratorSettings,
+    *,
+    worker_id: UUID | None = None,
+) -> str:
     rendered = _render_sbatch_script(
         cluster,
         settings=settings,
+        worker_id=worker_id,
     )
 
     logger = structlog.get_logger(__name__)

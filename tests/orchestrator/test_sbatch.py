@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import ANY, patch
+from uuid import UUID
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -98,7 +99,8 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         api_token="test-token",
         infisical_token="client-id:client-secret",
     )
-    job_id = await submit_slurm_job(cluster, settings)
+    worker_id = UUID("12345678-1234-5678-1234-567812345678")
+    job_id = await submit_slurm_job(cluster, settings, worker_id=worker_id)
 
     assert job_id == "12345"
     assert command_args == [
@@ -112,6 +114,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         "--parsable",
     ]
     rendered = captured["script"]
+    assert "#SBATCH --job-name=w-12345678" in rendered
     assert "#SBATCH --gres=gpu:a100:2" in rendered
     assert "#SBATCH --mem-per-gpu=60G" in rendered
     assert "#SBATCH --export=ALL" in rendered
@@ -543,9 +546,11 @@ async def test_submit_pending_jobs_skips_when_pending_placeholder_exists(monkeyp
 @pytest.mark.asyncio
 async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypatch) -> None:
     settings = _settings_with_cluster()
+    submitted_worker_ids: list[UUID] = []
 
     async def fake_submit(*args, **kwargs) -> str:
-        _ = (args, kwargs)
+        _ = args
+        submitted_worker_ids.append(kwargs["worker_id"])
         return "44444"
 
     monkeypatch.setattr("relaymd.orchestrator.scheduler.submit_slurm_job", fake_submit)
@@ -569,6 +574,7 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
 
     assert len(workers) == 1
     worker = workers[0]
+    assert submitted_worker_ids == [worker.id]
     assert worker.provider_id == "gilbreth:44444"
     assert worker.status == WorkerStatus.queued
     assert worker.provider_state == "submitted"
@@ -1178,7 +1184,13 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
         ],
     )
 
-    async def fake_submit(cluster: ClusterConfig, _settings: OrchestratorSettings) -> str:
+    async def fake_submit(
+        cluster: ClusterConfig,
+        _settings: OrchestratorSettings,
+        *,
+        worker_id: UUID | None = None,
+    ) -> str:
+        _ = worker_id
         if cluster.name == "gilbreth":
             raise SlurmSubmissionError(
                 "sbatch submission failed: rc=1, stderr=sbatch: error: QOSMinGRES",

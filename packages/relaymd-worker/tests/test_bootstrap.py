@@ -208,3 +208,58 @@ def test_join_tailnet_runs_expected_subprocesses(monkeypatch: pytest.MonkeyPatch
     )
 
     bootstrap._cleanup_tailscale_runtime()
+
+
+def test_wait_for_peer_reachable_retries_until_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    results = [
+        subprocess.CompletedProcess(args=[], returncode=1, stdout="no reply", stderr=""),
+        subprocess.CompletedProcess(args=[], returncode=0, stdout="pong", stderr=""),
+    ]
+
+    def _run(args, **kwargs):
+        _ = kwargs
+        calls.append(args)
+        return results.pop(0)
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    monkeypatch.setattr(bootstrap.time, "sleep", lambda _seconds: None)
+
+    bootstrap._wait_for_peer_reachable(
+        "relaymd-orchestrator",
+        "/tmp/tailscaled.sock",
+        timeout_seconds=30,
+        ping_timeout_seconds=1,
+        poll_interval_seconds=0.01,
+    )
+
+    assert len(calls) == 2
+    assert calls[0] == [
+        "tailscale",
+        "--socket=/tmp/tailscaled.sock",
+        "ping",
+        "--timeout=1s",
+        "--c=1",
+        "relaymd-orchestrator",
+    ]
+
+
+def test_wait_for_peer_reachable_raises_after_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _run(*args, **kwargs):
+        _ = (args, kwargs)
+        return subprocess.CompletedProcess(args=[], returncode=1, stdout="no reply", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+
+    with pytest.raises(RuntimeError, match="Tailscale peer 'relaymd-orchestrator'"):
+        bootstrap._wait_for_peer_reachable(
+            "relaymd-orchestrator",
+            "/tmp/tailscaled.sock",
+            timeout_seconds=0.01,
+            ping_timeout_seconds=1,
+            poll_interval_seconds=0.01,
+        )
