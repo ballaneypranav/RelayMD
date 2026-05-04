@@ -54,7 +54,9 @@ def test_frontend_config_rejects_non_loopback_api_base_url(
         create_app(make_settings(), start_background_tasks=False)
 
 
-def test_frontend_dist_dir_uses_env_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_frontend_dist_dir_uses_env_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>frontend</body></html>")

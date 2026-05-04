@@ -114,8 +114,7 @@ def down(
         },
     )
     typer.echo(
-        "stopped RelayMD service sessions: "
-        f"{paths.orchestrator_session}, {paths.proxy_session}"
+        f"stopped RelayMD service sessions: {paths.orchestrator_session}, {paths.proxy_session}"
     )
 
 
@@ -204,11 +203,7 @@ def attach(
     if service not in {"orchestrator", "proxy"}:
         raise typer.BadParameter("service must be one of: orchestrator, proxy")
     paths = resolve_paths()
-    session_name = (
-        paths.proxy_session
-        if service == "proxy"
-        else paths.orchestrator_session
-    )
+    session_name = paths.proxy_session if service == "proxy" else paths.orchestrator_session
     _run(["tmux", "attach", "-t", session_name])
 
 

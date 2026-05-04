@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -37,7 +37,7 @@ async def create_job(
 ) -> JobRead | JSONResponse:
     now = datetime.now(UTC).replace(tzinfo=None)
     job = Job(
-        id=payload.id or None,
+        id=payload.id if payload.id is not None else uuid4(),
         title=payload.title,
         input_bundle_path=payload.input_bundle_path,
         status=JobStatus.queued,

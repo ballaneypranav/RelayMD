@@ -80,7 +80,7 @@ def test_hpc_cli_wrapper_sources_service_env_before_exec(tmp_path: Path) -> None
     )
     cli_bin = current / "relaymd"
     cli_bin.write_text(
-        "#!/usr/bin/env bash\nprintf '%s\\n' \"${INFISICAL_TOKEN:-}\" \"${RELAYMD_API_TOKEN:-}\"\n",
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "${INFISICAL_TOKEN:-}" "${RELAYMD_API_TOKEN:-}"\n',
         encoding="utf-8",
     )
     cli_bin.chmod(0o755)
@@ -149,8 +149,7 @@ def test_status_wrapper_json_reports_remote_healthy_when_heartbeat_is_fresh(
     current.mkdir(parents=True)
     cli = current / "relaymd"
     cli.write_text(
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' '{_fake_readiness_json()}'\n",
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{_fake_readiness_json()}'\n",
         encoding="utf-8",
     )
     cli.chmod(0o755)
@@ -206,8 +205,7 @@ def test_status_wrapper_json_reports_readiness_blocks(tmp_path: Path) -> None:
     current.mkdir(parents=True)
     cli = current / "relaymd"
     cli.write_text(
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' '{_fake_readiness_json(ok=False)}'\n",
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{_fake_readiness_json(ok=False)}'\n",
         encoding="utf-8",
     )
     cli.chmod(0o755)
@@ -281,7 +279,7 @@ def test_status_wrapper_sshes_to_expected_host_for_off_host_status(tmp_path: Pat
         "printf '%s\\n' '************************************************************'\n"
         "printf '%s\\n' '***** Use of Purdue BoilerKey or SSH keys is Required ******'\n"
         "printf '%s\\n' '************************************************************'\n"
-        "printf '%s\\n' '{\"overall\":\"healthy\",\"healthy\":1,\"readiness_ok\":1}'\n",
+        'printf \'%s\\n\' \'{"overall":"healthy","healthy":1,"readiness_ok":1}\'\n',
         encoding="utf-8",
     )
     ssh.chmod(0o755)
@@ -351,8 +349,7 @@ def test_status_wrapper_human_output_includes_readiness_lines(tmp_path: Path) ->
     current.mkdir(parents=True)
     cli = current / "relaymd"
     cli.write_text(
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' '{_fake_readiness_json()}'\n",
+        f"#!/usr/bin/env bash\nprintf '%s\\n' '{_fake_readiness_json()}'\n",
         encoding="utf-8",
     )
     cli.chmod(0o755)

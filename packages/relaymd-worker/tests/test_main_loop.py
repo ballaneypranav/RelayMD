@@ -75,7 +75,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
 
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{\"command\": [\"bash\", \"run.sh\"], \"checkpoint_glob_pattern\": \"*.chk\", '
+        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
         '"checkpoint_poll_interval_seconds": 60}\n',
         encoding="utf-8",
     )
@@ -97,7 +97,7 @@ def test_load_bundle_execution_config_rejects_non_positive_checkpoint_poll_inter
     tmp_path: Path,
 ) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{\"command\": [\"bash\", \"run.sh\"], \"checkpoint_glob_pattern\": \"*.chk\", '
+        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
         '"checkpoint_poll_interval_seconds": 0}\n',
         encoding="utf-8",
     )

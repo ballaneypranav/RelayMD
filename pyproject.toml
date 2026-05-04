@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "relaymd"
-version = "0.1.11"
+version = "0.1.12"
 requires-python = ">=3.11"
 dependencies = [
     "relaymd-core",
@@ -19,6 +19,8 @@ dependencies = [
     "orjson",
     "structlog",
     "jinja2",
+    "itsdangerous>=2.0",
+    "python-multipart>=0.0.7",
     "httpx",
     "boto3",
     "infisical-python>=2.0,<2.2",
@@ -99,6 +101,7 @@ extraPaths = [
     "src",
     "packages/relaymd-core/src",
 ]
+exclude = ["build/"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/relaymd"]

@@ -19,11 +19,14 @@ def start() -> None:
     if not password:
         raise SystemExit("RELAYMD_DASHBOARD_PASSWORD is required")
 
+    session_secret = os.getenv("RELAYMD_DASHBOARD_SESSION_SECRET", "").strip() or None
+
     settings = DashboardProxySettings(
         upstream_url=os.getenv("RELAYMD_PROXY_UPSTREAM_URL", "http://127.0.0.1:36158"),
         upstream_api_token=api_token,
         username=username,
         password=password,
+        session_secret=session_secret,
     )
 
     uvicorn.run(

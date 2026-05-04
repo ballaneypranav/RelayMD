@@ -194,8 +194,10 @@ def _wait_for_final_checkpoint(
     while True:
         checkpoint = _find_latest_checkpoint(workdir, checkpoint_glob_pattern)
         checkpoint_mtime = _checkpoint_mtime(checkpoint)
-        if checkpoint is not None and checkpoint_mtime is not None and (
-            min_checkpoint_mtime is None or checkpoint_mtime > min_checkpoint_mtime
+        if (
+            checkpoint is not None
+            and checkpoint_mtime is not None
+            and (min_checkpoint_mtime is None or checkpoint_mtime > min_checkpoint_mtime)
         ):
             return checkpoint
         if time.monotonic() >= deadline:

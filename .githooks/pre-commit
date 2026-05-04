@@ -7,10 +7,16 @@ if command -v uv >/dev/null 2>&1; then
   uv run ruff format .
   # Then check (linting)
   uv run ruff check --fix .
-  # Then type checking
-  uv run pyright
+  # Then type checking on staged Python files only
+  mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
+  if [[ ${#staged_py[@]} -gt 0 ]]; then
+    uv run pyright "${staged_py[@]}"
+  fi
 else
   ruff format .
   ruff check --fix .
-  pyright
+  mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
+  if [[ ${#staged_py[@]} -gt 0 ]]; then
+    pyright "${staged_py[@]}"
+  fi
 fi
