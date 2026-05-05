@@ -162,9 +162,7 @@ def _read_log_dirs_from_yaml(yaml_config: Path) -> tuple[str | None, list[str]]:
     data = yaml.safe_load(yaml_config.read_text(encoding="utf-8")) or {}
     orch_log_dir = data.get("log_directory") or None
     cluster_log_dirs = [
-        c["log_directory"]
-        for c in data.get("slurm_cluster_configs", [])
-        if c.get("log_directory")
+        c["log_directory"] for c in data.get("slurm_cluster_configs", []) if c.get("log_directory")
     ]
     return orch_log_dir, cluster_log_dirs
 
