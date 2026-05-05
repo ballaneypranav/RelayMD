@@ -39,7 +39,6 @@ def _settings_with_cluster() -> OrchestratorSettings:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
         slurm_cluster_configs=[
             ClusterConfig(
                 name="gilbreth",
@@ -60,6 +59,7 @@ def _settings_with_cluster() -> OrchestratorSettings:
 @pytest.mark.asyncio
 async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: Path) -> None:
     _ = tmp_path
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     captured: dict[str, str] = {}
     command_args: list[str] = []
 
@@ -97,7 +97,6 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
     )
     worker_id = UUID("12345678-1234-5678-1234-567812345678")
     job_id = await submit_slurm_job(cluster, settings, worker_id=worker_id)
@@ -168,7 +167,6 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
     )
 
     await submit_slurm_job(cluster, settings)
@@ -193,6 +191,8 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkeypatch) -> None:
+    monkeypatch.setenv("APPTAINER_DOCKER_USERNAME", "gh-user")
+    monkeypatch.setenv("APPTAINER_DOCKER_PASSWORD", "  gh-token  ")
     captured: dict[str, str] = {}
 
     class FakeProcess:
@@ -227,9 +227,6 @@ async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkey
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
-        apptainer_docker_username="gh-user",
-        apptainer_docker_password="  gh-token  ",
     )
 
     await submit_slurm_job(cluster, settings)
@@ -243,6 +240,10 @@ async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkey
 
 @pytest.mark.asyncio
 async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> None:
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+    monkeypatch.setenv("APPTAINER_DOCKER_USERNAME", "gh-user")
+    monkeypatch.setenv("APPTAINER_DOCKER_PASSWORD", "gh-token")
+
     class FakeLogger:
         def __init__(self) -> None:
             self.messages: list[str] = []
@@ -288,9 +289,6 @@ async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> Non
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
-        apptainer_docker_username="gh-user",
-        apptainer_docker_password="gh-token",
     )
 
     await submit_slurm_job(cluster, settings)
@@ -341,7 +339,6 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
         sbatch_submit_timeout_seconds=0.01,
     )
 
@@ -389,7 +386,6 @@ async def test_submit_slurm_job_nonzero_exit_exposes_submission_context(monkeypa
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
     )
 
     with pytest.raises(SlurmSubmissionError) as exc_info:
@@ -411,6 +407,8 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+
     class FakeProcess:
         returncode = 0
 
@@ -442,7 +440,6 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="client-id:client-secret",
         log_directory=str(tmp_path),
     )
 
@@ -459,6 +456,7 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
 
 @pytest.mark.asyncio
 async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> None:
+    monkeypatch.setenv("INFISICAL_TOKEN", "tok$HOME`date`'abc\\def")
     captured: dict[str, str] = {}
 
     class FakeProcess:
@@ -493,7 +491,6 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="tok$HOME`date`'abc\\def",
     )
 
     await submit_slurm_job(cluster, settings)
