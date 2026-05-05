@@ -39,9 +39,22 @@ docker-push-orchestrator:
 	docker push $(ORCHESTRATOR_IMAGE)
 
 release-cli:
-	@test -n "$(VERSION)" || (echo "Usage: make release-cli VERSION=X.Y.Z [PUSH=1]"; exit 1)
-	@if [ "$(PUSH)" = "1" ]; then \
-		./scripts/release_cli.sh "$(VERSION)" --push; \
+	@ver="$(VERSION)"; \
+	if [ -z "$$ver" ]; then \
+		cur=$$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1); \
+		major=$$(echo "$$cur" | cut -d. -f1); \
+		minor=$$(echo "$$cur" | cut -d. -f2); \
+		patch=$$(echo "$$cur" | cut -d. -f3); \
+		patch=$$((patch + 1)); \
+		ver="$$major.$$minor.$$patch"; \
+		while git rev-parse "v$$ver" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/v$$ver" >/dev/null 2>&1; do \
+			patch=$$((patch + 1)); \
+			ver="$$major.$$minor.$$patch"; \
+		done; \
+		echo "Auto bumping VERSION=$$ver"; \
+	fi; \
+	if [ "$(PUSH)" = "1" ]; then \
+		./scripts/release_cli.sh "$$ver" --push; \
 	else \
-		./scripts/release_cli.sh "$(VERSION)"; \
+		./scripts/release_cli.sh "$$ver"; \
 	fi
