@@ -91,7 +91,7 @@ download_file() {
         if [[ "${silent}" == "silent" ]]; then
             wget -qO "${output_path}" "${uri}"
         else
-            wget --show-progress -q -O "${output_path}" "${uri}"
+            wget --show-progress -nv -O "${output_path}" "${uri}"
         fi
         return $?
     fi
