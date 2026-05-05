@@ -120,7 +120,7 @@ def _drop_yaml_keys_for_fields(
         validation_alias = getattr(field, "validation_alias", None)
         if validation_alias is not None:
             choices = getattr(validation_alias, "choices", None)
-            if isinstance(choices, tuple):
+            if isinstance(choices, (list, tuple)):
                 for alias in choices:
                     if isinstance(alias, str):
                         keys_to_drop.add(alias)
