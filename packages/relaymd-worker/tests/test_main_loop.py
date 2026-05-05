@@ -85,6 +85,30 @@ def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_pa
     assert config.checkpoint_poll_interval_seconds == 60
 
 
+def test_load_bundle_execution_config_reads_supervision_fields_json(tmp_path: Path) -> None:
+    (tmp_path / "relaymd-worker.json").write_text(
+        (
+            '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
+            '"progress_glob_pattern": ["progress", "r*/job.out"], '
+            '"startup_progress_timeout_seconds": 60, '
+            '"progress_timeout_seconds": 120, '
+            '"max_runtime_seconds": 3600, '
+            '"fatal_log_path": "job.log", '
+            '"fatal_log_patterns": ["Traceback", "CUDA_ERROR"]}\n'
+        ),
+        encoding="utf-8",
+    )
+
+    config = _load_bundle_execution_config(tmp_path)
+
+    assert config.progress_glob_patterns == ["progress", "r*/job.out"]
+    assert config.startup_progress_timeout_seconds == 60
+    assert config.progress_timeout_seconds == 120
+    assert config.max_runtime_seconds == 3600
+    assert config.fatal_log_path == "job.log"
+    assert config.fatal_log_patterns == ["Traceback", "CUDA_ERROR"]
+
+
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_toml(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.toml").write_text(
         'command = ["bash", "run.sh"]\ncheckpoint_glob_pattern = "*.chk"\n'
@@ -93,6 +117,33 @@ def test_load_bundle_execution_config_reads_checkpoint_poll_interval_toml(tmp_pa
     )
     config = _load_bundle_execution_config(tmp_path)
     assert config.checkpoint_poll_interval_seconds == 90
+
+
+def test_load_bundle_execution_config_reads_supervision_fields_toml(tmp_path: Path) -> None:
+    (tmp_path / "relaymd-worker.toml").write_text(
+        "\n".join(
+            [
+                'command = ["bash", "run.sh"]',
+                'checkpoint_glob_pattern = "*.chk"',
+                'progress_glob_pattern = "progress"',
+                "startup_progress_timeout_seconds = 60",
+                "progress_timeout_seconds = 120",
+                "max_runtime_seconds = 3600",
+                'fatal_log_path = "job.log"',
+                'fatal_log_patterns = ["Traceback", "CUDA_ERROR"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = _load_bundle_execution_config(tmp_path)
+
+    assert config.progress_glob_patterns == ["progress"]
+    assert config.startup_progress_timeout_seconds == 60
+    assert config.progress_timeout_seconds == 120
+    assert config.max_runtime_seconds == 3600
+    assert config.fatal_log_path == "job.log"
+    assert config.fatal_log_patterns == ["Traceback", "CUDA_ERROR"]
 
 
 def test_load_bundle_execution_config_rejects_non_positive_checkpoint_poll_interval(
@@ -116,6 +167,16 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
+        _load_bundle_execution_config(tmp_path)
+
+
+def test_load_bundle_execution_config_rejects_invalid_supervision_field(tmp_path: Path) -> None:
+    (tmp_path / "relaymd-worker.json").write_text(
+        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
+        '"progress_timeout_seconds": false}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="Invalid progress_timeout_seconds"):
         _load_bundle_execution_config(tmp_path)
 
 
@@ -643,6 +704,107 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     assert all(call.kwargs == {"timeout": 2.0} for call in shutdown_event.wait.call_args_list)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
+
+
+def test_run_assigned_job_supervision_failure_kills_and_marks_failed(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-supervision/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+            self._running = True
+            self.request_terminate_calls = 0
+            self.wait_calls = 0
+            self.kill_calls = 0
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def supervision_failure(self, *, now: float):
+            _ = now
+            return SimpleNamespace(reason="fatal_log_match", detail="fatal log pattern matched")
+
+        def poll_exit_code(self) -> int | None:
+            return None
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            raise AssertionError("result should not be used after supervision failure")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            self.request_terminate_calls += 1
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            self.wait_calls += 1
+            if self.wait_calls == 1:
+                return None
+            self._running = False
+            return -signal.SIGKILL
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+    execution_holder: dict[str, _FakeExecution] = {}
+
+    def _fake_execution_factory(**kwargs) -> _FakeExecution:
+        execution = _FakeExecution(**kwargs)
+        execution_holder["execution"] = execution
+        return execution
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _fake_execution_factory)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_glob_pattern="*.chk",
+            fatal_log_path="payload.log",
+            fatal_log_patterns=["Traceback"],
+        ),
+    )
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.return_value = False
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    execution = execution_holder["execution"]
+    assert execution.request_terminate_calls == 1
+    assert execution.kill_calls == 1
+    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.complete_job.assert_not_called()
 
 
 def test_upload_checkpoint_emits_success_events(tmp_path: Path) -> None:
