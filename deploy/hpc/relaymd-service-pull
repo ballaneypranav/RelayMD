@@ -302,6 +302,50 @@ resolve_latest_release_manifest() {
     return 0
 }
 
+manifest_images_are_resolvable() {
+    local orch_uri="$1"
+    local worker_uri="$2"
+    local owner orch_tag worker_tag worker_owner tmp_dir orch_json worker_json
+
+    if [[ "${orch_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-orchestrator:(sha-[A-Za-z0-9._-]+)$ ]]; then
+        owner="${BASH_REMATCH[1]}"
+        orch_tag="${BASH_REMATCH[2]}"
+    else
+        return 0
+    fi
+
+    if [[ "${worker_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker:(sha-[A-Za-z0-9._-]+)$ ]]; then
+        worker_owner="${BASH_REMATCH[1]}"
+        worker_tag="${BASH_REMATCH[2]}"
+    else
+        return 0
+    fi
+
+    if [[ "${owner}" != "${worker_owner}" ]]; then
+        return 1
+    fi
+
+    require_cmd gh "Install GitHub CLI and authenticate: gh auth login -h github.com -s read:packages"
+    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
+    require_gh_packages_scope
+
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/relaymd-manifest-check.XXXXXX")"
+    trap 'rm -rf "${tmp_dir}"' RETURN
+    orch_json="${tmp_dir}/orchestrator.json"
+    worker_json="${tmp_dir}/worker.json"
+
+    fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
+    fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
+
+    if ! jq -e --arg tag "${orch_tag}" '.[] | (.metadata.container.tags // []) | index($tag)' "${orch_json}" >/dev/null; then
+        return 1
+    fi
+    if ! jq -e --arg tag "${worker_tag}" '.[] | (.metadata.container.tags // []) | index($tag)' "${worker_json}" >/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 if [[ $# -lt 1 || $# -gt 3 ]]; then
     usage >&2
     exit 1
@@ -336,6 +380,7 @@ WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
         owner=""
+        resolved_from_manifest=0
         if [[ -n "${RELAYMD_RELEASE_MANIFEST_URI:-}" ]]; then
             manifest_uri="${RELAYMD_RELEASE_MANIFEST_URI}"
         else
@@ -345,6 +390,7 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
 
         if resolve_latest_release_manifest "${manifest_uri}"; then
             echo "Resolved latest release from manifest '${manifest_uri}' (release '${RELEASE_VERSION}')."
+            resolved_from_manifest=1
         else
             echo "Failed to resolve latest via release manifest; falling back to newest shared sha-* image tag." >&2
             if [[ -z "${owner}" ]]; then
@@ -355,6 +401,20 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
             ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
             WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
             echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
+        fi
+
+        if [[ "${resolved_from_manifest}" -eq 1 ]]; then
+            if ! manifest_images_are_resolvable "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"; then
+                echo "Manifest image tags are not currently resolvable in GHCR; falling back to newest shared sha-* image tag." >&2
+                if [[ -z "${owner}" ]]; then
+                    owner="$(resolve_owner)"
+                fi
+                release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
+                RELEASE_VERSION="${release_tag}"
+                ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
+                WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
+                echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
+            fi
         fi
     else
         owner="$(resolve_owner)"
