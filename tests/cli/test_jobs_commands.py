@@ -14,9 +14,11 @@ from relaymd.cli.commands.jobs import prune_jobs
 
 def _make_job_read(
     title: str = "test",
-    status: JobStatus = JobStatus.COMPLETED,
+    status: JobStatus | None = None,
     updated_days_ago: int = 60,
 ) -> JobRead:
+    if status is None:
+        status = JobStatus("completed")
     updated = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=updated_days_ago)
     return JobRead.from_dict(
         {
@@ -78,9 +80,9 @@ def test_prune_jobs_json_output(capsys) -> None:
 
 
 def test_prune_jobs_dry_run_counts_without_deleting(capsys) -> None:
-    old_job = _make_job_read(status=JobStatus.COMPLETED, updated_days_ago=60)
-    recent_job = _make_job_read(status=JobStatus.COMPLETED, updated_days_ago=1)
-    active_job = _make_job_read(status=JobStatus.QUEUED, updated_days_ago=60)
+    old_job = _make_job_read(status=JobStatus("completed"), updated_days_ago=60)
+    recent_job = _make_job_read(status=JobStatus("completed"), updated_days_ago=1)
+    active_job = _make_job_read(status=JobStatus("queued"), updated_days_ago=60)
 
     mock_service = MagicMock()
     mock_service.list_jobs.return_value = [old_job, recent_job, active_job]
@@ -102,7 +104,7 @@ def test_prune_jobs_dry_run_counts_without_deleting(capsys) -> None:
 
 
 def test_prune_jobs_dry_run_json(capsys) -> None:
-    old_job = _make_job_read(status=JobStatus.FAILED, updated_days_ago=45)
+    old_job = _make_job_read(status=JobStatus("failed"), updated_days_ago=45)
     mock_service = MagicMock()
     mock_service.list_jobs.return_value = [old_job]
 

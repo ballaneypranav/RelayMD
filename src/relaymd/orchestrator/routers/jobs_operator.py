@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete
+from sqlalchemy.engine import CursorResult
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -94,18 +96,14 @@ async def prune_jobs(
             detail=f"Cannot prune active-status jobs: {[s.value for s in non_terminal]}",
         )
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=older_than_days)
-    jobs = (
-        await session.exec(
-            select(Job).where(
-                col(Job.status).in_(job_status),
-                col(Job.updated_at) < cutoff,
-            )
+    result: CursorResult[Any] = await session.execute(  # type: ignore[assignment]
+        delete(Job).where(
+            col(Job.status).in_(job_status),
+            col(Job.updated_at) < cutoff,
         )
-    ).all()
-    for job in jobs:
-        await session.delete(job)
+    )
     await session.commit()
-    deleted = len(jobs)
+    deleted = result.rowcount
     logger.info("jobs_pruned", count=deleted, older_than_days=older_than_days)
     return {"deleted": deleted}
 
