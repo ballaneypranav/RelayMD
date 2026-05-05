@@ -179,20 +179,28 @@ resolve_owner() {
         return 0
     fi
 
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "Unable to auto-resolve GHCR owner: RELAYMD_GHCR_OWNER is unset and 'gh' is not installed." >&2
-        echo "Remediation: set RELAYMD_GHCR_OWNER=<org-or-user>, or install/auth gh, or pass explicit image URIs." >&2
-        exit 1
+    if [[ -n "${APPTAINER_DOCKER_USERNAME:-}" ]]; then
+        printf '%s' "${APPTAINER_DOCKER_USERNAME}"
+        return 0
     fi
 
-    owner="$(gh repo view --json owner -q .owner.login 2>/dev/null || true)"
-    if [[ -z "${owner}" ]]; then
-        echo "Unable to resolve default GHCR owner via 'gh repo view'." >&2
-        echo "Remediation: gh auth login -h github.com && gh repo view --json owner -q .owner.login" >&2
-        exit 1
+    if command -v gh >/dev/null 2>&1; then
+        owner="$(gh repo view --json owner -q .owner.login 2>/dev/null || true)"
+        if [[ -n "${owner}" ]]; then
+            printf '%s' "${owner}"
+            return 0
+        fi
+
+        owner="$(gh api user -q .login 2>/dev/null || true)"
+        if [[ -n "${owner}" ]]; then
+            printf '%s' "${owner}"
+            return 0
+        fi
     fi
 
-    printf '%s' "${owner}"
+    echo "Unable to auto-resolve GHCR owner." >&2
+    echo "Remediation: set RELAYMD_GHCR_OWNER=<org-or-user> or APPTAINER_DOCKER_USERNAME=<org-or-user>; or install/auth gh." >&2
+    exit 1
 }
 
 require_gh_packages_scope() {
@@ -337,10 +345,10 @@ manifest_images_are_resolvable() {
     fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
     fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
 
-    if ! jq -e --arg tag "${orch_tag}" '.[] | (.metadata.container.tags // []) | index($tag)' "${orch_json}" >/dev/null; then
+    if ! jq -e --arg tag "${orch_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${orch_json}" >/dev/null; then
         return 1
     fi
-    if ! jq -e --arg tag "${worker_tag}" '.[] | (.metadata.container.tags // []) | index($tag)' "${worker_json}" >/dev/null; then
+    if ! jq -e --arg tag "${worker_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${worker_json}" >/dev/null; then
         return 1
     fi
     return 0

@@ -10,6 +10,7 @@ from pydantic_settings import (
 )
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
+from relaymd.core_secret_management import MissingRequiredSecretsError, OrchestratorSecretManager
 from relaymd.runtime_defaults import (
     DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -25,7 +26,6 @@ from relaymd.runtime_defaults import (
     DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS,
     DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS,
 )
-from relaymd.secret_management import MissingRequiredSecretsError, OrchestratorSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"
