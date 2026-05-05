@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import Mock
@@ -435,3 +436,192 @@ def test_down_exits_cleanly_when_tmux_is_missing(monkeypatch, tmp_path: Path) ->
         service_cmd.down()
 
     assert exc.value.exit_code == 127
+
+
+# --- clean_scripts ---
+
+
+def test_clean_scripts_deletes_old_sbatch_files(monkeypatch, tmp_path: Path) -> None:
+    scripts_dir = tmp_path / "slurm"
+    scripts_dir.mkdir()
+    old_script = scripts_dir / "cluster-20240101T000000.000000Z-aabbccdd.sbatch"
+    new_script = scripts_dir / "cluster-20990101T000000.000000Z-11223344.sbatch"
+    old_script.write_text("#SBATCH", encoding="utf-8")
+    new_script.write_text("#SBATCH", encoding="utf-8")
+    old_time = time.time() - 40 * 86400
+    os.utime(old_script, (old_time, old_time))
+
+    monkeypatch.setenv("RELAYMD_LOG_DIRECTORY", str(tmp_path))
+    service_cmd.clean_scripts(older_than=30, log_dir=None)
+
+    assert not old_script.exists()
+    assert new_script.exists()
+
+
+def test_clean_scripts_respects_older_than_option(monkeypatch, tmp_path: Path) -> None:
+    scripts_dir = tmp_path / "slurm"
+    scripts_dir.mkdir()
+    script = scripts_dir / "cluster-old.sbatch"
+    script.write_text("#SBATCH", encoding="utf-8")
+    recent_time = time.time() - 5 * 86400
+    os.utime(script, (recent_time, recent_time))
+
+    monkeypatch.setenv("RELAYMD_LOG_DIRECTORY", str(tmp_path))
+    service_cmd.clean_scripts(older_than=30, log_dir=None)
+
+    assert script.exists()
+
+
+def test_clean_scripts_log_dir_option_overrides_env(monkeypatch, tmp_path: Path) -> None:
+    scripts_dir = tmp_path / "slurm"
+    scripts_dir.mkdir()
+    old_script = scripts_dir / "cluster-old.sbatch"
+    old_script.write_text("#SBATCH", encoding="utf-8")
+    old_time = time.time() - 40 * 86400
+    os.utime(old_script, (old_time, old_time))
+
+    monkeypatch.delenv("RELAYMD_LOG_DIRECTORY", raising=False)
+    service_cmd.clean_scripts(older_than=30, log_dir=str(tmp_path))
+
+    assert not old_script.exists()
+
+
+def test_clean_scripts_errors_when_log_dir_not_set(monkeypatch) -> None:
+    monkeypatch.delenv("RELAYMD_LOG_DIRECTORY", raising=False)
+    with pytest.raises(typer.Exit) as exc:
+        service_cmd.clean_scripts(older_than=30, log_dir=None)
+    assert exc.value.exit_code == 1
+
+
+def test_clean_scripts_no_op_when_slurm_dir_missing(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("RELAYMD_LOG_DIRECTORY", str(tmp_path))
+    service_cmd.clean_scripts(older_than=30, log_dir=None)
+
+
+# --- clean_logs ---
+
+
+def test_clean_logs_truncates_wrapper_logs(monkeypatch, tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    log_dir = data_root / "logs" / "service"
+    log_dir.mkdir(parents=True)
+    orch_log = log_dir / "orchestrator-wrapper.log"
+    proxy_log = log_dir / "proxy-wrapper.log"
+    orch_log.write_text("lots of log content\n", encoding="utf-8")
+    proxy_log.write_text("lots of log content\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(tmp_path / "apps"))
+
+    service_cmd.clean_logs(service="all")
+
+    assert orch_log.read_text(encoding="utf-8") == ""
+    assert proxy_log.read_text(encoding="utf-8") == ""
+
+
+def test_clean_logs_truncates_only_selected_service(monkeypatch, tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    log_dir = data_root / "logs" / "service"
+    log_dir.mkdir(parents=True)
+    orch_log = log_dir / "orchestrator-wrapper.log"
+    proxy_log = log_dir / "proxy-wrapper.log"
+    orch_log.write_text("orchestrator logs\n", encoding="utf-8")
+    proxy_log.write_text("proxy logs\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(tmp_path / "apps"))
+
+    service_cmd.clean_logs(service="orchestrator")
+
+    assert orch_log.read_text(encoding="utf-8") == ""
+    assert proxy_log.read_text(encoding="utf-8") == "proxy logs\n"
+
+
+def test_clean_logs_skips_missing_log_file(monkeypatch, tmp_path: Path) -> None:
+    data_root = tmp_path / "data"
+    log_dir = data_root / "logs" / "service"
+    log_dir.mkdir(parents=True)
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(tmp_path / "apps"))
+
+    service_cmd.clean_logs(service="orchestrator")
+
+
+# --- prune_releases ---
+
+
+def test_prune_releases_removes_old_dirs(monkeypatch, tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    releases_dir = service_root / "releases"
+    releases_dir.mkdir(parents=True)
+    r1 = releases_dir / "0.1.10"
+    r2 = releases_dir / "0.1.11"
+    r3 = releases_dir / "0.1.12"
+    for d in (r1, r2, r3):
+        d.mkdir()
+    t = time.time()
+    os.utime(r1, (t - 200, t - 200))
+    os.utime(r2, (t - 100, t - 100))
+    os.utime(r3, (t, t))
+    current = service_root / "current"
+    current.symlink_to(r3)
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(service_root))
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(tmp_path / "data"))
+
+    service_cmd.prune_releases(keep=1)
+
+    assert not r1.exists()
+    assert not r2.exists()
+    assert r3.exists()
+
+
+def test_prune_releases_never_removes_current_target(monkeypatch, tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    releases_dir = service_root / "releases"
+    releases_dir.mkdir(parents=True)
+    r1 = releases_dir / "0.1.10"
+    r2 = releases_dir / "0.1.11"
+    for d in (r1, r2):
+        d.mkdir()
+    t = time.time()
+    os.utime(r1, (t - 100, t - 100))
+    os.utime(r2, (t, t))
+    current = service_root / "current"
+    current.symlink_to(r1)
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(service_root))
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(tmp_path / "data"))
+
+    service_cmd.prune_releases(keep=1)
+
+    assert r1.exists()
+    assert r2.exists()
+
+
+def test_prune_releases_keeps_n_most_recent(monkeypatch, tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    releases_dir = service_root / "releases"
+    releases_dir.mkdir(parents=True)
+    releases = [releases_dir / f"0.1.{i}" for i in range(5)]
+    t = time.time()
+    for i, d in enumerate(releases):
+        d.mkdir()
+        os.utime(d, (t + i, t + i))
+    current = service_root / "current"
+    current.symlink_to(releases[-1])
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(service_root))
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(tmp_path / "data"))
+
+    service_cmd.prune_releases(keep=2)
+
+    assert not releases[0].exists()
+    assert not releases[1].exists()
+    assert not releases[2].exists()
+    assert releases[3].exists()
+    assert releases[4].exists()
+
+
+def test_prune_releases_no_op_when_dir_missing(monkeypatch, tmp_path: Path) -> None:
+    service_root = tmp_path / "apps" / "relaymd"
+    service_root.mkdir(parents=True)
+    monkeypatch.setenv("RELAYMD_SERVICE_ROOT", str(service_root))
+    monkeypatch.setenv("RELAYMD_DATA_ROOT", str(tmp_path / "data"))
+
+    service_cmd.prune_releases(keep=3)

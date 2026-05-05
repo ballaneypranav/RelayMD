@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Annotated
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import delete
+from sqlalchemy.engine import CursorResult
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -69,6 +71,41 @@ async def create_job(
         input_bundle_path=job.input_bundle_path,
     )
     return JobRead.model_validate(job)
+
+
+_TERMINAL_STATUSES = frozenset({JobStatus.completed, JobStatus.failed, JobStatus.cancelled})
+
+
+_DEFAULT_PRUNE_STATUSES = [JobStatus.completed, JobStatus.failed, JobStatus.cancelled]
+
+
+@router.delete("", status_code=status.HTTP_200_OK)
+async def prune_jobs(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    job_status: Annotated[
+        list[JobStatus],
+        Query(alias="status", description="Terminal statuses to prune."),
+    ] = _DEFAULT_PRUNE_STATUSES,
+    older_than_days: Annotated[int, Query(ge=1)] = 30,
+) -> dict[str, int]:
+    """Hard-delete terminal-status jobs whose updated_at is older than N days."""
+    non_terminal = [s for s in job_status if s not in _TERMINAL_STATUSES]
+    if non_terminal:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot prune active-status jobs: {[s.value for s in non_terminal]}",
+        )
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=older_than_days)
+    result: CursorResult[Any] = await session.execute(  # type: ignore[assignment]
+        delete(Job).where(
+            col(Job.status).in_(job_status),
+            col(Job.updated_at) < cutoff,
+        )
+    )
+    await session.commit()
+    deleted = result.rowcount
+    logger.info("jobs_pruned", count=deleted, older_than_days=older_than_days)
+    return {"deleted": deleted}
 
 
 @router.get("", response_model=list[JobRead])

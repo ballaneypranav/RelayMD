@@ -101,6 +101,7 @@ async def test_skips_salad_api_when_api_key_unset() -> None:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
+        infisical_token="test",
         salad_api_key=None,
         salad_org="org",
         salad_project="project",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
+import time
 from collections import deque
 from pathlib import Path
 from typing import Annotated
@@ -205,6 +207,96 @@ def attach(
     paths = resolve_paths()
     session_name = paths.proxy_session if service == "proxy" else paths.orchestrator_session
     _run(["tmux", "attach", "-t", session_name])
+
+
+def clean_scripts(
+    older_than: Annotated[
+        int,
+        typer.Option("--older-than", min=1, help="Delete scripts older than this many days."),
+    ] = 30,
+    log_dir: Annotated[
+        str | None,
+        typer.Option("--log-dir", help="Override RELAYMD_LOG_DIRECTORY for script location."),
+    ] = None,
+) -> None:
+    """Delete sbatch submission scripts older than N days from the orchestrator log directory."""
+    resolved = log_dir or os.environ.get("RELAYMD_LOG_DIRECTORY")
+    if not resolved:
+        typer.echo(
+            "error: RELAYMD_LOG_DIRECTORY is not set and --log-dir was not provided.", err=True
+        )
+        raise typer.Exit(code=1)
+    scripts_dir = Path(resolved) / "slurm"
+    if not scripts_dir.is_dir():
+        typer.echo(f"No scripts directory found at {scripts_dir}")
+        return
+    cutoff = time.time() - older_than * 86400
+    deleted = 0
+    for script in scripts_dir.glob("*.sbatch"):
+        if script.stat().st_mtime < cutoff:
+            script.unlink()
+            deleted += 1
+    if deleted:
+        typer.echo(f"Deleted {deleted} sbatch script(s) from {scripts_dir}")
+    else:
+        typer.echo(f"No scripts older than {older_than} day(s) in {scripts_dir}")
+
+
+def clean_logs(
+    service: ServiceOption = "all",
+) -> None:
+    """Truncate RelayMD service wrapper log files."""
+    if service not in {"orchestrator", "proxy", "all"}:
+        raise typer.BadParameter("service must be one of: orchestrator, proxy, all")
+    paths = resolve_paths()
+    for log_path in _log_paths(paths, service):
+        if not log_path.is_file():
+            typer.echo(f"skipped (missing): {log_path}")
+            continue
+        log_path.open("w").close()
+        typer.echo(f"Truncated: {log_path}")
+
+
+def prune_releases(
+    keep: Annotated[
+        int,
+        typer.Option("--keep", min=1, help="Number of most-recent releases to keep."),
+    ] = 3,
+) -> None:
+    """Remove old release directories, keeping the N most recent."""
+    paths = resolve_paths()
+    releases_dir = paths.releases_dir
+    if not releases_dir.is_dir():
+        typer.echo(f"No releases directory found at {releases_dir}")
+        return
+    try:
+        current_target = paths.current_link.resolve()
+    except Exception:  # noqa: BLE001
+        current_target = None
+
+    candidates = sorted(
+        (d for d in releases_dir.iterdir() if d.is_dir()),
+        key=lambda d: d.stat().st_mtime,
+        reverse=True,
+    )
+    # Keep the N most recent by mtime, and always protect the current symlink target.
+    to_keep = set(candidates[:keep])
+    if current_target:
+        for candidate in candidates:
+            if candidate.resolve() == current_target:
+                to_keep.add(candidate)
+                break
+
+    deleted = 0
+    for candidate in candidates:
+        if candidate not in to_keep:
+            shutil.rmtree(candidate)
+            typer.echo(f"Removed: {candidate}")
+            deleted += 1
+    if deleted:
+        typer.echo(f"Removed {deleted} old release(s).")
+    else:
+        typer.echo("No releases to remove.")
 
 
 def upgrade(
