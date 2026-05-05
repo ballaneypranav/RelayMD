@@ -33,8 +33,13 @@ def relaymd_settings_sources(
     init_settings: PydanticBaseSettingsSource,
     env_override_map: dict[str, tuple[str, ...]],
     config_paths: list[Path],
+    yaml_env_only_fields: set[str] | None = None,
 ) -> tuple[PydanticBaseSettingsSource, ...]:
     yaml_source = YamlConfigSettingsSource(settings_cls, yaml_file=config_paths)
+    _drop_yaml_keys_for_fields(
+        yaml_source=yaml_source,
+        fields=yaml_env_only_fields or set(),
+    )
     _drop_yaml_keys_with_env_overrides(yaml_source=yaml_source, env_override_map=env_override_map)
     env_source = _FilteredEnvSettingsSource(
         settings_cls,
@@ -88,3 +93,40 @@ def _drop_yaml_keys_with_env_overrides(
             for config_dict in config_dicts:
                 for key in keys_to_drop:
                     config_dict.pop(key, None)
+
+
+def _drop_yaml_keys_for_fields(
+    *,
+    yaml_source: YamlConfigSettingsSource,
+    fields: set[str],
+) -> None:
+    if not fields:
+        return
+
+    raw_init_kwargs: object = getattr(yaml_source, "init_kwargs", None)
+    if isinstance(raw_init_kwargs, dict):
+        config_dicts = [raw_init_kwargs]
+    elif isinstance(raw_init_kwargs, list):
+        config_dicts = [item for item in raw_init_kwargs if isinstance(item, dict)]
+    else:
+        config_dicts = []
+
+    for field_name in fields:
+        field = yaml_source.settings_cls.model_fields.get(field_name)
+        if field is None:
+            continue
+
+        keys_to_drop = {field_name}
+        validation_alias = getattr(field, "validation_alias", None)
+        if validation_alias is not None:
+            choices = getattr(validation_alias, "choices", None)
+            if isinstance(choices, tuple):
+                for alias in choices:
+                    if isinstance(alias, str):
+                        keys_to_drop.add(alias)
+            elif isinstance(validation_alias, str):
+                keys_to_drop.add(validation_alias)
+
+        for config_dict in config_dicts:
+            for key in keys_to_drop:
+                config_dict.pop(key, None)

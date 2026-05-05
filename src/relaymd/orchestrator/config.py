@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -134,8 +133,6 @@ class OrchestratorSettings(BaseSettings):
         default="",
         validation_alias=AliasChoices("infisical_token", "INFISICAL_TOKEN"),
     )
-    apptainer_docker_username: str = Field(default="")
-    apptainer_docker_password: str = Field(default="")
     slurm_cluster_configs: list[ClusterConfig] = []
     salad_api_key: str | None = None
     salad_org: str | None = None
@@ -294,6 +291,7 @@ class OrchestratorSettings(BaseSettings):
                 "axiom_dataset": ("AXIOM_DATASET",),
             },
             config_paths=cls.config_paths(),
+            yaml_env_only_fields={"infisical_token"},
         )
 
 
@@ -346,9 +344,6 @@ def _get_infisical_client_dependencies() -> tuple[type[Any], type[Any], type[Any
 
 def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> OrchestratorSettings:
     has_slurm = len(settings.slurm_cluster_configs) > 0
-    has_ghcr_registry_image = any(
-        _image_uri_targets_ghcr(cluster.image_uri) for cluster in settings.slurm_cluster_configs
-    )
     has_salad = bool(
         settings.salad_api_key
         and settings.salad_org
@@ -366,7 +361,6 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
         )
         infisical_values = secret_manager.fetch_settings_values(
             include_tailscale_auth_key=(has_slurm or has_salad),
-            include_registry_credentials=has_ghcr_registry_image,
         )
     except MissingRequiredSecretsError as exc:
         raise RuntimeError(
@@ -387,20 +381,3 @@ def _hydrate_settings_from_infisical(settings: OrchestratorSettings) -> Orchestr
     if not updates:
         return settings
     return settings.model_copy(update=updates)
-
-
-def _image_uri_targets_ghcr(image_uri: str | None) -> bool:
-    if image_uri is None:
-        return False
-    raw_image_uri = image_uri.strip()
-    if not raw_image_uri:
-        return False
-
-    normalized_uri = raw_image_uri
-    if "://" not in normalized_uri:
-        normalized_uri = f"docker://{normalized_uri}"
-
-    parts = urlsplit(normalized_uri)
-    if parts.scheme.lower() not in {"docker", "oras"}:
-        return False
-    return parts.netloc.lower() == "ghcr.io"

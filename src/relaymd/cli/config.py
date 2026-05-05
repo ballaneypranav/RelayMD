@@ -107,6 +107,7 @@ class CliSettings(BaseSettings):
                 ),
             },
             config_paths=cls.config_paths(),
+            yaml_env_only_fields={"infisical_token"},
         )
 
 
@@ -168,9 +169,9 @@ def _hydrate_settings_from_infisical(settings: CliSettings) -> CliSettings:
         msg = str(exc)
         if "Invalid credentials" in msg or "invalid credentials" in msg:
             raise RuntimeError(
-                "Infisical authentication failed: the token in 'infisical_token' is invalid "
-                "or expired. Rotate your machine identity token in the Infisical dashboard "
-                "and update the INFISICAL_TOKEN env var or 'infisical_token' in your config."
+                "Infisical authentication failed: INFISICAL_TOKEN is invalid or expired. "
+                "Rotate your machine identity token in the Infisical dashboard "
+                "and update INFISICAL_TOKEN in your env file."
             ) from exc
         raise RuntimeError(f"Failed to load CLI settings from Infisical: {msg}") from exc
 

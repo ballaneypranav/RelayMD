@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from contextlib import suppress
 from datetime import UTC, datetime
@@ -174,8 +175,8 @@ def _render_sbatch_script(
     worker_id: UUID | None = None,
 ) -> str:
     worker_id = worker_id or uuid4()
-    docker_username = settings.apptainer_docker_username.strip()
-    docker_password = settings.apptainer_docker_password
+    docker_username = os.environ.get("APPTAINER_DOCKER_USERNAME", "").strip()
+    docker_password = os.environ.get("APPTAINER_DOCKER_PASSWORD", "")
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,

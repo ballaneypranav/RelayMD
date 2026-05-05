@@ -34,9 +34,8 @@ class SubmitService:
 
         details = ", ".join(f"{field} ({env_vars})" for field, env_vars in missing)
         hint = (
-            " Set INFISICAL_TOKEN (or 'infisical_token' in config) to load secrets "
-            "automatically, or provide the missing values directly via env vars or "
-            "relaymd-config.yaml."
+            " Set INFISICAL_TOKEN to load secrets automatically, or provide the missing "
+            "values directly via env vars or relaymd-config.yaml."
             if not self._context.settings.infisical_token.strip()
             else " Set env vars or update relaymd-config.yaml."
         )
