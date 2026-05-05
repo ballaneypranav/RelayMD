@@ -484,13 +484,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: relaymd-worker.sif
-          key: sif-worker-digest-${{ replace(needs.build-worker.outputs.image_digest, ':', '-') }}
+          key: sif-worker-digest-${{ needs.build-worker.outputs.image_digest }}
       - name: Restore Apptainer OCI blob cache
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.apptainer/cache
-          key: apptainer-oci-worker-${{ replace(needs.build-worker.outputs.image_digest, ':', '-') }}
+          key: apptainer-oci-worker-${{ needs.build-worker.outputs.image_digest }}
           restore-keys: |
             apptainer-oci-worker-
             apptainer-oci-
@@ -528,13 +528,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: relaymd-orchestrator.sif
-          key: sif-orchestrator-digest-${{ replace(needs.build-orchestrator.outputs.image_digest, ':', '-') }}
+          key: sif-orchestrator-digest-${{ needs.build-orchestrator.outputs.image_digest }}
       - name: Restore Apptainer OCI blob cache
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.apptainer/cache
-          key: apptainer-oci-orchestrator-${{ replace(needs.build-orchestrator.outputs.image_digest, ':', '-') }}
+          key: apptainer-oci-orchestrator-${{ needs.build-orchestrator.outputs.image_digest }}
           restore-keys: |
             apptainer-oci-orchestrator-
             apptainer-oci-
