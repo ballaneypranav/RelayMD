@@ -14,6 +14,21 @@ OCI image -> GHCR -> apptainer pull on HPC
 
 Local `apptainer build --fakeroot` is not part of the supported rollout path.
 
+For branch-local iteration (without waiting for GitHub Actions), use the local
+helper workflow:
+
+```bash
+make local-build-images
+make local-build-sif-or-sandbox
+make local-install-cli
+relaymd restart
+make local-smoke
+```
+
+An optional experimental path exists via `make local-build-from-def`, which
+tries `.def` + `apptainer build --fakeroot` first and falls back to the
+supported OCI->Apptainer pull flow when fakeroot/subuid support is unavailable.
+
 ## Config and State
 
 Keep runtime config outside the image and keep all mutable state on shared

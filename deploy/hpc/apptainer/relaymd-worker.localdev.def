@@ -1,0 +1,6 @@
+Bootstrap: docker
+From: ghcr.io/your-org/relaymd-worker:latest
+
+%help
+    Experimental local-only definition file for RelayMD worker.
+    This path is not the supported production/HPC rollout model.

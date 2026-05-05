@@ -23,6 +23,49 @@ Default state/config layout:
 
 ## Commands
 
+### Fast Local Dev Workflow (No GitHub Actions Wait)
+
+Use this when iterating on branch code and you want local artifacts immediately.
+
+1) Build local OCI images from current workspace:
+
+```bash
+make local-build-images
+```
+
+2) Build and activate local Apptainer runtime artifacts (supported default path):
+
+```bash
+make local-build-sif-or-sandbox
+```
+
+This uses local OCI image URIs (`docker-daemon://...`) and updates
+`/depot/plow/apps/relaymd/current` to the chosen release directory.
+
+3) Build and install local CLI into active service path:
+
+```bash
+make local-install-cli
+```
+
+4) Restart service and run fast smoke:
+
+```bash
+relaymd restart
+make local-smoke
+```
+
+Optional experimental `.def` path:
+
+```bash
+make local-build-from-def
+```
+
+`local-build-from-def` attempts `apptainer build --fakeroot` from definition
+files under `deploy/hpc/apptainer/`. If fakeroot/subuid support is unavailable
+(common on HPC), it falls back to the supported OCI->Apptainer pull flow.
+This `.def` mode is local-only and not the supported production rollout path.
+
 Pull and activate using explicit image URIs (backward-compatible mode):
 
 ```bash

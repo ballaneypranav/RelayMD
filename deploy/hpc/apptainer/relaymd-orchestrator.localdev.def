@@ -1,0 +1,6 @@
+Bootstrap: docker
+From: ghcr.io/your-org/relaymd-orchestrator:latest
+
+%help
+    Experimental local-only definition file for RelayMD orchestrator.
+    This path is not the supported production/HPC rollout model.
