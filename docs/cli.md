@@ -38,9 +38,11 @@ Start from the reference config file (`deploy/config.example.yaml` in the repo) 
 - `b2_bucket_name`
 - `b2_access_key_id`
 - `b2_secret_access_key`
-- `infisical_token` (optional; if set, CLI automatically hydrates missing API and B2 credentials from Infisical)
 - `cf_worker_url` (if using Cloudflare proxy for downloads)
 - `orchestrator_timeout_seconds` (optional)
+
+`INFISICAL_TOKEN` must be set in the environment (for HPC service installs, set it
+in `$RELAYMD_DATA_ROOT/config/relaymd-service.env`).
 
 Environment overrides (take precedence over YAML):
 - `RELAYMD_API_TOKEN` or `API_TOKEN`

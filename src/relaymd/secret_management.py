@@ -113,16 +113,11 @@ class InfisicalSecretManager:
 
 
 class OrchestratorSecretManager(InfisicalSecretManager):
-    def fetch_settings_values(
-        self, *, include_tailscale_auth_key: bool, include_registry_credentials: bool
-    ) -> dict[str, str]:
+    def fetch_settings_values(self, *, include_tailscale_auth_key: bool) -> dict[str, str]:
         required: dict[str, str] = {
             "api_token": "RELAYMD_API_TOKEN",
             "axiom_token": "AXIOM_TOKEN",
         }
-        if include_registry_credentials:
-            required["apptainer_docker_username"] = "GHCR_USERNAME"
-            required["apptainer_docker_password"] = "GHCR_PAT"
         if include_tailscale_auth_key:
             required["tailscale_auth_key"] = "TAILSCALE_AUTH_KEY"
         return self.fetch_mapped_secrets(required=required)

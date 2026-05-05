@@ -7,12 +7,9 @@
 database_url: sqlite+aiosqlite:////depot/plow/data/pballane/relaymd-service/db/relaymd.db
 
 # API token is sourced from Infisical at runtime.
-# Do not set local overrides; provide only INFISICAL_TOKEN.
+# Do not set local overrides; provide INFISICAL_TOKEN via environment
+# (for service installs: relaymd-service.env).
 # api_token: ""
-
-# Infisical bootstrap token injected into sbatch scripts for workers.
-# This is the only secret expected from environment/config input.
-infisical_token: ""
 
 # Tailscale settings for the orchestrator.
 # tailscale_hostname is used as the stable MagicDNS name for this orchestrator
@@ -22,11 +19,6 @@ infisical_token: ""
 # tailscale_hostname: relaymd-orchestrator  # default; override via RELAYMD_TAILSCALE_HOSTNAME
 tailscale_socket: /depot/plow/data/pballane/relaymd-service/tailscale/tailscaled.sock
 # tailscale_auth_key: ""  # sourced from Infisical
-
-# Registry credentials are not injected via the SLURM template.
-# Prefer cluster-native auth or prebuilt/public images for docker:// pulls.
-apptainer_docker_username: ""
-apptainer_docker_password: ""
 
 # Worker heartbeats are expected at this cadence.
 heartbeat_interval_seconds: 60
@@ -86,6 +78,8 @@ slurm_cluster_configs:
     # Prefer a SHA tag over :latest to pin to a specific build.
     # The SHA tag is printed in the GitHub Actions job summary after each CI run.
     # image_uri: ghcr.io/<org>/relaymd-worker:sha-abc1234
+    # For private docker:// pulls, set APPTAINER_DOCKER_USERNAME and
+    # APPTAINER_DOCKER_PASSWORD in relaymd-service.env (not in this YAML).
     # Per-job worker image selection is not supported in phase 1.
     # Optional scheduler directives:
     # nodes: 1

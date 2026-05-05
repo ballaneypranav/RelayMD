@@ -16,7 +16,12 @@ The rule: the orchestrator never initiates a connection to a worker. Every inter
 
 ## Configuration
 
-`pydantic-settings` with `YamlConfigSettingsSource`. Config is loaded from `RELAYMD_CONFIG` when set, otherwise from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml` in the module-managed HPC install. When neither env var is set, standalone fallback paths are `~/.config/relaymd/config.yaml` and then `./relaymd-config.yaml`. Env vars override YAML for secrets so that `api_token` and `infisical_token` never need to appear in a file on disk.
+`pydantic-settings` with `YamlConfigSettingsSource`. Config is loaded from
+`RELAYMD_CONFIG` when set, otherwise from
+`$RELAYMD_DATA_ROOT/config/relaymd-config.yaml` in the module-managed HPC
+install. When neither env var is set, standalone fallback paths are
+`~/.config/relaymd/config.yaml` and then `./relaymd-config.yaml`.
+`INFISICAL_TOKEN` is env-only and ignored in YAML.
 
 A missing YAML file is non-fatal — the orchestrator starts with defaults and logs a warning. The reference config is `deploy/config.example.yaml`.
 

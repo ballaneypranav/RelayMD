@@ -16,7 +16,6 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
                 "database_url: sqlite+aiosqlite:////tmp/relaymd.db",
                 "log_directory: /tmp/relaymd-logs",
                 "api_token: yaml-token",
-                "infisical_token: yaml-infisical",
                 "heartbeat_timeout_multiplier: 2.5",
                 "slurm_cluster_configs:",
                 "  - name: gilbreth-a30",
@@ -42,14 +41,13 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
-    monkeypatch.delenv("RELAYMD_INFISICAL_TOKEN", raising=False)
 
     settings = OrchestratorSettings(axiom_token="test")
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
     assert settings.log_directory == "/tmp/relaymd-logs"
     assert settings.api_token == "yaml-token"
-    assert settings.infisical_token == "yaml-infisical"
+    assert settings.infisical_token == ""
     assert settings.heartbeat_timeout_multiplier == 2.5
     assert settings.slurm_cluster_configs == [
         ClusterConfig(
@@ -106,6 +104,25 @@ def test_unregistered_env_and_yaml_alias_keys_are_ignored(monkeypatch, tmp_path)
     assert settings.api_token == ""
 
 
+def test_infisical_token_yaml_keys_are_ignored(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "infisical_token: yaml-token",
+                "INFISICAL_TOKEN: yaml-token-uppercased",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.infisical_token == ""
+
+
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     home_config = tmp_path / "home-config.yaml"
     home_config.write_text("api_token: home-token\n", encoding="utf-8")
@@ -115,6 +132,7 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.setattr(orchestrator_config, "DEFAULT_RELAYMD_CONFIG_PATH", str(home_config))
@@ -222,13 +240,12 @@ def test_cluster_config_rejects_multiple_memory_directives() -> None:
         )
 
 
-def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch, tmp_path) -> None:
+def test_load_settings_hydrates_api_credentials_from_infisical(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         "\n".join(
             [
                 "api_token: yaml-token",
-                "infisical_token: client-id:client-secret",
                 "slurm_cluster_configs:",
                 "  - name: gilbreth-a30",
                 "    partition: a30",
@@ -237,31 +254,22 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
                 "    ssh_host: test-host",
                 "    ssh_username: test-user",
                 "    gpu_count: 1",
-                "    image_uri: ghcr.io/acme/relaymd-worker:latest",
+                "    sif_path: /shared/containers/relaymd.sif",
             ]
         ),
         encoding="utf-8",
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.delenv("AXIOM_TOKEN", raising=False)
-    monkeypatch.delenv("RELAYMD_AXIOM_TOKEN", raising=False)
     monkeypatch.delenv("TAILSCALE_AUTH_KEY", raising=False)
-    monkeypatch.delenv("APPTAINER_DOCKER_USERNAME", raising=False)
-    monkeypatch.delenv("SINGULARITY_DOCKER_USERNAME", raising=False)
-    monkeypatch.delenv("GHCR_USERNAME", raising=False)
-    monkeypatch.delenv("APPTAINER_DOCKER_PASSWORD", raising=False)
-    monkeypatch.delenv("SINGULARITY_DOCKER_PASSWORD", raising=False)
-    monkeypatch.delenv("GHCR_PAT", raising=False)
-    monkeypatch.delenv("GHCR_TOKEN", raising=False)
 
     values = {
         "RELAYMD_API_TOKEN": "relaymd-token",
         "AXIOM_TOKEN": "axiom-test-token",
         "TAILSCALE_AUTH_KEY": "tskey-auth-test",
-        "GHCR_USERNAME": "gh-user",
-        "GHCR_PAT": "gh-token",
     }
     secret_calls: list[str] = []
 
@@ -307,14 +315,10 @@ def test_load_settings_hydrates_registry_credentials_from_infisical(monkeypatch,
 
     assert settings.api_token == "relaymd-token"
     assert settings.axiom_token == "axiom-test-token"
-    assert settings.apptainer_docker_username == "gh-user"
-    assert settings.apptainer_docker_password == "gh-token"
     assert settings.tailscale_auth_key == "tskey-auth-test"
     assert secret_calls == [
         "RELAYMD_API_TOKEN",
         "AXIOM_TOKEN",
-        "GHCR_USERNAME",
-        "GHCR_PAT",
         "TAILSCALE_AUTH_KEY",
     ]
 
@@ -327,7 +331,6 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
                 "api_token: yaml-token",
                 "axiom_token: yaml-axiom-token",
                 "tailscale_auth_key: tskey-sif-test",
-                "infisical_token: client-id:client-secret",
                 "slurm_cluster_configs:",
                 "  - name: gilbreth-a30",
                 "    partition: a30",
@@ -342,6 +345,7 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
         encoding="utf-8",
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
 
@@ -396,11 +400,9 @@ def test_load_settings_uses_infisical_even_when_yaml_secrets_exist(monkeypatch, 
     assert settings.api_token == "relaymd-token"
     assert settings.axiom_token == "axiom-token"
     assert settings.tailscale_auth_key == "tskey-infisical"
-    assert settings.apptainer_docker_username == ""
-    assert settings.apptainer_docker_password == ""
 
 
-def test_load_settings_fails_when_required_registry_credentials_missing(
+def test_load_settings_does_not_fetch_ghcr_credentials_from_infisical(
     monkeypatch, tmp_path
 ) -> None:
     config_path = tmp_path / "config.yaml"
@@ -408,87 +410,6 @@ def test_load_settings_fails_when_required_registry_credentials_missing(
         "\n".join(
             [
                 "api_token: yaml-token",
-                "infisical_token: client-id:client-secret",
-                "slurm_cluster_configs:",
-                "  - name: gilbreth-a30",
-                "    partition: a30",
-                "    account: my-account",
-                "    gpu_type: a30",
-                "    ssh_host: test-host",
-                "    ssh_username: test-user",
-                "    gpu_count: 1",
-                "    image_uri: ghcr.io/acme/relaymd-worker:latest",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
-    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
-    monkeypatch.delenv("API_TOKEN", raising=False)
-
-    values = {
-        "RELAYMD_API_TOKEN": "relaymd-token",
-        "AXIOM_TOKEN": "axiom-token",
-        "TAILSCALE_AUTH_KEY": "tskey-infisical",
-        "GHCR_USERNAME": "gh-user",
-    }
-
-    class _FakeClientSettings:
-        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
-            self.client_id = client_id
-            self.client_secret = client_secret
-            self.site_url = site_url
-
-    class _FakeGetSecretOptions:
-        def __init__(
-            self,
-            *,
-            secret_name: str,
-            project_id: str,
-            environment: str,
-            path: str,
-        ) -> None:
-            self.secret_name = secret_name
-            self.project_id = project_id
-            self.environment = environment
-            self.path = path
-
-    class _FakeSecret:
-        def __init__(self, secret_value: str) -> None:
-            self.secret_value = secret_value
-
-    class _FakeInfisicalClient:
-        def __init__(self, settings) -> None:
-            self.settings = settings
-
-        def getSecret(self, options) -> _FakeSecret:
-            try:
-                return _FakeSecret(values[options.secret_name])
-            except KeyError as exc:
-                raise Exception("Secret not found") from exc
-
-    monkeypatch.setattr(
-        orchestrator_config,
-        "_get_infisical_client_dependencies",
-        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match="Failed to load orchestrator settings from Infisical: GHCR_PAT",
-    ):
-        orchestrator_config.load_settings()
-
-
-def test_load_settings_does_not_require_ghcr_credentials_for_non_ghcr_image_uri(
-    monkeypatch, tmp_path
-) -> None:
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "\n".join(
-            [
-                "api_token: yaml-token",
-                "infisical_token: client-id:client-secret",
                 "slurm_cluster_configs:",
                 "  - name: non-ghcr-cluster",
                 "    partition: gpu",
@@ -503,6 +424,7 @@ def test_load_settings_does_not_require_ghcr_credentials_for_non_ghcr_image_uri(
         encoding="utf-8",
     )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
 
@@ -556,90 +478,8 @@ def test_load_settings_does_not_require_ghcr_credentials_for_non_ghcr_image_uri(
     assert settings.api_token == "relaymd-token"
     assert settings.axiom_token == "axiom-token"
     assert settings.tailscale_auth_key == "tskey-infisical"
-    assert settings.apptainer_docker_username == ""
-    assert settings.apptainer_docker_password == ""
     assert "GHCR_USERNAME" not in secret_calls
     assert "GHCR_PAT" not in secret_calls
-
-
-def test_load_settings_requires_ghcr_credentials_for_oras_ghcr_image_uri(
-    monkeypatch, tmp_path
-) -> None:
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "\n".join(
-            [
-                "api_token: yaml-token",
-                "infisical_token: client-id:client-secret",
-                "slurm_cluster_configs:",
-                "  - name: ghcr-oras-cluster",
-                "    partition: gpu",
-                "    account: my-account",
-                "    gpu_type: a30",
-                "    ssh_host: test-host",
-                "    ssh_username: test-user",
-                "    gpu_count: 1",
-                "    image_uri: oras://ghcr.io/acme/relaymd-worker:latest",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
-    monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
-    monkeypatch.delenv("API_TOKEN", raising=False)
-
-    values = {
-        "RELAYMD_API_TOKEN": "relaymd-token",
-        "AXIOM_TOKEN": "axiom-token",
-        "TAILSCALE_AUTH_KEY": "tskey-infisical",
-        "GHCR_USERNAME": "gh-user",
-    }
-
-    class _FakeClientSettings:
-        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
-            self.client_id = client_id
-            self.client_secret = client_secret
-            self.site_url = site_url
-
-    class _FakeGetSecretOptions:
-        def __init__(
-            self,
-            *,
-            secret_name: str,
-            project_id: str,
-            environment: str,
-            path: str,
-        ) -> None:
-            self.secret_name = secret_name
-            self.project_id = project_id
-            self.environment = environment
-            self.path = path
-
-    class _FakeSecret:
-        def __init__(self, secret_value: str) -> None:
-            self.secret_value = secret_value
-
-    class _FakeInfisicalClient:
-        def __init__(self, settings) -> None:
-            self.settings = settings
-
-        def getSecret(self, options) -> _FakeSecret:
-            try:
-                return _FakeSecret(values[options.secret_name])
-            except KeyError as exc:
-                raise Exception("Secret not found") from exc
-
-    monkeypatch.setattr(
-        orchestrator_config,
-        "_get_infisical_client_dependencies",
-        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
-    )
-
-    with pytest.raises(
-        RuntimeError,
-        match="Failed to load orchestrator settings from Infisical: GHCR_PAT",
-    ):
-        orchestrator_config.load_settings()
 
 
 def test_slurm_cluster_partition_must_be_singular_string() -> None:

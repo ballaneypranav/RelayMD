@@ -30,7 +30,7 @@ def make_settings() -> OrchestratorSettings:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
-        infisical_token="test",
+        slurm_cluster_configs=[],
     )
 
 

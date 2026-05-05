@@ -50,6 +50,23 @@ def test_relaymd_cli_timeout_alias_env(monkeypatch) -> None:
     assert settings.orchestrator_timeout_seconds == 45
 
 
+def test_infisical_token_yaml_key_is_ignored(monkeypatch, tmp_path) -> None:
+    cwd_dir = tmp_path / "project"
+    cwd_dir.mkdir()
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "infisical_token: yaml-token\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.delenv("INFISICAL_TOKEN", raising=False)
+    monkeypatch.chdir(cwd_dir)
+
+    settings = CliSettings()
+
+    assert settings.infisical_token == ""
+
+
 def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
@@ -67,6 +84,7 @@ def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path)
     )
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
     monkeypatch.setenv("B2_ENDPOINT", "https://env.endpoint")
     monkeypatch.setenv("BUCKET_NAME", "env-bucket")
     monkeypatch.setenv("B2_APPLICATION_KEY_ID", "env-access")
@@ -90,6 +108,7 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
+    monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
     monkeypatch.setattr(cli_config, "DEFAULT_RELAYMD_CONFIG_PATH", str(home_config))
