@@ -10,12 +10,12 @@ from pydantic_settings import (
 )
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
+from relaymd.core_secret_management import CliSecretManager
 from relaymd.runtime_defaults import (
     DEFAULT_CF_WORKER_URL,
     DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
     DEFAULT_ORCHESTRATOR_URL,
 )
-from relaymd.secret_management import CliSecretManager
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
 RELAYMD_CONFIG_ENV_VAR = "RELAYMD_CONFIG"

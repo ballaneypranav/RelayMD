@@ -16,7 +16,7 @@ from infisical_client import ClientSettings, InfisicalClient
 from infisical_client.schemas import GetSecretOptions
 from pydantic import BaseModel
 
-from relaymd.secret_management import WorkerSecretManager
+from relaymd.core_secret_management import WorkerSecretManager
 from relaymd.worker.logging import get_logger
 
 INFISICAL_BASE_URL = "https://app.infisical.com"
