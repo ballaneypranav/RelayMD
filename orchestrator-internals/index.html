@@ -1269,7 +1269,12 @@
 <p><strong>Salad Cloud blocks all inbound traffic to containers.</strong> This is a hard platform constraint.</p>
 <p>The rule: the orchestrator never initiates a connection to a worker. Every interaction is a worker making an outbound HTTP request to the orchestrator. The worker lifecycle is designed so this constraint never requires a workaround — the orchestrator controls worker behaviour entirely through job assignment responses, not push signals.</p>
 <h2 id="configuration">Configuration</h2>
-<p><code>pydantic-settings</code> with <code>YamlConfigSettingsSource</code>. Config is loaded from <code>RELAYMD_CONFIG</code> when set, otherwise from <code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code> in the module-managed HPC install. When neither env var is set, standalone fallback paths are <code>~/.config/relaymd/config.yaml</code> and then <code>./relaymd-config.yaml</code>. Env vars override YAML for secrets so that <code>api_token</code> and <code>infisical_token</code> never need to appear in a file on disk.</p>
+<p><code>pydantic-settings</code> with <code>YamlConfigSettingsSource</code>. Config is loaded from
+<code>RELAYMD_CONFIG</code> when set, otherwise from
+<code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code> in the module-managed HPC
+install. When neither env var is set, standalone fallback paths are
+<code>~/.config/relaymd/config.yaml</code> and then <code>./relaymd-config.yaml</code>.
+<code>INFISICAL_TOKEN</code> is env-only and ignored in YAML.</p>
 <p>A missing YAML file is non-fatal — the orchestrator starts with defaults and logs a warning. The reference config is <code>deploy/config.example.yaml</code>.</p>
 <h2 id="scheduling-loops">Scheduling Loops</h2>
 <p>Three APScheduler interval jobs are registered from FastAPI <code>lifespan</code> using an in-memory <code>AsyncIOScheduler</code>:</p>

@@ -1311,7 +1311,14 @@ health and readiness to pass.</p>
 <p>The CLI is compiled to a static binary via PyInstaller on Linux x86_64. The build process runs inside a <code>manylinux2014</code> Docker container (via <code>make release-cli</code>) to ensure compatibility across older glibc versions (essential for CentOS/Rocky Linux HPC login nodes).</p>
 <p>The build script strips unnecessary dependencies (like <code>pydantic</code>'s compiled cores) from the binary to reduce size.</p>
 <h2 id="token-hydration">Token Hydration</h2>
-<p>The <code>CliSettings</code> module reads <code>pydantic-settings</code> from <code>RELAYMD_CONFIG</code>, or from <code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code> in the module-managed HPC install. When neither env var is set, standalone fallback paths are <code>~/.config/relaymd/config.yaml</code> and then <code>./relaymd-config.yaml</code>. To avoid hardcoding B2 credentials in the YAML file on the login node, the CLI supports automatic secret hydration from Infisical. If <code>infisical_token</code> is provided, the CLI will transparently fetch missing <code>api_token</code> and B2 credentials via the Infisical API before executing any command.</p>
+<p>The <code>CliSettings</code> module reads <code>pydantic-settings</code> from <code>RELAYMD_CONFIG</code>, or from
+<code>$RELAYMD_DATA_ROOT/config/relaymd-config.yaml</code> in the module-managed HPC install.
+When neither env var is set, standalone fallback paths are
+<code>~/.config/relaymd/config.yaml</code> and then <code>./relaymd-config.yaml</code>.
+<code>INFISICAL_TOKEN</code> is env-only and is intentionally ignored in YAML; for HPC
+service installs it belongs in <code>$RELAYMD_DATA_ROOT/config/relaymd-service.env</code>.
+The CLI then hydrates missing <code>api_token</code> and B2 credentials via Infisical
+before executing commands.</p>
 
 
 

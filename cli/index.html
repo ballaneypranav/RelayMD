@@ -1270,9 +1270,10 @@ derives the rest of the install paths from that directory:</p>
 - <code>b2_bucket_name</code>
 - <code>b2_access_key_id</code>
 - <code>b2_secret_access_key</code>
-- <code>infisical_token</code> (optional; if set, CLI automatically hydrates missing API and B2 credentials from Infisical)
 - <code>cf_worker_url</code> (if using Cloudflare proxy for downloads)
 - <code>orchestrator_timeout_seconds</code> (optional)</p>
+<p><code>INFISICAL_TOKEN</code> must be set in the environment (for HPC service installs, set it
+in <code>$RELAYMD_DATA_ROOT/config/relaymd-service.env</code>).</p>
 <p>Environment overrides (take precedence over YAML):
 - <code>RELAYMD_API_TOKEN</code> or <code>API_TOKEN</code>
 - <code>INFISICAL_TOKEN</code> or <code>RELAYMD_INFISICAL_TOKEN</code>
