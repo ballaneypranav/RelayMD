@@ -68,4 +68,11 @@ The build script strips unnecessary dependencies (like `pydantic`'s compiled cor
 
 ## Token Hydration
 
-The `CliSettings` module reads `pydantic-settings` from `RELAYMD_CONFIG`, or from `$RELAYMD_DATA_ROOT/config/relaymd-config.yaml` in the module-managed HPC install. When neither env var is set, standalone fallback paths are `~/.config/relaymd/config.yaml` and then `./relaymd-config.yaml`. To avoid hardcoding B2 credentials in the YAML file on the login node, the CLI supports automatic secret hydration from Infisical. If `infisical_token` is provided, the CLI will transparently fetch missing `api_token` and B2 credentials via the Infisical API before executing any command.
+The `CliSettings` module reads `pydantic-settings` from `RELAYMD_CONFIG`, or from
+`$RELAYMD_DATA_ROOT/config/relaymd-config.yaml` in the module-managed HPC install.
+When neither env var is set, standalone fallback paths are
+`~/.config/relaymd/config.yaml` and then `./relaymd-config.yaml`.
+`INFISICAL_TOKEN` is env-only and is intentionally ignored in YAML; for HPC
+service installs it belongs in `$RELAYMD_DATA_ROOT/config/relaymd-service.env`.
+The CLI then hydrates missing `api_token` and B2 credentials via Infisical
+before executing commands.

@@ -46,7 +46,7 @@ The orchestrator provides template variables:
 - `wall_time`
 - `apptainer_image` (resolved from `sif_path` or `image_uri`)
 - `infisical_token`
-- `apptainer_docker_username` / `apptainer_docker_password` (optional)
+- `apptainer_docker_username_shell_quoted` / `apptainer_docker_password_shell_quoted` (optional; sourced from host environment variables, not YAML)
 
 The rendered script includes:
 
@@ -62,8 +62,8 @@ The rendered script includes:
 - `#SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds }}`
 - `#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}`
 
-For private registry pulls (`image_uri`), export Apptainer auth env vars before
-`apptainer exec`:
+For private registry pulls (`image_uri`), set Apptainer auth env vars in the
+service env file before startup:
 
 - `APPTAINER_DOCKER_USERNAME`
 - `APPTAINER_DOCKER_PASSWORD`
