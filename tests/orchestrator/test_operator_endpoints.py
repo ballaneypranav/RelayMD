@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -27,6 +28,7 @@ def make_settings() -> OrchestratorSettings:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
+        infisical_token="test",
     )
 
 
@@ -222,3 +224,55 @@ async def test_create_job_accepts_caller_supplied_id() -> None:
         )
         assert create_response.status_code == 200
         assert create_response.json()["id"] == expected_id
+
+
+@pytest.mark.asyncio
+async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
+    headers = {"X-API-Token": "test-token"}
+    old = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=60)
+    recent = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1)
+
+    async with app_client(make_settings()) as (_app, client):
+        async with get_sessionmaker()() as session:
+            session.add_all([
+                Job(title="old-completed", input_bundle_path="x", status=JobStatus.completed, created_at=old, updated_at=old),
+                Job(title="old-failed", input_bundle_path="x", status=JobStatus.failed, created_at=old, updated_at=old),
+                Job(title="recent-completed", input_bundle_path="x", status=JobStatus.completed, created_at=recent, updated_at=recent),
+                Job(title="old-queued", input_bundle_path="x", status=JobStatus.queued, created_at=old, updated_at=old),
+            ])
+            await session.commit()
+
+        response = await client.delete("/jobs?older_than_days=30", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 2
+
+        list_response = await client.get("/jobs", headers=headers)
+        titles = [j["title"] for j in list_response.json()]
+        assert "old-completed" not in titles
+        assert "old-failed" not in titles
+        assert "recent-completed" in titles
+        assert "old-queued" in titles
+
+
+@pytest.mark.asyncio
+async def test_prune_jobs_rejects_non_terminal_status() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_settings()) as (_app, client):
+        response = await client.delete("/jobs?status=running&older_than_days=1", headers=headers)
+        assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_prune_jobs_returns_zero_when_nothing_matches() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_settings()) as (_app, client):
+        response = await client.delete("/jobs?older_than_days=30", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 0
+
+
+@pytest.mark.asyncio
+async def test_prune_jobs_requires_api_token() -> None:
+    async with app_client(make_settings()) as (_app, client):
+        response = await client.delete("/jobs")
+        assert response.status_code == 401

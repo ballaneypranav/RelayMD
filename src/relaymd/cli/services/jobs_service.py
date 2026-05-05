@@ -7,11 +7,13 @@ from relaymd_api_client.api.default import (
     cancel_job_jobs_job_id_delete,
     get_job_jobs_job_id_get,
     list_jobs_jobs_get,
+    prune_jobs_jobs_delete,
     requeue_job_jobs_job_id_requeue_post,
 )
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_conflict import JobConflict
 from relaymd_api_client.models.job_read import JobRead
+from relaymd_api_client.models.job_status import JobStatus as ClientJobStatus
 
 from relaymd.cli.context import CliContext
 
@@ -67,6 +69,21 @@ class JobsService:
         if response is None or not isinstance(response, JobRead):
             raise RuntimeError("Failed to parse requeue response")
         return response
+
+    def prune_jobs(self, *, statuses: list[str], older_than_days: int) -> int:
+        status_enums = [ClientJobStatus(s) for s in statuses]
+        with self._context.api_client() as client:
+            response = prune_jobs_jobs_delete.sync(
+                client=client,
+                status=status_enums,
+                older_than_days=older_than_days,
+                x_api_token=self._context.settings.api_token,
+            )
+        if isinstance(response, HTTPValidationError):
+            raise RuntimeError(response.to_dict())
+        if response is None:
+            raise RuntimeError("Empty response from prune endpoint")
+        return int(response["deleted"])
 
     def download_latest_checkpoint(self, *, job_id: UUID, output: Path | None) -> dict[str, object]:
         job = self.get_job(job_id=job_id)
