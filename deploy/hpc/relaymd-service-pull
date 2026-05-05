@@ -80,7 +80,7 @@ download_file() {
 
     if command -v curl >/dev/null 2>&1; then
         if [[ "${silent}" == "silent" ]]; then
-            curl -fsSL "${uri}" -o "${output_path}"
+            curl -fsL "${uri}" -o "${output_path}"
         else
             curl -f -L --progress-bar "${uri}" -o "${output_path}"
         fi
