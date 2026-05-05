@@ -24,6 +24,7 @@ from relaymd.worker.main import (
     _run_assigned_job,
     _upload_checkpoint,
     _wait_for_final_checkpoint,
+    detect_openmm_platforms,
     run_worker,
 )
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
@@ -329,6 +330,21 @@ def test_detect_gpu_fallback_when_pynvml_fails(monkeypatch) -> None:
 
     gpu_model, gpu_count, vram_gb = detect_gpu_info()
     assert (gpu_model, gpu_count, vram_gb) == ("unknown", 0, 0)
+
+
+def test_detect_openmm_platforms_returns_empty_list_when_import_fails(monkeypatch) -> None:
+    import builtins
+
+    original_import = builtins.__import__
+
+    def _failing_import(name, *args, **kwargs):
+        if name == "openmm":
+            raise ModuleNotFoundError("openmm not installed")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _failing_import)
+
+    assert detect_openmm_platforms() == []
 
 
 def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:

@@ -27,16 +27,28 @@ RUN apt-get update \
         git \
         wget \
         curl \
+        bzip2 \
         tailscale \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
     && python -m pip install --no-cache-dir --upgrade pip uv \
     && rm -rf /var/lib/apt/lists/*
 
-# AToM-OpenMM requires OpenMM plus configobj and numpy.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
-    "openmm>=8.4" \
-    configobj \
-    numpy \
-    setproctitle \
-    "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"
+# Install micromamba and create a dedicated CUDA-capable OpenMM runtime env.
+RUN curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
+    | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba
+
+RUN micromamba create -y -p /opt/atom-openmm -c conda-forge \
+        python=3.11 \
+        openmm>=8.4 \
+        configobj \
+        numpy \
+        setproctitle \
+        pip \
+    && micromamba clean -a -y
+
+# Ensure relaymd worker and atom_openmm install into the same Python runtime used at entrypoint.
+ENV PATH=/opt/atom-openmm/bin:${PATH}
+ENV MAMBA_ROOT_PREFIX=/opt/micromamba
+RUN ln -sf /opt/atom-openmm/bin/python /usr/local/bin/python \
+    && python -m pip install --no-cache-dir --upgrade pip uv \
+    && python -m pip install --no-cache-dir "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"

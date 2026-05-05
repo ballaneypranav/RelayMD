@@ -68,6 +68,20 @@ def detect_gpu_info() -> tuple[str, int, int]:
         return "unknown", 0, 0
 
 
+def detect_openmm_platforms() -> list[str]:
+    try:
+        from openmm import Platform  # type: ignore[import-not-found]
+    except Exception:
+        LOG.exception("openmm_preflight_import_failed")
+        return []
+
+    try:
+        return [Platform.getPlatform(i).getName() for i in range(Platform.getNumPlatforms())]
+    except Exception:
+        LOG.exception("openmm_preflight_platform_probe_failed")
+        return []
+
+
 def _find_latest_checkpoint(workdir: Path, pattern: str) -> Path | None:
     candidates = [path for path in workdir.glob(pattern) if path.is_file()]
     if not candidates:
@@ -440,6 +454,12 @@ def run_worker(config: WorkerConfig) -> None:
     orchestrator_url = config.relaymd_orchestrator_url.rstrip("/")
 
     gpu_model, gpu_count, vram_gb = detect_gpu_info()
+    openmm_platforms = detect_openmm_platforms()
+    LOG.info(
+        "openmm_preflight_platforms_detected",
+        openmm_platforms=openmm_platforms,
+        openmm_cuda_available="CUDA" in openmm_platforms,
+    )
     platform_raw = runtime_settings.worker_platform
     try:
         platform = Platform(platform_raw)
