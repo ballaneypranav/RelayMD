@@ -31,6 +31,11 @@ TAILSCALE_STATE_DIR_ENV_VAR = "RELAYMD_TAILSCALE_STATE_DIR"
 TAILSCALE_SOCKS5_PORT_ENV_VAR = "RELAYMD_TAILSCALE_SOCKS5_PORT"
 TAILSCALE_SOCKS5_LISTEN_ADDR_ENV_VAR = "RELAYMD_TAILSCALE_SOCKS5_LISTEN_ADDR"
 TAILSCALE_SOCKS5_PROXY_URL_ENV_VAR = "RELAYMD_TAILSCALE_SOCKS5_PROXY_URL"
+TAILSCALE_PEER_REACHABILITY_TIMEOUT_SECONDS_ENV_VAR = (
+    "RELAYMD_TAILSCALE_PEER_REACHABILITY_TIMEOUT_SECONDS"
+)
+TAILSCALE_PEER_PING_TIMEOUT_SECONDS_ENV_VAR = "RELAYMD_TAILSCALE_PEER_PING_TIMEOUT_SECONDS"
+TAILSCALE_PEER_POLL_INTERVAL_SECONDS_ENV_VAR = "RELAYMD_TAILSCALE_PEER_POLL_INTERVAL_SECONDS"
 
 TAILSCALE_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "relaymd-tailscale"
 TAILSCALE_RUNTIME_DIR = str(TAILSCALE_RUNTIME_ROOT / f"{os.getuid()}-{os.getpid()}")
@@ -92,6 +97,19 @@ def tailscale_socks5_proxy_url() -> str:
     if env_value := os.getenv(TAILSCALE_SOCKS5_PROXY_URL_ENV_VAR):
         return env_value
     return f"socks5://{tailscale_socks5_listen_addr()}"
+
+
+def _read_positive_float_env(env_var: str, default: float) -> float:
+    raw_value = os.getenv(env_var)
+    if raw_value is None:
+        return default
+    try:
+        parsed = float(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"{env_var} must be a positive number, got {raw_value!r}") from exc
+    if parsed <= 0:
+        raise RuntimeError(f"{env_var} must be > 0, got {parsed!r}")
+    return parsed
 
 
 def _pid_is_running(pid: int) -> bool:
@@ -529,12 +547,33 @@ def run_bootstrap() -> WorkerConfig:
 
     orchestrator_host = urlparse(config.relaymd_orchestrator_url).hostname or ""
     if orchestrator_host:
+        peer_reachability_timeout_seconds = _read_positive_float_env(
+            TAILSCALE_PEER_REACHABILITY_TIMEOUT_SECONDS_ENV_VAR,
+            120.0,
+        )
+        peer_ping_timeout_seconds = _read_positive_float_env(
+            TAILSCALE_PEER_PING_TIMEOUT_SECONDS_ENV_VAR,
+            15.0,
+        )
+        peer_poll_interval_seconds = _read_positive_float_env(
+            TAILSCALE_PEER_POLL_INTERVAL_SECONDS_ENV_VAR,
+            5.0,
+        )
         LOG.info(
             "tailscale_waiting_for_peer",
             peer_ip=orchestrator_host,
             tailscale_socket=tailscale_socket_path(),
+            timeout_seconds=peer_reachability_timeout_seconds,
+            ping_timeout_seconds=peer_ping_timeout_seconds,
+            poll_interval_seconds=peer_poll_interval_seconds,
         )
-        _wait_for_peer_reachable(orchestrator_host, tailscale_socket_path())
+        _wait_for_peer_reachable(
+            orchestrator_host,
+            tailscale_socket_path(),
+            timeout_seconds=peer_reachability_timeout_seconds,
+            ping_timeout_seconds=peer_ping_timeout_seconds,
+            poll_interval_seconds=peer_poll_interval_seconds,
+        )
 
     LOG.info(
         "tailscale_userspace_proxy_ready",

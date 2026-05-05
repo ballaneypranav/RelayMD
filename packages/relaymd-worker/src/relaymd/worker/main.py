@@ -158,7 +158,24 @@ def _extract_input_bundle(bundle_file: Path, destination: Path) -> Path:
     destination.mkdir(parents=True, exist_ok=True)
     if tarfile.is_tarfile(bundle_file):
         with tarfile.open(bundle_file, "r:*") as archive:
-            archive.extractall(destination, filter="data")
+            try:
+                archive.extractall(destination, filter="data")
+            except TypeError as err:
+                destination_abs = destination.resolve()
+                for member in archive.getmembers():
+                    if member.issym() or member.islnk():
+                        raise RuntimeError(
+                            "Input bundle must not contain symlinks or hard links"
+                        ) from err
+                    member_target = (destination / member.name).resolve()
+                    if (
+                        member_target != destination_abs
+                        and destination_abs not in member_target.parents
+                    ):
+                        raise RuntimeError(
+                            "Input bundle contains path traversal entries"
+                        ) from err
+                archive.extractall(destination)
         return destination
 
     copied_path = destination / bundle_file.name

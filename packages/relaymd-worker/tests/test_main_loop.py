@@ -19,6 +19,7 @@ from relaymd.worker.context import WorkerContext
 from relaymd.worker.main import (
     BundleExecutionConfig,
     _build_storage_client,
+    _extract_input_bundle,
     _load_bundle_execution_config,
     _run_assigned_job,
     _upload_checkpoint,
@@ -115,6 +116,35 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
         _load_bundle_execution_config(tmp_path)
+
+
+def test_extract_input_bundle_extracts_tar_on_python_311(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle.tar.gz"
+    output_dir = tmp_path / "bundle-out"
+    payload = b'{"command":["echo","hello"]}\n'
+    with tarfile.open(bundle, "w:gz") as archive:
+        info = tarfile.TarInfo("relaymd-worker.json")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+
+    extracted = _extract_input_bundle(bundle, output_dir)
+    assert extracted == output_dir
+    assert (output_dir / "relaymd-worker.json").read_bytes() == payload
+
+
+def test_extract_input_bundle_rejects_path_traversal_entries(tmp_path: Path) -> None:
+    bundle = tmp_path / "bundle.tar.gz"
+    output_dir = tmp_path / "bundle-out"
+    payload = b"bad"
+    with tarfile.open(bundle, "w:gz") as archive:
+        info = tarfile.TarInfo("../evil.txt")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+
+    with pytest.raises(
+        (RuntimeError, tarfile.TarError), match="path traversal|outside the destination"
+    ):
+        _extract_input_bundle(bundle, output_dir)
 
 
 def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -> None:
