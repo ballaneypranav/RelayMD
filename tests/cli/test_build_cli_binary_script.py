@@ -21,9 +21,7 @@ def _iter_relaymd_import_roots(py_file: Path) -> set[str]:
                     if len(parts) > 1:
                         imports.add(parts[1])
         elif (
-            isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.startswith("relaymd.")
+            isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("relaymd.")
         ):
             parts = node.module.split(".")
             if len(parts) > 1:
