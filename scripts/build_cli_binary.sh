@@ -15,6 +15,7 @@ mkdir -p "${STAGE_ROOT}/relaymd"
 # This avoids namespace-package resolution gaps between src/ and relaymd-core/.
 cp -a "${ROOT_DIR}/src/relaymd/." "${STAGE_ROOT}/relaymd/"
 cp -a "${ROOT_DIR}/packages/relaymd-core/src/relaymd/runtime_defaults.py" "${STAGE_ROOT}/relaymd/runtime_defaults.py"
+cp -a "${ROOT_DIR}/packages/relaymd-core/src/relaymd/core_secret_management.py" "${STAGE_ROOT}/relaymd/core_secret_management.py"
 rm -rf "${STAGE_ROOT}/relaymd/storage"
 cp -a "${ROOT_DIR}/packages/relaymd-core/src/relaymd/storage" "${STAGE_ROOT}/relaymd/storage"
 
