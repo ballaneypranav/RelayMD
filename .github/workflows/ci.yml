@@ -461,8 +461,47 @@ jobs:
           make_latest: true
           files: dist/relaymd-linux-x86_64
 
+  build-sif:
+    needs: [changes, build-worker, build-orchestrator]
+    permissions:
+      contents: write
+      packages: read
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.changes.outputs.worker_image == 'true' || needs.changes.outputs.orchestrator_image == 'true') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet || true
+          df -h
+      - uses: eWaterCycle/setup-apptainer@v2
+        with:
+          apptainer-version: 1.3.3
+      - name: Get short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build orchestrator SIF
+        if: ${{ needs.changes.outputs.orchestrator_image == 'true' }}
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-orchestrator.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:sha-${{ steps.sha.outputs.short }}"
+      - name: Build worker SIF
+        if: ${{ needs.changes.outputs.worker_image == 'true' }}
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-worker.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${{ steps.sha.outputs.short }}"
+      - name: Upload SIF files to immutable release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: sha-${{ steps.sha.outputs.short }}
+          name: sha-${{ steps.sha.outputs.short }}
+          prerelease: false
+          make_latest: false
+          files: "*.sif"
+
   publish-release-manifest:
-    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli]
+    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli, build-sif]
     permissions:
       contents: write
     if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') }}
