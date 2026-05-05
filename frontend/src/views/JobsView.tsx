@@ -135,7 +135,10 @@ export function JobsView({
                       <td>{row.time_since_checkpoint}</td>
                       <td>
                         <div className="inline-actions">
-                          {backingJob && (backingJob.status === "queued" || backingJob.status === "running") ? (
+                          {backingJob &&
+                          (backingJob.status === "queued" ||
+                            backingJob.status === "assigned" ||
+                            backingJob.status === "running") ? (
                             <button className="danger-ghost" onClick={() => onCancelJob(backingJob)}>
                               Cancel
                             </button>
@@ -207,7 +210,9 @@ export function JobsView({
             </dl>
 
             <div className="detail-actions">
-              {(selectedJob.status === "queued" || selectedJob.status === "running") && (
+              {(selectedJob.status === "queued" ||
+                selectedJob.status === "assigned" ||
+                selectedJob.status === "running") && (
                 <button className="danger-ghost" onClick={() => onCancelJob(selectedJob)}>
                   Cancel job
                 </button>
