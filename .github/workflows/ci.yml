@@ -194,6 +194,8 @@ jobs:
 
   build-worker:
     needs: [changes, build-worker-base, cli-version-guard]
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -289,6 +291,8 @@ jobs:
 
   build-orchestrator:
     needs: [changes, build-orchestrator-base, cli-version-guard]
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -480,14 +484,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: relaymd-worker.sif
-          key: sif-worker-sha-${{ steps.sha.outputs.short }}
+          key: sif-worker-digest-${{ replace(needs.build-worker.outputs.image_digest, ':', '-') }}
       - name: Restore Apptainer OCI blob cache
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.apptainer/cache
-          key: apptainer-oci-sha-${{ steps.sha.outputs.short }}
-          restore-keys: apptainer-oci-
+          key: apptainer-oci-worker-${{ replace(needs.build-worker.outputs.image_digest, ':', '-') }}
+          restore-keys: |
+            apptainer-oci-worker-
+            apptainer-oci-
       - name: Build worker SIF
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         env:
@@ -522,14 +528,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: relaymd-orchestrator.sif
-          key: sif-orchestrator-sha-${{ steps.sha.outputs.short }}
+          key: sif-orchestrator-digest-${{ replace(needs.build-orchestrator.outputs.image_digest, ':', '-') }}
       - name: Restore Apptainer OCI blob cache
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.apptainer/cache
-          key: apptainer-oci-sha-${{ steps.sha.outputs.short }}
-          restore-keys: apptainer-oci-
+          key: apptainer-oci-orchestrator-${{ replace(needs.build-orchestrator.outputs.image_digest, ':', '-') }}
+          restore-keys: |
+            apptainer-oci-orchestrator-
+            apptainer-oci-
       - name: Build orchestrator SIF
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         env:
