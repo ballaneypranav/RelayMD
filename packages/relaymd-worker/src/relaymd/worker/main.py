@@ -172,9 +172,7 @@ def _extract_input_bundle(bundle_file: Path, destination: Path) -> Path:
                         member_target != destination_abs
                         and destination_abs not in member_target.parents
                     ):
-                        raise RuntimeError(
-                            "Input bundle contains path traversal entries"
-                        ) from err
+                        raise RuntimeError("Input bundle contains path traversal entries") from err
                 archive.extractall(destination)
         return destination
 
