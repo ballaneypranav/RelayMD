@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from relaymd.cli.runtime_paths import RelaymdPaths, resolve_paths
 
@@ -154,6 +155,20 @@ def status(
     _run(command)
 
 
+def _read_log_dirs_from_yaml(yaml_config: Path) -> tuple[str | None, list[str]]:
+    """Return (orchestrator_log_dir, [cluster_log_dirs]) from the YAML config."""
+    if not yaml_config.is_file():
+        return None, []
+    data = yaml.safe_load(yaml_config.read_text(encoding="utf-8")) or {}
+    orch_log_dir = data.get("log_directory") or None
+    cluster_log_dirs = [
+        c["log_directory"]
+        for c in data.get("slurm_cluster_configs", [])
+        if c.get("log_directory")
+    ]
+    return orch_log_dir, cluster_log_dirs
+
+
 def _log_paths(paths: RelaymdPaths, service: ServiceName) -> list[Path]:
     if service == "orchestrator":
         return [paths.orchestrator_wrapper_log]
@@ -218,12 +233,20 @@ def clean_scripts(
         str | None,
         typer.Option("--log-dir", help="Override RELAYMD_LOG_DIRECTORY for script location."),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print what would be deleted without deleting."),
+    ] = False,
 ) -> None:
     """Delete sbatch submission scripts older than N days from the orchestrator log directory."""
     resolved = log_dir or os.environ.get("RELAYMD_LOG_DIRECTORY")
     if not resolved:
+        paths = resolve_paths()
+        resolved, _ = _read_log_dirs_from_yaml(paths.yaml_config)
+    if not resolved:
         typer.echo(
-            "error: RELAYMD_LOG_DIRECTORY is not set and --log-dir was not provided.", err=True
+            "error: log_directory not found in config and RELAYMD_LOG_DIRECTORY is not set.",
+            err=True,
         )
         raise typer.Exit(code=1)
     scripts_dir = Path(resolved) / "slurm"
@@ -231,30 +254,93 @@ def clean_scripts(
         typer.echo(f"No scripts directory found at {scripts_dir}")
         return
     cutoff = time.time() - older_than * 86400
-    deleted = 0
+    count = 0
     for script in scripts_dir.glob("*.sbatch"):
         if script.stat().st_mtime < cutoff:
-            script.unlink()
-            deleted += 1
-    if deleted:
-        typer.echo(f"Deleted {deleted} sbatch script(s) from {scripts_dir}")
+            if dry_run:
+                typer.echo(f"Would delete: {script}")
+            else:
+                script.unlink()
+            count += 1
+    if count:
+        if not dry_run:
+            typer.echo(f"Deleted {count} sbatch script(s) from {scripts_dir}")
     else:
         typer.echo(f"No scripts older than {older_than} day(s) in {scripts_dir}")
 
 
 def clean_logs(
     service: ServiceOption = "all",
+    older_than: Annotated[
+        int | None,
+        typer.Option(
+            "--older-than",
+            min=0,
+            help="Delete worker SLURM output files older than this many days. Omit to delete all.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print what would be truncated/deleted without acting."),
+    ] = False,
 ) -> None:
-    """Truncate RelayMD service wrapper log files."""
+    """Truncate service wrapper and orchestrator logs; delete worker SLURM output files."""
     if service not in {"orchestrator", "proxy", "all"}:
         raise typer.BadParameter("service must be one of: orchestrator, proxy, all")
     paths = resolve_paths()
+
+    # Truncate wrapper logs.
     for log_path in _log_paths(paths, service):
         if not log_path.is_file():
             typer.echo(f"skipped (missing): {log_path}")
             continue
-        log_path.open("w").close()
-        typer.echo(f"Truncated: {log_path}")
+        if dry_run:
+            typer.echo(f"Would truncate: {log_path}")
+        else:
+            log_path.open("w").close()
+            typer.echo(f"Truncated: {log_path}")
+
+    # Truncate orchestrator structured log and clean worker SLURM output from config.
+    orch_log_dir, cluster_log_dirs = _read_log_dirs_from_yaml(paths.yaml_config)
+
+    if orch_log_dir:
+        orch_log = Path(orch_log_dir) / "orchestrator.log.jsonl"
+        if orch_log.is_file():
+            if dry_run:
+                typer.echo(f"Would truncate: {orch_log}")
+            else:
+                orch_log.open("w").close()
+                typer.echo(f"Truncated: {orch_log}")
+        else:
+            typer.echo(f"skipped (missing): {orch_log}")
+
+    cutoff = time.time() - older_than * 86400 if older_than is not None else None
+    age_desc = f"older than {older_than} day(s) " if older_than is not None else ""
+    for cluster_log_dir in cluster_log_dirs:
+        log_dir_path = Path(cluster_log_dir)
+        if not log_dir_path.is_dir():
+            typer.echo(f"skipped (missing): {log_dir_path}")
+            continue
+        count = 0
+        for output_file in sorted(log_dir_path.glob("slurm-*.out")):
+            if cutoff is None or output_file.stat().st_mtime < cutoff:
+                if dry_run:
+                    typer.echo(f"Would delete: {output_file}")
+                else:
+                    output_file.unlink()
+                count += 1
+        for err_file in sorted(log_dir_path.glob("slurm-*.err")):
+            if cutoff is None or err_file.stat().st_mtime < cutoff:
+                if dry_run:
+                    typer.echo(f"Would delete: {err_file}")
+                else:
+                    err_file.unlink()
+                count += 1
+        if count:
+            if not dry_run:
+                typer.echo(f"Deleted {count} worker log file(s) {age_desc}from {log_dir_path}")
+        else:
+            typer.echo(f"No worker log files {age_desc}found in {log_dir_path}")
 
 
 def prune_releases(
