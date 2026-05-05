@@ -404,13 +404,53 @@ else
     fi
 fi
 
-echo "Pulling orchestrator image into ${ORCH_SIF}"
-apptainer pull "${ORCH_TMP}" "${ORCHESTRATOR_IMAGE_URI}"
-mv "${ORCH_TMP}" "${ORCH_SIF}"
+# Resolve GHCR owner for pre-built SIF downloads (sha-* releases only).
+SIF_OWNER=""
+if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
+    SIF_OWNER="${RELAYMD_GHCR_OWNER}"
+elif [[ "${ORCHESTRATOR_IMAGE_URI}" =~ ^docker://ghcr\.io/([^/]+)/ ]]; then
+    SIF_OWNER="${BASH_REMATCH[1]}"
+fi
 
-echo "Pulling worker image into ${WORKER_SIF}"
-apptainer pull "${WORKER_TMP}" "${WORKER_IMAGE_URI}"
-mv "${WORKER_TMP}" "${WORKER_SIF}"
+_pull_sif() {
+    local label="$1"
+    local image_uri="$2"
+    local sif_path="$3"
+    local tmp_path="$4"
+    local pull_tmpdir="${RELAYMD_SCRATCH_ROOT}/apptainer/tmp-${label}"
+
+    if [[ -f "${sif_path}" ]]; then
+        echo "[${label}] SIF already exists at ${sif_path}, skipping."
+        return 0
+    fi
+
+    if [[ -n "${SIF_OWNER}" && "${RELEASE_VERSION}" =~ ^sha- ]]; then
+        local prebuilt_uri="https://github.com/${SIF_OWNER}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-${label}.sif"
+        echo "[${label}] Trying pre-built SIF: ${prebuilt_uri}"
+        if download_file "${prebuilt_uri}" "${tmp_path}"; then
+            mv "${tmp_path}" "${sif_path}"
+            echo "[${label}] Downloaded pre-built SIF."
+            return 0
+        fi
+        echo "[${label}] Pre-built SIF unavailable, falling back to apptainer pull." >&2
+    fi
+
+    mkdir -p "${pull_tmpdir}"
+    echo "[${label}] Pulling image into ${sif_path}"
+    APPTAINER_TMPDIR="${pull_tmpdir}" apptainer pull "${tmp_path}" "${image_uri}"
+    mv "${tmp_path}" "${sif_path}"
+}
+
+_pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" &
+ORCH_PID=$!
+_pull_sif "worker" "${WORKER_IMAGE_URI}" "${WORKER_SIF}" "${WORKER_TMP}" &
+WORKER_PID=$!
+
+ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
+WORKER_EXIT=0; wait "${WORKER_PID}" || WORKER_EXIT=$?
+[[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] SIF pull failed (exit ${ORCH_EXIT})." >&2
+[[ "${WORKER_EXIT}" -eq 0 ]] || echo "[worker] SIF pull failed (exit ${WORKER_EXIT})." >&2
+[[ "${ORCH_EXIT}" -eq 0 && "${WORKER_EXIT}" -eq 0 ]] || exit 1
 
 echo "Downloading relaymd CLI into ${CLI_BIN}"
 if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
