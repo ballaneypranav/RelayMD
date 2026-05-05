@@ -479,14 +479,35 @@ jobs:
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - name: Build orchestrator SIF
+      - name: Restore orchestrator SIF cache
+        id: cache-orch
         if: ${{ needs.changes.outputs.orchestrator_image == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: relaymd-orchestrator.sif
+          key: sif-orchestrator-sha-${{ steps.sha.outputs.short }}
+      - name: Restore worker SIF cache
+        id: cache-worker
+        if: ${{ needs.changes.outputs.worker_image == 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: relaymd-worker.sif
+          key: sif-worker-sha-${{ steps.sha.outputs.short }}
+      - name: Restore Apptainer OCI blob cache
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' || steps.cache-worker.outputs.cache-hit != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.apptainer/cache
+          key: apptainer-oci-sha-${{ steps.sha.outputs.short }}
+          restore-keys: apptainer-oci-
+      - name: Build orchestrator SIF
+        if: ${{ needs.changes.outputs.orchestrator_image == 'true' && steps.cache-orch.outputs.cache-hit != 'true' }}
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: apptainer pull relaymd-orchestrator.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:sha-${{ steps.sha.outputs.short }}"
       - name: Build worker SIF
-        if: ${{ needs.changes.outputs.worker_image == 'true' }}
+        if: ${{ needs.changes.outputs.worker_image == 'true' && steps.cache-worker.outputs.cache-hit != 'true' }}
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
