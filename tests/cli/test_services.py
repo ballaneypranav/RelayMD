@@ -200,7 +200,13 @@ def test_submit_service_upload_bundle_delegates_to_storage() -> None:
 
 def test_submit_service_upload_bundle_requires_b2_settings() -> None:
     context = _FakeContext()
-    context.settings = CliSettings(api_token="test-token")
+    context.settings = CliSettings(
+        api_token="test-token",
+        b2_endpoint_url="",
+        b2_bucket_name="",
+        b2_access_key_id="",
+        b2_secret_access_key="",
+    )
 
     with pytest.raises(RuntimeError, match="Missing required B2 storage settings for submit"):
         SubmitService(_as_cli_context(context)).upload_bundle(

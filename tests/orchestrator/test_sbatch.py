@@ -39,6 +39,7 @@ def _settings_with_cluster() -> OrchestratorSettings:
         axiom_token="test",
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
+        infisical_token="client-id:client-secret",
         slurm_cluster_configs=[
             ClusterConfig(
                 name="gilbreth",

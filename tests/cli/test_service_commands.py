@@ -486,8 +486,10 @@ def test_clean_scripts_log_dir_option_overrides_env(monkeypatch, tmp_path: Path)
     assert not old_script.exists()
 
 
-def test_clean_scripts_errors_when_log_dir_not_set(monkeypatch) -> None:
+def test_clean_scripts_errors_when_log_dir_not_set(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("RELAYMD_LOG_DIRECTORY", raising=False)
+    monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
+    monkeypatch.setenv("RELAYMD_CONFIG", str(tmp_path / "missing-relaymd-config.yaml"))
     with pytest.raises(typer.Exit) as exc:
         service_cmd.clean_scripts(older_than=30, log_dir=None)
     assert exc.value.exit_code == 1
