@@ -363,9 +363,7 @@ def _run_assigned_job(
             checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
             checkpoint_b2_key=checkpoint_b2_key,
             progress_glob_patterns=execution_config.progress_glob_patterns,
-            startup_progress_timeout_seconds=(
-                execution_config.startup_progress_timeout_seconds
-            ),
+            startup_progress_timeout_seconds=(execution_config.startup_progress_timeout_seconds),
             progress_timeout_seconds=execution_config.progress_timeout_seconds,
             max_runtime_seconds=execution_config.max_runtime_seconds,
             fatal_log_path=execution_config.fatal_log_path,
