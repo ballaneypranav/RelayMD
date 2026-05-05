@@ -70,6 +70,8 @@ require_cmd() {
 download_file() {
     local uri="$1"
     local output_path="$2"
+    # Pass "silent" as third arg to suppress progress and errors (e.g. probe requests that may 404).
+    local silent="${3:-}"
 
     if [[ -f "${uri}" ]]; then
         cp "${uri}" "${output_path}"
@@ -77,12 +79,20 @@ download_file() {
     fi
 
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "${uri}" -o "${output_path}"
+        if [[ "${silent}" == "silent" ]]; then
+            curl -fsSL "${uri}" -o "${output_path}"
+        else
+            curl -f -L --progress-bar "${uri}" -o "${output_path}"
+        fi
         return $?
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        wget -qO "${output_path}" "${uri}"
+        if [[ "${silent}" == "silent" ]]; then
+            wget -qO "${output_path}" "${uri}"
+        else
+            wget --show-progress -q -O "${output_path}" "${uri}"
+        fi
         return $?
     fi
 
@@ -268,7 +278,7 @@ resolve_latest_release_manifest() {
 
     manifest_json="$(mktemp "${TMPDIR:-/tmp}/relaymd-release-manifest.XXXXXX.json")"
 
-    if ! download_file "${manifest_uri}" "${manifest_json}"; then
+    if ! download_file "${manifest_uri}" "${manifest_json}" silent; then
         rm -f "${manifest_json}" 2>/dev/null || true
         return 1
     fi
@@ -427,7 +437,7 @@ _pull_sif() {
     if [[ -n "${SIF_OWNER}" && "${RELEASE_VERSION}" =~ ^sha- ]]; then
         local prebuilt_uri="https://github.com/${SIF_OWNER}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-${label}.sif"
         echo "[${label}] Trying pre-built SIF: ${prebuilt_uri}"
-        if download_file "${prebuilt_uri}" "${tmp_path}"; then
+        if download_file "${prebuilt_uri}" "${tmp_path}" silent; then
             mv "${tmp_path}" "${sif_path}"
             echo "[${label}] Downloaded pre-built SIF."
             return 0

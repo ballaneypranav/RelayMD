@@ -13,31 +13,41 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
     [[ "$local_sha" == "0000000000000000000000000000000000000000" ]] && continue
 
     # Find the common ancestor with origin/main to scope the diff to this branch.
-    main_sha=$(git rev-parse "origin/main" 2>/dev/null || true)
-    [[ -z "$main_sha" ]] && continue
+    if ! main_sha=$(git rev-parse "origin/main" 2>/dev/null); then
+        echo "pre-push: cannot resolve origin/main — run 'git fetch origin' and retry." >&2
+        exit 1
+    fi
 
-    base_sha=$(git merge-base "$local_sha" "$main_sha" 2>/dev/null || true)
-    [[ -z "$base_sha" ]] && continue
+    if ! base_sha=$(git merge-base "$local_sha" "$main_sha" 2>/dev/null); then
+        echo "pre-push: cannot compute merge-base between $local_sha and origin/main." >&2
+        exit 1
+    fi
 
     # Check whether any CLI-affecting file changed on this branch.
-    changed=$(git diff --name-only "$base_sha" "$local_sha" -- "${CLI_PATHS[@]}" 2>/dev/null || true)
+    changed=$(git diff --name-only "$base_sha" "$local_sha" -- "${CLI_PATHS[@]}")
     [[ -z "$changed" ]] && continue
 
     # CLI files changed — verify the version was bumped relative to origin/main.
     local_version=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)
-    main_version=$(git show "$main_sha":pyproject.toml 2>/dev/null \
-        | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1 || true)
+    if [[ -z "$local_version" ]]; then
+        echo "pre-push: cannot read version from pyproject.toml." >&2
+        exit 1
+    fi
+
+    main_version=$(git show "$main_sha":pyproject.toml | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1)
+    if [[ -z "$main_version" ]]; then
+        echo "pre-push: cannot read version from origin/main:pyproject.toml." >&2
+        exit 1
+    fi
 
     if [[ "$local_version" == "$main_version" ]]; then
-        # Auto-bump the patch version.
         IFS='.' read -r major minor patch <<< "$local_version"
         next_version="$major.$minor.$((patch + 1))"
         echo ""
-        echo "CLI-affecting files changed but version is still $local_version — bumping to $next_version."
+        echo "pre-push: CLI-affecting files changed but version is still $local_version — bumping to $next_version."
         make release-cli VERSION="$next_version"
-        echo "Please commit the version bump and push again."
+        echo "pre-push: version bumped to $next_version. Commit the bump and push again."
         exit 1
-        echo ""
     fi
 done
 
