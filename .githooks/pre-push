@@ -18,7 +18,7 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
         exit 1
     fi
 
-    if ! base_sha=$(git merge-base "$local_sha" "$main_sha" 2>/dev/null); then
+    if ! base_sha=$(git merge-base "${local_sha}^{commit}" "$main_sha" 2>/dev/null); then
         echo "pre-push: cannot compute merge-base between $local_sha and origin/main." >&2
         exit 1
     fi
