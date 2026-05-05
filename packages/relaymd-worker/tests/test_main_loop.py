@@ -706,7 +706,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     gateway.fail_job.assert_not_called()
 
 
-def test_run_assigned_job_supervision_failure_kills_and_marks_failed(monkeypatch) -> None:
+def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatch) -> None:
     assignment = ApiJobAssigned.from_dict(
         {
             "status": "assigned",
@@ -718,13 +718,17 @@ def test_run_assigned_job_supervision_failure_kills_and_marks_failed(monkeypatch
 
     class _FakeExecution:
         def __init__(self, **kwargs) -> None:
-            _ = kwargs
+            self.workdir = kwargs["workdir"]
             self._running = True
             self.request_terminate_calls = 0
             self.wait_calls = 0
             self.kill_calls = 0
 
         def start(self) -> None:
+            (self.workdir / "payload.log").write_text(
+                "Traceback: child failed\n",
+                encoding="utf-8",
+            )
             return None
 
         def iter_new_checkpoints(self):
@@ -778,8 +782,14 @@ def test_run_assigned_job_supervision_failure_kills_and_marks_failed(monkeypatch
         ),
     )
 
+    uploaded: dict[str, object] = {}
     storage = Mock()
     storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    storage.upload_file.side_effect = lambda local, remote: uploaded.update(
+        path=local,
+        key=remote,
+        content=local.read_text(encoding="utf-8"),
+    )
     gateway = Mock()
     shutdown_event = Mock()
     shutdown_event.is_set.return_value = False
@@ -803,6 +813,14 @@ def test_run_assigned_job_supervision_failure_kills_and_marks_failed(monkeypatch
     execution = execution_holder["execution"]
     assert execution.request_terminate_calls == 1
     assert execution.kill_calls == 1
+    storage.upload_file.assert_called_once()
+    assert cast(Path, uploaded["path"]).name == "payload.log"
+    assert uploaded["content"] == "Traceback: child failed\n"
+    assert uploaded["key"] == f"jobs/{assignment.job_id}/checkpoints/latest"
+    gateway.report_checkpoint.assert_called_once_with(
+        job_id=assignment.job_id,
+        checkpoint_path=f"jobs/{assignment.job_id}/checkpoints/latest",
+    )
     gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_not_called()
 

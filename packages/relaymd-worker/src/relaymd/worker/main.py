@@ -334,6 +334,16 @@ def _upload_checkpoint(
         raise
 
 
+def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConfig) -> Path | None:
+    if execution_config.fatal_log_path is None:
+        return None
+
+    path = bundle_root / execution_config.fatal_log_path
+    if not path.is_file():
+        return None
+    return path
+
+
 def _run_assigned_job(
     *,
     context: WorkerContext,
@@ -477,17 +487,19 @@ def _run_assigned_job(
                             execution.kill()
                             execution.wait(timeout_seconds=5)
 
-                        final_checkpoint = execution.latest_checkpoint()
+                        final_checkpoint = (
+                            _fatal_log_artifact(bundle_root, execution_config)
+                            if supervision_failure.reason == "fatal_log_match"
+                            else execution.latest_checkpoint()
+                        )
                         if final_checkpoint is not None:
-                            final_mtime = final_checkpoint.stat().st_mtime
-                            if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
-                                _upload_checkpoint(
-                                    context,
-                                    logger=job_log,
-                                    checkpoint=final_checkpoint,
-                                    checkpoint_b2_key=checkpoint_b2_key,
-                                    job_id=assignment.job_id,
-                                )
+                            _upload_checkpoint(
+                                context,
+                                logger=job_log,
+                                checkpoint=final_checkpoint,
+                                checkpoint_b2_key=checkpoint_b2_key,
+                                job_id=assignment.job_id,
+                            )
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
 
