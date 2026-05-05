@@ -234,12 +234,38 @@ async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
 
     async with app_client(make_settings()) as (_app, client):
         async with get_sessionmaker()() as session:
-            session.add_all([
-                Job(title="old-completed", input_bundle_path="x", status=JobStatus.completed, created_at=old, updated_at=old),
-                Job(title="old-failed", input_bundle_path="x", status=JobStatus.failed, created_at=old, updated_at=old),
-                Job(title="recent-completed", input_bundle_path="x", status=JobStatus.completed, created_at=recent, updated_at=recent),
-                Job(title="old-queued", input_bundle_path="x", status=JobStatus.queued, created_at=old, updated_at=old),
-            ])
+            session.add_all(
+                [
+                    Job(
+                        title="old-completed",
+                        input_bundle_path="x",
+                        status=JobStatus.completed,
+                        created_at=old,
+                        updated_at=old,
+                    ),
+                    Job(
+                        title="old-failed",
+                        input_bundle_path="x",
+                        status=JobStatus.failed,
+                        created_at=old,
+                        updated_at=old,
+                    ),
+                    Job(
+                        title="recent-completed",
+                        input_bundle_path="x",
+                        status=JobStatus.completed,
+                        created_at=recent,
+                        updated_at=recent,
+                    ),
+                    Job(
+                        title="old-queued",
+                        input_bundle_path="x",
+                        status=JobStatus.queued,
+                        created_at=old,
+                        updated_at=old,
+                    ),
+                ]
+            )
             await session.commit()
 
         response = await client.delete("/jobs?older_than_days=30", headers=headers)
