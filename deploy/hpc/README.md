@@ -55,16 +55,74 @@ relaymd restart
 make local-smoke
 ```
 
-Optional experimental `.def` path:
+Alternative Apptainer `.def` path for HPC hosts with fakeroot:
 
 ```bash
 make local-build-from-def
 ```
 
-`local-build-from-def` attempts `apptainer build --fakeroot` from definition
-files under `deploy/hpc/apptainer/`. If fakeroot/subuid support is unavailable
-(common on HPC), it falls back to the supported OCI->Apptainer pull flow.
-This `.def` mode is local-only and not the supported production rollout path.
+`local-build-from-def` runs `scripts/local_build_from_def.sh`, which builds
+worker and orchestrator artifacts directly from local source without Docker or
+GitHub Actions. This path is for fast branch-local iteration only; production
+rollouts still use GHCR images and `relaymd upgrade`.
+
+The local `.def` flow uses reusable bases:
+
+- `deploy/hpc/apptainer/relaymd-worker-base.localdev.def`
+- `deploy/hpc/apptainer/relaymd-orchestrator-base.localdev.def`
+
+The worker base contains the slow/stable runtime dependencies from
+`Dockerfile.worker-base`: CUDA runtime, Python 3.11, Tailscale, micromamba,
+OpenMM, and pinned AToM-OpenMM. The worker app def installs the current
+workspace RelayMD worker packages on top of that base.
+
+The orchestrator base contains the slow/stable runtime dependencies from
+`Dockerfile.orchestrator-base`: Python 3.11, Tailscale, `uv`, and Node 22. Node
+is included in the local base because Apptainer builds are single-stage, while
+the Docker orchestrator image uses a separate Node builder stage. The
+orchestrator app def installs the current workspace RelayMD package and builds
+frontend assets on top of that base.
+
+Default base cache paths:
+
+```text
+build/local-def-stage/relaymd-worker-base.sif
+build/local-def-stage/relaymd-orchestrator-base.sif
+```
+
+Fast default rebuild:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox
+```
+
+Rebuild bases explicitly:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-worker-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-orchestrator-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-bases
+```
+
+Use custom prebuilt bases:
+
+```bash
+./scripts/local_build_from_def.sh \
+  --worker-base-sif /path/to/relaymd-worker-base.sif \
+  --orchestrator-base-sif /path/to/relaymd-orchestrator-base.sif
+```
+
+`--mode sandbox` is the default and usually fastest for local development. It
+builds directory sandboxes and creates compatibility symlinks named
+`relaymd-worker.sif` and `relaymd-orchestrator.sif` in the activated release
+directory. Use `--mode sif` when you need immutable single-file SIFs.
+
+If you want `.def` failures to fall back to the local OCI conversion workflow,
+run:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --fallback
+```
 
 Pull and activate using explicit image URIs (backward-compatible mode):
 

@@ -1,0 +1,84 @@
+Bootstrap: docker
+From: nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+%help
+    Local RelayMD worker base matching Dockerfile.worker-base.
+    Build this infrequently, then rebuild relaymd-worker.localdev.def on top.
+
+%labels
+    relaymd.localdev "true"
+    relaymd.component "worker-base"
+    relaymd.parity_source "Dockerfile.worker-base"
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export PATH=/opt/atom-openmm/bin:${PATH}
+    export MAMBA_ROOT_PREFIX=/opt/micromamba
+    export ATOM_REPO_URL=https://github.com/ballaneypranav/AToM-OpenMM
+    export ATOM_REPO_REF=71f2f4e6b90f3cfd8ff3ab0ec46e32922e9c2f56
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    export ATOM_REPO_URL=https://github.com/ballaneypranav/AToM-OpenMM
+    export ATOM_REPO_REF=71f2f4e6b90f3cfd8ff3ab0ec46e32922e9c2f56
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        software-properties-common \
+        ca-certificates \
+        gnupg \
+        curl
+    add-apt-repository -y ppa:deadsnakes/ppa
+    mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg \
+        -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+    curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list \
+        -o /etc/apt/sources.list.d/tailscale.list
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        bash \
+        coreutils \
+        tar \
+        procps \
+        python3.11 \
+        python3.11-distutils \
+        python3.11-venv \
+        python3-pip \
+        git \
+        wget \
+        curl \
+        bzip2 \
+        tailscale
+    ln -sf /usr/bin/python3.11 /usr/local/bin/python
+    python -m pip install --no-cache-dir --upgrade pip uv
+    rm -rf /var/lib/apt/lists/*
+
+    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
+        | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba
+
+    micromamba create -y -p /opt/atom-openmm -c conda-forge \
+        python=3.11 \
+        openmm=8.4.0 \
+        cuda-version=12.6 \
+        configobj \
+        numpy \
+        setproctitle \
+        pip
+    micromamba clean -a -y
+
+    ln -sf /opt/atom-openmm/bin/python /usr/local/bin/python
+    python -m pip install --no-cache-dir --upgrade pip uv
+    python -m pip install --no-cache-dir "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"
+
+    python - <<'PY'
+import atom_openmm
+import openmm
+
+print("atom_openmm", atom_openmm.__file__)
+print("openmm", openmm.version.version)
+PY
+
+%runscript
+    exec python "$@"

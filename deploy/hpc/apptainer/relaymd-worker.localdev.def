@@ -1,6 +1,44 @@
-Bootstrap: docker
-From: ghcr.io/your-org/relaymd-worker:latest
+Bootstrap: localimage
+From: /depot/plow/apps/relaymd/current/relaymd-worker.sif
 
 %help
-    Experimental local-only definition file for RelayMD worker.
-    This path is not the supported production/HPC rollout model.
+    Self-contained local RelayMD worker build.
+    Installs RelayMD packages from local source on a worker base matching Dockerfile.worker-base.
+
+%labels
+    relaymd.localdev "true"
+    relaymd.component "worker"
+    relaymd.parity_source "Dockerfile"
+
+%files
+    pyproject.toml /opt/relaymd/pyproject.toml
+    packages/relaymd-core /opt/relaymd/packages/relaymd-core
+    packages/relaymd-api-client /opt/relaymd/packages/relaymd-api-client
+    packages/relaymd-worker /opt/relaymd/packages/relaymd-worker
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export PATH=/opt/atom-openmm/bin:${PATH}
+    export MAMBA_ROOT_PREFIX=/opt/micromamba
+
+%post
+    set -eux
+    test -x /opt/atom-openmm/bin/python
+    python - <<'PY'
+import atom_openmm
+import openmm
+
+print("atom_openmm", atom_openmm.__file__)
+print("openmm", openmm.version.version)
+PY
+    python -m pip install --no-cache-dir --upgrade pip uv
+    # Fail fast if generated API client sources were not copied into build context.
+    test -f /opt/relaymd/packages/relaymd-api-client/src/relaymd_api_client/__init__.py
+    python -m pip install --no-cache-dir \
+        /opt/relaymd/packages/relaymd-core \
+        /opt/relaymd/packages/relaymd-api-client \
+        /opt/relaymd/packages/relaymd-worker
+
+%runscript
+    exec python -m relaymd.worker "$@"

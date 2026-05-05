@@ -23,6 +23,11 @@ RelayMD publishes both worker and orchestrator images to GHCR:
 
 Use immutable `sha-<shortsha>` tags for deploys.
 
+For branch-local HPC iteration, `make local-build-from-def` builds Apptainer
+artifacts directly from local source using reusable worker and orchestrator base
+SIFs under `build/local-def-stage/`. See [Deployment Guide](deployment.md) for
+the full local development workflow.
+
 Build and push commands:
 
 ```bash

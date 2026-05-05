@@ -39,7 +39,8 @@ RUN curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest \
 
 RUN micromamba create -y -p /opt/atom-openmm -c conda-forge \
         python=3.11 \
-        openmm>=8.4 \
+        openmm=8.4.0 \
+        cuda-version=12.6 \
         configobj \
         numpy \
         setproctitle \

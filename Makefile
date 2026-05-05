@@ -69,7 +69,11 @@ local-build-from-def:
 	./scripts/local_build_from_def.sh
 
 local-install-cli:
+ifeq ($(BUILD),0)
+	./scripts/local_install_cli.sh
+else
 	./scripts/local_install_cli.sh --build
+endif
 
 local-smoke:
 	./scripts/local_smoke.sh
