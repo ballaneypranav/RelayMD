@@ -34,7 +34,7 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
         exit 1
     fi
 
-    main_version=$(git show "$main_sha":pyproject.toml | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1)
+    main_version=$(git show "$main_sha":pyproject.toml 2>/dev/null | sed -n 's/^version = "\(.*\)"/\1/p' | head -n 1 || true)
     if [[ -z "$main_version" ]]; then
         echo "pre-push: cannot read version from origin/main:pyproject.toml." >&2
         exit 1
