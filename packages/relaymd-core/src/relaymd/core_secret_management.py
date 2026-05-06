@@ -128,13 +128,18 @@ class CliSecretManager(InfisicalSecretManager):
         return self.fetch_mapped_secrets(
             required={
                 "api_token": "RELAYMD_API_TOKEN",
+            },
+            optional={
                 "b2_endpoint_url": "B2_ENDPOINT",
                 "b2_bucket_name": "BUCKET_NAME",
                 "b2_access_key_id": "B2_APPLICATION_KEY_ID",
                 "b2_secret_access_key": "B2_APPLICATION_KEY",
-            },
-            optional={
                 "cf_bearer_token": "DOWNLOAD_BEARER_TOKEN",
+                "purdue_s3_endpoint": "PURDUE_S3_ENDPOINT",
+                "purdue_s3_bucket_name": "PURDUE_S3_BUCKET_NAME",
+                "purdue_s3_access_key": "PURDUE_S3_ACCESS_KEY",
+                "purdue_s3_secret_key": "PURDUE_S3_SECRET_KEY",
+                "purdue_s3_user": "PURDUE_S3_USER",
             },
         )
 
@@ -144,15 +149,20 @@ class WorkerSecretManager(InfisicalSecretManager):
         return self.fetch_mapped_secrets(
             required={
                 "axiom_token": "AXIOM_TOKEN",
-                "b2_application_key_id": "B2_APPLICATION_KEY_ID",
-                "b2_application_key": "B2_APPLICATION_KEY",
-                "b2_endpoint": "B2_ENDPOINT",
-                "bucket_name": "BUCKET_NAME",
                 "tailscale_auth_key": "TAILSCALE_AUTH_KEY",
                 "relaymd_api_token": "RELAYMD_API_TOKEN",
                 "relaymd_orchestrator_url": "RELAYMD_ORCHESTRATOR_URL",
             },
             optional={
+                "b2_application_key_id": "B2_APPLICATION_KEY_ID",
+                "b2_application_key": "B2_APPLICATION_KEY",
+                "b2_endpoint": "B2_ENDPOINT",
+                "bucket_name": "BUCKET_NAME",
                 "download_bearer_token": "DOWNLOAD_BEARER_TOKEN",
+                "purdue_s3_endpoint": "PURDUE_S3_ENDPOINT",
+                "purdue_s3_bucket_name": "PURDUE_S3_BUCKET_NAME",
+                "purdue_s3_access_key": "PURDUE_S3_ACCESS_KEY",
+                "purdue_s3_secret_key": "PURDUE_S3_SECRET_KEY",
+                "purdue_s3_user": "PURDUE_S3_USER",
             },
         )
