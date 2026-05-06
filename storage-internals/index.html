@@ -756,10 +756,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dual-endpoints" class="md-nav__link">
+  <a href="#providers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dual Endpoints
+        Providers
       
     </span>
   </a>
@@ -1153,10 +1153,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dual-endpoints" class="md-nav__link">
+  <a href="#providers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dual Endpoints
+        Providers
       
     </span>
   </a>
@@ -1220,15 +1220,20 @@
 <p>See <a href="../storage-layout/">Storage Layout for Checkpoints and Inputs</a> for the actual S3 layout schema.</p>
 <h2 id="component">Component</h2>
 <p><code>relaymd-storage</code> is a shared Python package in <code>packages/relaymd-core/src/relaymd/storage/</code>. It exposes one class: <code>StorageClient</code>.</p>
-<h2 id="dual-endpoints">Dual Endpoints</h2>
-<p>The <code>StorageClient</code> is initialized with two endpoints:
-1. <code>b2_endpoint_url</code> (where writes go)
-2. <code>cf_worker_url</code> (where reads come from)</p>
+<h2 id="providers">Providers</h2>
+<p>Storage mode is selected by <code>storage_provider</code> in config:</p>
+<ol>
+<li><code>cloudflare_backblaze</code> (default)</li>
+<li><code>purdue</code></li>
+</ol>
 <p>It uses <code>boto3</code> synchronously, but wrapped internally so that consumers of <code>StorageClient</code> just call <code>client.upload_file(local_path, b2_key)</code> and <code>client.download_file(b2_key, local_path)</code>.</p>
 <h2 id="uploads">Uploads</h2>
 <p>Uses <code>boto3.client("s3").upload_file(...)</code> with multipart threshold and concurrency. Writes always go directly to the B2 endpoint <code>https://s3.us-east-00[x].backblazeb2.com</code>.</p>
 <h2 id="downloads">Downloads</h2>
-<p>Uses <code>httpx.Client.stream(...)</code> to fetch from the Cloudflare Worker proxy (<code>https://relaymd-proxy.&lt;user&gt;.workers.dev</code>). The Cloudflare Worker is authenticated via a hard-coded static Bearer token passed in the <code>Authorization</code> header. Cloudflare fetches from B2 using native caching.</p>
+<ul>
+<li><code>cloudflare_backblaze</code>: uses <code>httpx.Client.stream(...)</code> to fetch from the Cloudflare Worker proxy (<code>https://relaymd-proxy.&lt;user&gt;.workers.dev</code>) using <code>DOWNLOAD_BEARER_TOKEN</code>.</li>
+<li><code>purdue</code>: uses direct S3 download (<code>boto3</code> <code>download_file</code>) from <code>PURDUE_S3_ENDPOINT</code> (for example <code>https://s3.rcac.purdue.edu</code>).</li>
+</ul>
 <p>Using <code>boto3.client("s3").download_file</code> would incur B2 egress fees and bypass the Cloudflare Bandwidth Alliance. The dual-endpoint setup is what makes checkpoints free.</p>
 <h2 id="s3-protocol-compatibility">S3 Protocol Compatibility</h2>
 <p>Backblaze B2 supports the standard AWS S3 REST API. <code>boto3</code> thinks it is talking to S3. The region is ignored <code>us-east-1</code> placeholder, authentication relies on AWS Signature v4 compatibility, using <code>KEY_ID</code> as AWS Access Key and <code>APPLICATION_KEY</code> as Secret Key.</p>

@@ -1266,11 +1266,18 @@ derives the rest of the install paths from that directory:</p>
 <p>Start from the reference config file (<code>deploy/config.example.yaml</code> in the repo) and set:
 - <code>orchestrator_url</code> (Note: YAML configuration takes precedence over the <code>RELAYMD_ORCHESTRATOR_URL</code> environment variable)
 - <code>api_token</code>
+- <code>storage_provider</code> (<code>cloudflare_backblaze</code> or <code>purdue</code>)
+- if <code>storage_provider=cloudflare_backblaze</code>:
 - <code>b2_endpoint_url</code>
 - <code>b2_bucket_name</code>
 - <code>b2_access_key_id</code>
 - <code>b2_secret_access_key</code>
-- <code>cf_worker_url</code> (if using Cloudflare proxy for downloads)
+- <code>cf_worker_url</code> (Cloudflare proxy download path)
+- if <code>storage_provider=purdue</code>:
+- <code>purdue_s3_endpoint</code>
+- <code>purdue_s3_bucket_name</code>
+- <code>purdue_s3_access_key</code>
+- <code>purdue_s3_secret_key</code>
 - <code>orchestrator_timeout_seconds</code> (optional)</p>
 <p><code>INFISICAL_TOKEN</code> must be set in the environment (for HPC service installs, set it
 in <code>$RELAYMD_DATA_ROOT/config/relaymd-service.env</code>).</p>
