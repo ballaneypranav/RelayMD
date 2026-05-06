@@ -23,6 +23,7 @@ env/
 .idea/
 .vscode/
 .codex
+.opencode
 
 # Environment files
 .env

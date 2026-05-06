@@ -246,6 +246,45 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     assert captured["cf_bearer_token"] == "api-token"
 
 
+def test_build_storage_client_uses_purdue_credentials(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_storage_client(**kwargs):
+        captured.update(kwargs)
+        return Mock()
+
+    monkeypatch.setattr("relaymd.worker.main.StorageClient", fake_storage_client)
+
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.us-east-005.backblazeb2.com",
+        bucket_name="relaymd-bucket",
+        purdue_s3_access_key="purdue-access",
+        purdue_s3_secret_key="purdue-secret",
+        purdue_s3_endpoint="https://s3.rcac.purdue.edu",
+        purdue_s3_bucket_name="purdue-bucket",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
+    )
+    runtime_settings = WorkerRuntimeSettings(
+        axiom_token="test",
+        storage_provider="purdue",
+        cf_worker_url="https://cf.example",
+        cf_bearer_token="runtime-token",
+    )
+
+    _build_storage_client(config, runtime_settings)
+
+    assert captured["storage_provider"] == "purdue"
+    assert captured["b2_endpoint_url"] == "https://s3.rcac.purdue.edu"
+    assert captured["b2_bucket_name"] == "purdue-bucket"
+    assert captured["b2_access_key_id"] == "purdue-access"
+    assert captured["b2_secret_access_key"] == "purdue-secret"
+    assert captured["s3_region_name"] == "us-east-1"
+
+
 def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     config = WorkerConfig(
         b2_application_key_id="id",

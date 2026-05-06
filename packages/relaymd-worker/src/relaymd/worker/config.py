@@ -18,6 +18,10 @@ from relaymd.runtime_defaults import (
 
 
 class WorkerRuntimeSettings(BaseSettings):
+    storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
+        default="cloudflare_backblaze",
+        validation_alias=AliasChoices("storage_provider", "RELAYMD_STORAGE_PROVIDER"),
+    )
     worker_platform: str = Field(
         default="salad",
         validation_alias=AliasChoices("worker_platform", "WORKER_PLATFORM", "RELAYMD_PLATFORM"),

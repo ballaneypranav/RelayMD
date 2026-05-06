@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote
 
 import boto3
@@ -60,7 +61,10 @@ class StorageClient:
         b2_secret_access_key: str,
         cf_worker_url: str,
         cf_bearer_token: str,
+        storage_provider: Literal["cloudflare_backblaze", "purdue"] = "cloudflare_backblaze",
+        s3_region_name: str | None = None,
     ) -> None:
+        self._storage_provider = storage_provider
         self._b2_bucket_name = b2_bucket_name
         self._cf_worker_url = _normalize_url(cf_worker_url).rstrip("/")
         self._cf_bearer_token = cf_bearer_token
@@ -76,6 +80,7 @@ class StorageClient:
             endpoint_url=normalized_b2_endpoint_url,
             aws_access_key_id=b2_access_key_id,
             aws_secret_access_key=b2_secret_access_key,
+            region_name=s3_region_name,
         )
 
     @retry(
@@ -98,7 +103,7 @@ class StorageClient:
         retry=retry_if_exception(_is_retryable_http_error),
         reraise=True,
     )
-    def download_file(self, b2_key: str, local_path: Path) -> None:
+    def _download_file_via_cloudflare(self, b2_key: str, local_path: Path) -> None:
         encoded_key = quote(b2_key.lstrip("/"), safe="/")
         url = f"{self._cf_worker_url}/files/{encoded_key}"
         headers = {"Authorization": f"Bearer {self._cf_bearer_token}"}
@@ -109,6 +114,22 @@ class StorageClient:
             with local_path.open("wb") as file_obj:
                 for chunk in response.iter_bytes():
                     file_obj.write(chunk)
+
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=60),
+        stop=stop_after_attempt(5),
+        retry=retry_if_exception(_is_retryable_s3_error),
+        reraise=True,
+    )
+    def _download_file_via_s3(self, b2_key: str, local_path: Path) -> None:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        self._s3.download_file(self._b2_bucket_name, b2_key, str(local_path))
+
+    def download_file(self, b2_key: str, local_path: Path) -> None:
+        if self._storage_provider == "purdue":
+            self._download_file_via_s3(b2_key, local_path)
+            return
+        self._download_file_via_cloudflare(b2_key, local_path)
 
     def list_keys(self, prefix: str) -> list[str]:
         paginator = self._s3.get_paginator("list_objects_v2")

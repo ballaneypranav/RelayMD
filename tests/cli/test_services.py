@@ -217,6 +217,28 @@ def test_submit_service_upload_bundle_requires_b2_settings() -> None:
     context.storage.upload_file.assert_not_called()
 
 
+def test_submit_service_upload_bundle_requires_purdue_settings() -> None:
+    context = _FakeContext()
+    context.settings = CliSettings(
+        api_token="test-token",
+        storage_provider="purdue",
+        purdue_s3_endpoint="",
+        purdue_s3_bucket_name="",
+        purdue_s3_access_key="",
+        purdue_s3_secret_key="",
+    )
+
+    with pytest.raises(
+        RuntimeError, match="Missing required Purdue S3 storage settings for submit"
+    ):
+        SubmitService(_as_cli_context(context)).upload_bundle(
+            local_archive=Path("/tmp/bundle.tar.gz"),
+            b2_key="jobs/a/input/bundle.tar.gz",
+        )
+
+    context.storage.upload_file.assert_not_called()
+
+
 def test_submit_service_register_job_rejects_non_job_model(monkeypatch) -> None:
     context = _FakeContext()
     monkeypatch.setattr(
