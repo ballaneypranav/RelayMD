@@ -237,6 +237,11 @@ def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> No
         "B2_APPLICATION_KEY_ID",
         "B2_APPLICATION_KEY",
         "DOWNLOAD_BEARER_TOKEN",
+        "PURDUE_S3_ENDPOINT",
+        "PURDUE_S3_BUCKET_NAME",
+        "PURDUE_S3_ACCESS_KEY",
+        "PURDUE_S3_SECRET_KEY",
+        "PURDUE_S3_USER",
     ]
 
 
@@ -321,4 +326,65 @@ def test_load_settings_malformed_infisical_token_raises(monkeypatch) -> None:
     monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="INFISICAL_TOKEN is malformed"):
+        cli_config.load_settings()
+
+
+def test_load_settings_requires_purdue_secrets_when_provider_is_purdue(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    config_path = tmp_path / "relaymd-config.yaml"
+    config_path.write_text("storage_provider: purdue\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
+
+    values = {
+        "RELAYMD_API_TOKEN": "relaymd-token",
+    }
+
+    class _FakeClientSettings:
+        def __init__(self, client_id: str, client_secret: str, site_url: str) -> None:
+            self.client_id = client_id
+            self.client_secret = client_secret
+            self.site_url = site_url
+
+    class _FakeGetSecretOptions:
+        def __init__(
+            self,
+            *,
+            secret_name: str,
+            project_id: str,
+            environment: str,
+            path: str,
+        ) -> None:
+            self.secret_name = secret_name
+            self.project_id = project_id
+            self.environment = environment
+            self.path = path
+
+    class _FakeSecret:
+        def __init__(self, secret_value: str) -> None:
+            self.secret_value = secret_value
+
+    class _FakeInfisicalClient:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+
+        def getSecret(self, options) -> _FakeSecret:
+            try:
+                return _FakeSecret(values[options.secret_name])
+            except KeyError as exc:
+                raise Exception("Secret not found") from exc
+
+    monkeypatch.setattr(
+        cli_config,
+        "_get_infisical_client_dependencies",
+        lambda: (_FakeClientSettings, _FakeInfisicalClient, _FakeGetSecretOptions),
+    )
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "PURDUE_S3_ENDPOINT, PURDUE_S3_BUCKET_NAME, PURDUE_S3_ACCESS_KEY, PURDUE_S3_SECRET_KEY"
+        ),
+    ):
         cli_config.load_settings()

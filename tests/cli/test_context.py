@@ -53,12 +53,14 @@ def test_storage_client_uses_configured_credentials(monkeypatch) -> None:
 
     assert isinstance(storage, FakeStorageClient)
     assert captured == {
+        "storage_provider": "cloudflare_backblaze",
         "b2_endpoint_url": "https://b2.example",
         "b2_bucket_name": "bucket",
         "b2_access_key_id": "access",
         "b2_secret_access_key": "secret",
         "cf_worker_url": "https://cf.example",
         "cf_bearer_token": "token",
+        "s3_region_name": None,
     }
 
 

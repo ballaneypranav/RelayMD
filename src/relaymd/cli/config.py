@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import (
@@ -27,6 +27,10 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 
 class CliSettings(BaseSettings):
+    storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
+        default="cloudflare_backblaze",
+        validation_alias=AliasChoices("storage_provider"),
+    )
     orchestrator_url: str = Field(
         default=DEFAULT_ORCHESTRATOR_URL,
         validation_alias=AliasChoices(
@@ -65,6 +69,26 @@ class CliSettings(BaseSettings):
     cf_bearer_token: str = Field(
         default="",
         validation_alias=AliasChoices("cf_bearer_token"),
+    )
+    purdue_s3_endpoint: str = Field(
+        default="",
+        validation_alias=AliasChoices("purdue_s3_endpoint"),
+    )
+    purdue_s3_bucket_name: str = Field(
+        default="",
+        validation_alias=AliasChoices("purdue_s3_bucket_name"),
+    )
+    purdue_s3_access_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("purdue_s3_access_key"),
+    )
+    purdue_s3_secret_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("purdue_s3_secret_key"),
+    )
+    purdue_s3_user: str = Field(
+        default="",
+        validation_alias=AliasChoices("purdue_s3_user"),
     )
     orchestrator_timeout_seconds: float = Field(
         default=DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
@@ -120,17 +144,27 @@ def load_settings() -> CliSettings:
 
     settings = _hydrate_settings_from_infisical(settings)
 
-    missing = []
+    missing: list[str] = []
     if not settings.api_token.strip():
         missing.append("RELAYMD_API_TOKEN")
-    if not settings.b2_endpoint_url.strip():
-        missing.append("B2_ENDPOINT")
-    if not settings.b2_bucket_name.strip():
-        missing.append("BUCKET_NAME")
-    if not settings.b2_access_key_id.strip():
-        missing.append("B2_APPLICATION_KEY_ID")
-    if not settings.b2_secret_access_key.strip():
-        missing.append("B2_APPLICATION_KEY")
+    if settings.storage_provider == "purdue":
+        if not settings.purdue_s3_endpoint.strip():
+            missing.append("PURDUE_S3_ENDPOINT")
+        if not settings.purdue_s3_bucket_name.strip():
+            missing.append("PURDUE_S3_BUCKET_NAME")
+        if not settings.purdue_s3_access_key.strip():
+            missing.append("PURDUE_S3_ACCESS_KEY")
+        if not settings.purdue_s3_secret_key.strip():
+            missing.append("PURDUE_S3_SECRET_KEY")
+    else:
+        if not settings.b2_endpoint_url.strip():
+            missing.append("B2_ENDPOINT")
+        if not settings.b2_bucket_name.strip():
+            missing.append("BUCKET_NAME")
+        if not settings.b2_access_key_id.strip():
+            missing.append("B2_APPLICATION_KEY_ID")
+        if not settings.b2_secret_access_key.strip():
+            missing.append("B2_APPLICATION_KEY")
 
     if missing:
         raise RuntimeError(

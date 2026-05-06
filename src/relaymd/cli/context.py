@@ -21,13 +21,26 @@ class CliContext:
         )
 
     def storage_client(self) -> StorageClient:
+        if self.settings.storage_provider == "purdue":
+            endpoint = self.settings.purdue_s3_endpoint
+            bucket_name = self.settings.purdue_s3_bucket_name
+            access_key_id = self.settings.purdue_s3_access_key
+            secret_access_key = self.settings.purdue_s3_secret_key
+        else:
+            endpoint = self.settings.b2_endpoint_url
+            bucket_name = self.settings.b2_bucket_name
+            access_key_id = self.settings.b2_access_key_id
+            secret_access_key = self.settings.b2_secret_access_key
+
         return StorageClient(
-            b2_endpoint_url=self.settings.b2_endpoint_url,
-            b2_bucket_name=self.settings.b2_bucket_name,
-            b2_access_key_id=self.settings.b2_access_key_id,
-            b2_secret_access_key=self.settings.b2_secret_access_key,
+            storage_provider=self.settings.storage_provider,
+            b2_endpoint_url=endpoint,
+            b2_bucket_name=bucket_name,
+            b2_access_key_id=access_key_id,
+            b2_secret_access_key=secret_access_key,
             cf_worker_url=self.settings.cf_worker_url,
             cf_bearer_token=self.settings.cf_bearer_token,
+            s3_region_name="us-east-1" if self.settings.storage_provider == "purdue" else None,
         )
 
 

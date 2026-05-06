@@ -20,14 +20,26 @@ class SubmitService:
     def _validate_storage_settings(self) -> None:
         settings = self._context.settings
         missing: list[tuple[str, str]] = []
-        if not settings.b2_endpoint_url.strip():
-            missing.append(("b2_endpoint_url", "B2_ENDPOINT_URL or B2_ENDPOINT"))
-        if not settings.b2_bucket_name.strip():
-            missing.append(("b2_bucket_name", "B2_BUCKET_NAME or BUCKET_NAME"))
-        if not settings.b2_access_key_id.strip():
-            missing.append(("b2_access_key_id", "B2_ACCESS_KEY_ID or B2_APPLICATION_KEY_ID"))
-        if not settings.b2_secret_access_key.strip():
-            missing.append(("b2_secret_access_key", "B2_SECRET_ACCESS_KEY or B2_APPLICATION_KEY"))
+        if settings.storage_provider == "purdue":
+            if not settings.purdue_s3_endpoint.strip():
+                missing.append(("purdue_s3_endpoint", "PURDUE_S3_ENDPOINT"))
+            if not settings.purdue_s3_bucket_name.strip():
+                missing.append(("purdue_s3_bucket_name", "PURDUE_S3_BUCKET_NAME"))
+            if not settings.purdue_s3_access_key.strip():
+                missing.append(("purdue_s3_access_key", "PURDUE_S3_ACCESS_KEY"))
+            if not settings.purdue_s3_secret_key.strip():
+                missing.append(("purdue_s3_secret_key", "PURDUE_S3_SECRET_KEY"))
+        else:
+            if not settings.b2_endpoint_url.strip():
+                missing.append(("b2_endpoint_url", "B2_ENDPOINT_URL or B2_ENDPOINT"))
+            if not settings.b2_bucket_name.strip():
+                missing.append(("b2_bucket_name", "B2_BUCKET_NAME or BUCKET_NAME"))
+            if not settings.b2_access_key_id.strip():
+                missing.append(("b2_access_key_id", "B2_ACCESS_KEY_ID or B2_APPLICATION_KEY_ID"))
+            if not settings.b2_secret_access_key.strip():
+                missing.append(
+                    ("b2_secret_access_key", "B2_SECRET_ACCESS_KEY or B2_APPLICATION_KEY")
+                )
 
         if not missing:
             return
@@ -39,7 +51,10 @@ class SubmitService:
             if not self._context.settings.infisical_token.strip()
             else " Set env vars or update relaymd-config.yaml."
         )
-        raise RuntimeError(f"Missing required B2 storage settings for submit: {details}.{hint}")
+        provider_name = "Purdue S3" if settings.storage_provider == "purdue" else "B2"
+        raise RuntimeError(
+            f"Missing required {provider_name} storage settings for submit: {details}.{hint}"
+        )
 
     def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
         self._validate_storage_settings()
