@@ -25,10 +25,9 @@ COPY src ./src
 RUN test -f /workspace/packages/relaymd-api-client/src/relaymd_api_client/__init__.py
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install --system --no-deps \
     ./packages/relaymd-core \
     ./packages/relaymd-api-client \
-    "infisical-python>=2.0,<2.2" \
     .
 
 COPY --from=frontend-builder /workspace/frontend/dist /opt/relaymd/frontend/dist

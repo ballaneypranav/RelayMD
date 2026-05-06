@@ -7,7 +7,7 @@ COPY pyproject.toml uv.lock ./
 COPY packages ./packages
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
+    uv pip install --system --no-deps \
     ./packages/relaymd-core \
     ./packages/relaymd-api-client \
     ./packages/relaymd-worker

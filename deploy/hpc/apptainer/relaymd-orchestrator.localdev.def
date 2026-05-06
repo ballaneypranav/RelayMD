@@ -16,6 +16,7 @@ From: build/local-def-stage/relaymd-orchestrator-base.sif
     frontend /opt/relaymd/frontend
     packages/relaymd-core /opt/relaymd/packages/relaymd-core
     packages/relaymd-api-client /opt/relaymd/packages/relaymd-api-client
+    packages/relaymd-worker /opt/relaymd/packages/relaymd-worker
 
 %environment
     export PYTHONDONTWRITEBYTECODE=1
@@ -30,10 +31,9 @@ From: build/local-def-stage/relaymd-orchestrator-base.sif
     python -m pip install --no-cache-dir --upgrade pip uv
     # Fail fast if generated API client sources were not copied into build context.
     test -f /opt/relaymd/packages/relaymd-api-client/src/relaymd_api_client/__init__.py
-    python -m pip install --no-cache-dir \
+    uv pip install --system --no-cache --no-deps \
         /opt/relaymd/packages/relaymd-core \
         /opt/relaymd/packages/relaymd-api-client \
-        "infisical-python>=2.0,<2.2" \
         /opt/relaymd
 
     # Build and bundle operator frontend assets for / and SPA fallback routes.
