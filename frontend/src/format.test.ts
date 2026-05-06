@@ -1,4 +1,12 @@
-import { buildJobRows, buildWorkerRows, formatDuration, toCsv, toDelimited, truncateUuid } from "./format";
+import {
+  buildJobRows,
+  buildWorkerRows,
+  formatDuration,
+  parseDate,
+  toCsv,
+  toDelimited,
+  truncateUuid,
+} from "./format";
 
 describe("format helpers", () => {
   it("formats duration using larger units", () => {
@@ -9,6 +17,10 @@ describe("format helpers", () => {
 
   it("truncates uuids", () => {
     expect(truncateUuid("0a05f971-0f5b-46cb-bd86-d13133f998aa")).toBe("0a05f971...");
+  });
+
+  it("parses timezone-less API timestamps as UTC", () => {
+    expect(parseDate("2026-05-05T13:23:03")?.toISOString()).toBe("2026-05-05T13:23:03.000Z");
   });
 
   it("builds job and worker rows", () => {

@@ -71,6 +71,19 @@ From: nvidia/cuda:12.1.0-runtime-ubuntu22.04
     ln -sf /opt/atom-openmm/bin/python /usr/local/bin/python
     python -m pip install --no-cache-dir --upgrade pip uv
     python -m pip install --no-cache-dir "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"
+    uv pip install --system --no-cache \
+        hatchling \
+        "attrs>=21.3.0" \
+        boto3 \
+        "httpx[socks]>=0.24.1" \
+        "infisical-python>=2.0,<2.2" \
+        nvidia-ml-py \
+        orjson \
+        "pydantic>=2.0" \
+        "pydantic-settings>=2.0" \
+        "sqlmodel>=0.0.18" \
+        structlog \
+        "tenacity>=8.2"
 
     python - <<'PY'
 import atom_openmm

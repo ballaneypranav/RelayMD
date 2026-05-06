@@ -87,8 +87,18 @@ The input bundle for an AToM job contains all simulation input files plus a `rel
 {
   "command": "python run_atom.py --config simulation.json",
   "checkpoint_glob_pattern": "*.chk",
-  "checkpoint_poll_interval_seconds": 60
+  "checkpoint_poll_interval_seconds": 60,
+  "progress_glob_pattern": ["progress", "r*/job.out"],
+  "startup_progress_timeout_seconds": 900,
+  "progress_timeout_seconds": 1800,
+  "fatal_log_path": "production.log",
+  "fatal_log_patterns": ["Traceback", "CUDA_ERROR", "Segmentation fault"]
 }
 ```
 
 The `--command` flag on `relaymd submit` can write this file automatically so it does not need to be included in the source directory. When `--command` is used, `--checkpoint-glob` is required.
+
+Progress and fatal-log supervision are opt-in bundle settings. They let the
+worker fail a stuck payload even when the top-level wrapper process is still
+alive. The worker remains domain-neutral: AToM-specific file names live in the
+generated bundle config, not in RelayMD code.

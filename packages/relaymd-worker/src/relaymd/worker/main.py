@@ -38,6 +38,12 @@ class BundleExecutionConfig:
     command: list[str]
     checkpoint_glob_pattern: str
     checkpoint_poll_interval_seconds: int | None = None
+    progress_glob_patterns: list[str] | None = None
+    startup_progress_timeout_seconds: int | None = None
+    progress_timeout_seconds: int | None = None
+    max_runtime_seconds: int | None = None
+    fatal_log_path: str | None = None
+    fatal_log_patterns: list[str] | None = None
 
 
 def _get_pynvml_module() -> ModuleType:
@@ -133,21 +139,67 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
 
         if not command:
             continue
-        bundle_interval = parsed.get("checkpoint_poll_interval_seconds")
-        if bundle_interval is not None and (
-            isinstance(bundle_interval, bool)
-            or not isinstance(bundle_interval, int)
-            or bundle_interval <= 0
-        ):
-            raise RuntimeError("Invalid checkpoint_poll_interval_seconds in bundle config")
+        bundle_interval = _optional_positive_int(
+            parsed,
+            "checkpoint_poll_interval_seconds",
+        )
+        startup_progress_timeout_seconds = _optional_positive_int(
+            parsed,
+            "startup_progress_timeout_seconds",
+        )
+        progress_timeout_seconds = _optional_positive_int(
+            parsed,
+            "progress_timeout_seconds",
+        )
+        max_runtime_seconds = _optional_positive_int(parsed, "max_runtime_seconds")
+        progress_glob_patterns = _optional_string_list(parsed, "progress_glob_pattern")
+        fatal_log_path = _optional_string(parsed, "fatal_log_path")
+        fatal_log_patterns = _optional_string_list(parsed, "fatal_log_patterns")
 
         return BundleExecutionConfig(
             command=command,
             checkpoint_glob_pattern=str(checkpoint_pattern),
             checkpoint_poll_interval_seconds=bundle_interval,
+            progress_glob_patterns=progress_glob_patterns,
+            startup_progress_timeout_seconds=startup_progress_timeout_seconds,
+            progress_timeout_seconds=progress_timeout_seconds,
+            max_runtime_seconds=max_runtime_seconds,
+            fatal_log_path=fatal_log_path,
+            fatal_log_patterns=fatal_log_patterns,
         )
 
     raise RuntimeError("No valid worker bundle config found in input bundle")
+
+
+def _optional_positive_int(parsed: dict[str, Any], key: str) -> int | None:
+    value = parsed.get(key)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise RuntimeError(f"Invalid {key} in bundle config")
+    return value
+
+
+def _optional_string(parsed: dict[str, Any], key: str) -> str | None:
+    value = parsed.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"Invalid {key} in bundle config")
+    return value
+
+
+def _optional_string_list(parsed: dict[str, Any], key: str) -> list[str] | None:
+    value = parsed.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not value:
+            raise RuntimeError(f"Invalid {key} in bundle config")
+        return [value]
+    if isinstance(value, list) and value and all(isinstance(item, str) and item for item in value):
+        return value
+    raise RuntimeError(f"Invalid {key} in bundle config")
 
 
 def _parse_bundle_config(path: Path) -> dict[str, Any] | None:
@@ -282,6 +334,16 @@ def _upload_checkpoint(
         raise
 
 
+def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConfig) -> Path | None:
+    if execution_config.fatal_log_path is None:
+        return None
+
+    path = bundle_root / execution_config.fatal_log_path
+    if not path.is_file():
+        return None
+    return path
+
+
 def _run_assigned_job(
     *,
     context: WorkerContext,
@@ -310,6 +372,12 @@ def _run_assigned_job(
             workdir=bundle_root,
             checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
             checkpoint_b2_key=checkpoint_b2_key,
+            progress_glob_patterns=execution_config.progress_glob_patterns,
+            startup_progress_timeout_seconds=(execution_config.startup_progress_timeout_seconds),
+            progress_timeout_seconds=execution_config.progress_timeout_seconds,
+            max_runtime_seconds=execution_config.max_runtime_seconds,
+            fatal_log_path=execution_config.fatal_log_path,
+            fatal_log_patterns=execution_config.fatal_log_patterns,
         )
         execution.start()
 
@@ -395,6 +463,45 @@ def _run_assigned_job(
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
                     else:
                         next_checkpoint_poll_time = now
+
+                supervision_failure_method = getattr(execution, "supervision_failure", None)
+                if supervision_failure_method is not None:
+                    supervision_failure = supervision_failure_method(now=now)
+                    if supervision_failure is not None:
+                        job_log.warning(
+                            "job_supervision_failed",
+                            reason=supervision_failure.reason,
+                            detail=supervision_failure.detail,
+                        )
+                        execution.request_terminate()
+                        if (
+                            execution.wait(
+                                timeout_seconds=context.sigterm_process_wait_seconds,
+                            )
+                            is None
+                        ):
+                            job_log.warning(
+                                "job_supervision_killing_process",
+                                reason=supervision_failure.reason,
+                            )
+                            execution.kill()
+                            execution.wait(timeout_seconds=5)
+
+                        final_checkpoint = (
+                            _fatal_log_artifact(bundle_root, execution_config)
+                            if supervision_failure.reason == "fatal_log_match"
+                            else execution.latest_checkpoint()
+                        )
+                        if final_checkpoint is not None:
+                            _upload_checkpoint(
+                                context,
+                                logger=job_log,
+                                checkpoint=final_checkpoint,
+                                checkpoint_b2_key=checkpoint_b2_key,
+                                job_id=assignment.job_id,
+                            )
+                        context.gateway.fail_job(job_id=assignment.job_id)
+                        return
 
                 process_exit = execution.poll_exit_code()
                 if process_exit is not None:

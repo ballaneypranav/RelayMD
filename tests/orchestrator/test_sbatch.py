@@ -179,7 +179,8 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     assert "SINGULARITY_DOCKER_PASSWORD" not in rendered
     # docker URI must appear in the flock/pull block, not on the exec line.
     assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
-    assert '"${_APPTAINER_IMAGE}" python -m relaymd.worker' in rendered
+    assert 'apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc' in rendered
+    assert "'python -m relaymd.worker'" in rendered
     assert "flock -x 200" in rendered
     assert "apptainer pull" in rendered
     assert "#SBATCH --gres=gpu:1" in rendered
@@ -188,6 +189,104 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     assert "#SBATCH --qos=standby" in rendered
     assert "#SBATCH --mem=120G" in rendered
     assert "--mem-per-gpu" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_renders_bind_mount_worker_source(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_BIND_PATHS", "/repo:/opt/relaymd-src")
+    monkeypatch.setenv(
+        "RELAYMD_WORKER_PYTHONPATH",
+        "/opt/relaymd-src/packages/relaymd-worker/src:/opt/relaymd-src/packages/relaymd-core/src",
+    )
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=1,
+        sif_path="/shared/relaymd-worker-base.sif",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "--bind '/repo:/opt/relaymd-src'" in rendered
+    assert (
+        "--env PYTHONPATH='/opt/relaymd-src/packages/relaymd-worker/src:"
+        "/opt/relaymd-src/packages/relaymd-core/src'"
+    ) in rendered
+    assert 'apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc' in rendered
+    assert "'python -m relaymd.worker'" in rendered
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_shell_quotes_worker_pythonpath(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_PYTHONPATH", "/safe/path'; touch /tmp/pwned; echo '")
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=1,
+        sif_path="/shared/relaymd-worker-base.sif",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "--env PYTHONPATH='/safe/path'\"'\"'; touch /tmp/pwned; echo '\"'\"''" in rendered
 
 
 @pytest.mark.asyncio

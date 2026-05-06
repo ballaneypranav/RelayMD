@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -41,6 +42,24 @@ SPA_EXCLUDED_PREFIXES = (
     "docs",
     "redoc",
 )
+
+
+def _resolve_tailscale_binary(name: str) -> str:
+    """Resolve a tailscale binary even when /usr/sbin is absent from PATH."""
+    found = shutil.which(name)
+    if found:
+        return found
+
+    fallback_paths = (
+        f"/usr/sbin/{name}",
+        f"/usr/bin/{name}",
+        f"/sbin/{name}",
+        f"/bin/{name}",
+    )
+    for candidate in fallback_paths:
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    raise FileNotFoundError(name)
 
 
 def _load_frontend_runtime_config() -> dict[str, Any]:
@@ -112,10 +131,18 @@ async def _ensure_tailscale_running(
     socket_path = str(Path(settings.tailscale_socket).expanduser())
     state_dir = str(Path(socket_path).parent)
     Path(state_dir).mkdir(parents=True, exist_ok=True)
+    tailscaled_bin = _resolve_tailscale_binary("tailscaled")
+    tailscale_bin = _resolve_tailscale_binary("tailscale")
 
-    LOG.info("tailscale_starting", socket=socket_path, state_dir=state_dir)
+    LOG.info(
+        "tailscale_starting",
+        socket=socket_path,
+        state_dir=state_dir,
+        tailscaled_bin=tailscaled_bin,
+        tailscale_bin=tailscale_bin,
+    )
     tailscaled_proc = await asyncio.create_subprocess_exec(
-        "tailscaled",
+        tailscaled_bin,
         "--tun=userspace-networking",
         f"--socket={socket_path}",
         f"--statedir={state_dir}",
@@ -125,7 +152,7 @@ async def _ensure_tailscale_running(
     await asyncio.sleep(1)
 
     up_proc = await asyncio.create_subprocess_exec(
-        "tailscale",
+        tailscale_bin,
         f"--socket={socket_path}",
         "up",
         f"--authkey={settings.tailscale_auth_key}",
@@ -161,8 +188,9 @@ async def _check_tailscale_warning(socket_path: str) -> str | None:
     """Return a warning string if tailscaled is not reachable or not connected."""
     expanded = str(Path(socket_path).expanduser())
     try:
+        tailscale_bin = _resolve_tailscale_binary("tailscale")
         proc = await asyncio.create_subprocess_exec(
-            "tailscale",
+            tailscale_bin,
             f"--socket={expanded}",
             "status",
             "--json",
@@ -215,8 +243,9 @@ async def _get_tailscale_status(socket_path: str) -> dict[str, Any]:
     """Return a dict describing the current Tailscale connection state."""
     expanded = str(Path(socket_path).expanduser())
     try:
+        tailscale_bin = _resolve_tailscale_binary("tailscale")
         proc = await asyncio.create_subprocess_exec(
-            "tailscale",
+            tailscale_bin,
             f"--socket={expanded}",
             "status",
             "--json",

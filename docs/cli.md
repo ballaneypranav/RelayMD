@@ -179,9 +179,20 @@ Example JSON:
 {
   "command": "python run.py",
   "checkpoint_glob_pattern": "*.cpt",
-  "checkpoint_poll_interval_seconds": 60
+  "checkpoint_poll_interval_seconds": 60,
+  "progress_glob_pattern": ["progress", "run.log"],
+  "startup_progress_timeout_seconds": 900,
+  "progress_timeout_seconds": 1800,
+  "max_runtime_seconds": 86400,
+  "fatal_log_path": "run.log",
+  "fatal_log_patterns": ["Traceback", "CUDA_ERROR", "Segmentation fault"]
 }
 ```
+
+The supervision fields are optional. When present, the worker treats missing
+startup progress, stalled progress, max runtime expiry, or a fatal log match as
+payload failure, terminates the whole process group, uploads any final checkpoint
+it can find, and reports the job failed.
 
 ## Release Versioning
 

@@ -61,6 +61,21 @@ Alternative Apptainer `.def` path for HPC hosts with fakeroot:
 make local-build-from-def
 ```
 
+Fastest bind-mounted source path for branch iteration:
+
+```bash
+make local-activate-bind
+RELAYMD_ENV_FILE=/depot/plow/data/pballane/relaymd-service/config/relaymd-local-bind.env relaymd restart
+```
+
+`local-activate-bind` runs `scripts/local_activate_bind_mount.sh`. It builds or
+reuses only the local worker/orchestrator base SIFs, promotes those bases under
+`current/`, writes a `current/relaymd` dev CLI wrapper, and writes an env overlay
+that bind-mounts the current checkout into both the tmux-managed
+orchestrator/proxy and Slurm worker jobs. Use this when Python source is changing
+but runtime dependencies are not. Run `make frontend-build` first when frontend
+assets changed, because the bind-mounted orchestrator serves `frontend/dist`.
+
 `local-build-from-def` runs `scripts/local_build_from_def.sh`, which builds
 worker and orchestrator artifacts directly from local source without Docker or
 GitHub Actions. This path is for fast branch-local iteration only; production
@@ -73,8 +88,10 @@ The local `.def` flow uses reusable bases:
 
 The worker base contains the slow/stable runtime dependencies from
 `Dockerfile.worker-base`: CUDA runtime, Python 3.11, Tailscale, micromamba,
-OpenMM, and pinned AToM-OpenMM. The worker app def installs the current
-workspace RelayMD worker packages on top of that base.
+OpenMM, pinned AToM-OpenMM, and the stable third-party Python dependencies used
+by the RelayMD worker packages. The worker app def installs the current
+workspace RelayMD source packages on top of that base without resolving
+dependencies again.
 
 The orchestrator base contains the slow/stable runtime dependencies from
 `Dockerfile.orchestrator-base`: Python 3.11, Tailscale, `uv`, and Node 22. Node

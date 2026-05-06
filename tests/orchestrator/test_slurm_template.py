@@ -85,7 +85,7 @@ def test_job_template_renders_registry_backed_image() -> None:
     # The flock pre-pull block must reference the docker URI for the slug/pull.
     assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
     # The exec line must use the resolved shell variable (not the raw URI).
-    assert '"${_APPTAINER_IMAGE}" python -m relaymd.worker' in rendered
+    assert """\"${_APPTAINER_IMAGE}\" /bin/sh -lc 'python -m relaymd.worker'""" in rendered
     # flock serialisation block must be present.
     assert "flock -x 200" in rendered
     assert "apptainer pull" in rendered
