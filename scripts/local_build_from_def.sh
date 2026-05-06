@@ -19,7 +19,7 @@ RELEASE_NAME="${RELEASE_NAME:-local-def-dev}"
 MODE="${MODE:-sandbox}"
 FALLBACK=0
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
-CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+CURRENT_LINK="${CURRENT_LINK:-}"
 WORKER_BASE_SIF="${WORKER_BASE_SIF:-}"
 ORCHESTRATOR_BASE_SIF="${ORCHESTRATOR_BASE_SIF:-}"
 REBUILD_WORKER_BASE="${REBUILD_WORKER_BASE:-0}"
@@ -83,6 +83,9 @@ done
 if [[ "${MODE}" != "sandbox" && "${MODE}" != "sif" ]]; then
     echo "Invalid --mode '${MODE}'. Expected 'sandbox' or 'sif'." >&2
     exit 1
+fi
+if [[ -z "${CURRENT_LINK}" ]]; then
+    CURRENT_LINK="${RELAYMD_SERVICE_ROOT}/current"
 fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKER_BASE_DEF="${ROOT_DIR}/deploy/hpc/apptainer/relaymd-worker-base.localdev.def"
@@ -188,9 +191,17 @@ if [[ "${REBUILD_ORCHESTRATOR_BASE}" == "1" || ! -f "${ORCHESTRATOR_BASE_SIF}" ]
 else
     orch_base_rc=0
 fi
-apptainer build --fakeroot "${worker_output}" "${worker_def_staged}"
+if [[ "${MODE}" == "sandbox" ]]; then
+    apptainer build --fakeroot --sandbox "${worker_output}" "${worker_def_staged}"
+else
+    apptainer build --fakeroot "${worker_output}" "${worker_def_staged}"
+fi
 worker_rc=$?
-apptainer build --fakeroot "${orch_output}" "${orch_def_staged}"
+if [[ "${MODE}" == "sandbox" ]]; then
+    apptainer build --fakeroot --sandbox "${orch_output}" "${orch_def_staged}"
+else
+    apptainer build --fakeroot "${orch_output}" "${orch_def_staged}"
+fi
 orch_rc=$?
 set -e
 

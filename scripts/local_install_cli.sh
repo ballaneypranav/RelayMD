@@ -17,6 +17,11 @@ BUILD_FIRST=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --target)
+            if [[ -z "${2-}" || "${2}" == -* ]]; then
+                echo "--target requires a non-empty path argument." >&2
+                usage >&2
+                exit 1
+            fi
             TARGET="$2"
             shift 2
             ;;

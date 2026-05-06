@@ -14,7 +14,7 @@ USAGE
 RELEASE_NAME="${RELEASE_NAME:-local-dev}"
 MODE="${MODE:-sif}"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
-CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
+CURRENT_LINK="${CURRENT_LINK:-}"
 WORKER_URI="${WORKER_URI:-docker-daemon://relaymd-worker:local-dev}"
 ORCHESTRATOR_URI="${ORCHESTRATOR_URI:-docker-daemon://relaymd-orchestrator:local-dev}"
 
@@ -78,6 +78,10 @@ else
     apptainer build --sandbox "${RELEASE_DIR}/relaymd-orchestrator.sandbox" "${ORCHESTRATOR_URI}"
 fi
 
+if [[ -z "${CURRENT_LINK}" ]]; then
+    # Recompute default CURRENT_LINK after any --service-root changes
+    CURRENT_LINK="${RELAYMD_SERVICE_ROOT}/current"
+fi
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 
 cat <<OUT
