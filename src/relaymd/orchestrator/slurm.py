@@ -207,7 +207,9 @@ def _render_sbatch_script(
         worker_bind_paths_shell_quoted=(
             _shell_single_quote(worker_bind_paths) if worker_bind_paths else None
         ),
-        worker_pythonpath=worker_pythonpath or None,
+        worker_pythonpath_shell_quoted=(
+            _shell_single_quote(worker_pythonpath) if worker_pythonpath else None
+        ),
         worker_command_shell_quoted=_shell_single_quote(worker_command),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,

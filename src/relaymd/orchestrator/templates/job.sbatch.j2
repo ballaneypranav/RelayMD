@@ -103,8 +103,8 @@ apptainer_args=(
 {% if worker_bind_paths_shell_quoted %}
   --bind {{ worker_bind_paths_shell_quoted }}
 {% endif %}
-{% if worker_pythonpath %}
-  --env PYTHONPATH="{{ worker_pythonpath }}"
+{% if worker_pythonpath_shell_quoted %}
+  --env PYTHONPATH={{ worker_pythonpath_shell_quoted }}
 {% endif %}
   --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
   --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}"

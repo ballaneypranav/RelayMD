@@ -22,31 +22,53 @@ CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
 RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
 BASE_ENV_FILE="${BASE_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-service.env}"
 OUTPUT_ENV_FILE="${OUTPUT_ENV_FILE:-${RELAYMD_DATA_ROOT}/config/relaymd-local-bind.env}"
-BIN_DIR="${RELAYMD_SERVICE_ROOT}/bin"
+BIN_DIR="${BIN_DIR:-${RELAYMD_SERVICE_ROOT}/bin}"
 WORKER_BASE_SIF="${WORKER_BASE_SIF:-}"
 ORCHESTRATOR_BASE_SIF="${ORCHESTRATOR_BASE_SIF:-}"
 REBUILD_WORKER_BASE="${REBUILD_WORKER_BASE:-0}"
 REBUILD_ORCHESTRATOR_BASE="${REBUILD_ORCHESTRATOR_BASE:-0}"
+CURRENT_LINK_EXPLICIT=0
+BIN_DIR_EXPLICIT=0
+if [[ -n "${CURRENT_LINK+x}" ]]; then
+    CURRENT_LINK_EXPLICIT=1
+fi
+if [[ -n "${BIN_DIR+x}" ]]; then
+    BIN_DIR_EXPLICIT=1
+fi
+
+require_value() {
+    if [[ $# -lt 2 || -z "${2:-}" || "${2}" == --* ]]; then
+        echo "Missing value for ${1}" >&2
+        usage >&2
+        exit 1
+    fi
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --release)
+            require_value "$1" "${2:-}"
             RELEASE_NAME="$2"
             shift 2
             ;;
         --current-link)
+            require_value "$1" "${2:-}"
             CURRENT_LINK="$2"
+            CURRENT_LINK_EXPLICIT=1
             shift 2
             ;;
         --service-root)
+            require_value "$1" "${2:-}"
             RELAYMD_SERVICE_ROOT="$2"
             shift 2
             ;;
         --worker-base-sif)
+            require_value "$1" "${2:-}"
             WORKER_BASE_SIF="$2"
             shift 2
             ;;
         --orchestrator-base-sif)
+            require_value "$1" "${2:-}"
             ORCHESTRATOR_BASE_SIF="$2"
             shift 2
             ;;
@@ -64,10 +86,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --env-file)
+            require_value "$1" "${2:-}"
             OUTPUT_ENV_FILE="$2"
             shift 2
             ;;
         --base-env-file)
+            require_value "$1" "${2:-}"
             BASE_ENV_FILE="$2"
             shift 2
             ;;
@@ -82,6 +106,13 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ "${CURRENT_LINK_EXPLICIT}" != "1" ]]; then
+    CURRENT_LINK="${RELAYMD_SERVICE_ROOT}/current"
+fi
+if [[ "${BIN_DIR_EXPLICIT}" != "1" ]]; then
+    BIN_DIR="${RELAYMD_SERVICE_ROOT}/bin"
+fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_DEF_STAGE_DIR="${ROOT_DIR}/build/local-def-stage"
