@@ -6,7 +6,8 @@ export function parseDate(value: string | null | undefined): Date | null {
   if (!value) {
     return null;
   }
-  const parsed = new Date(value);
+  const normalizedValue = /[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`;
+  const parsed = new Date(normalizedValue);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 

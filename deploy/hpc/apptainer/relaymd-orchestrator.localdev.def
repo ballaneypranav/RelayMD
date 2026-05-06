@@ -1,0 +1,45 @@
+Bootstrap: localimage
+From: build/local-def-stage/relaymd-orchestrator-base.sif
+
+%help
+    Self-contained local RelayMD orchestrator build.
+    Installs RelayMD packages and frontend assets from local source on an orchestrator base.
+
+%labels
+    relaymd.localdev "true"
+    relaymd.component "orchestrator"
+    relaymd.parity_source "Dockerfile.orchestrator"
+
+%files
+    pyproject.toml /opt/relaymd/pyproject.toml
+    src /opt/relaymd/src
+    frontend /opt/relaymd/frontend
+    packages/relaymd-core /opt/relaymd/packages/relaymd-core
+    packages/relaymd-api-client /opt/relaymd/packages/relaymd-api-client
+    packages/relaymd-worker /opt/relaymd/packages/relaymd-worker
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+    export RELAYMD_FRONTEND_DIST_DIR=/opt/relaymd/frontend/dist
+
+%post
+    set -eux
+    command -v tailscale
+    command -v node
+    command -v npm
+    python -m pip install --no-cache-dir --upgrade pip uv
+    # Fail fast if generated API client sources were not copied into build context.
+    test -f /opt/relaymd/packages/relaymd-api-client/src/relaymd_api_client/__init__.py
+    uv pip install --system --no-cache --no-deps \
+        /opt/relaymd/packages/relaymd-core \
+        /opt/relaymd/packages/relaymd-api-client \
+        /opt/relaymd
+
+    # Build and bundle operator frontend assets for / and SPA fallback routes.
+    cd /opt/relaymd/frontend
+    npm ci
+    npm run build
+
+%runscript
+    exec relaymd-orchestrator "$@"

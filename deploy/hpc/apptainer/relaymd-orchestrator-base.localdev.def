@@ -1,0 +1,72 @@
+Bootstrap: docker
+From: python:3.11-slim-bookworm
+
+%help
+    Local RelayMD orchestrator base matching Dockerfile.orchestrator-base plus Node 22.
+    Build this infrequently, then rebuild relaymd-orchestrator.localdev.def on top.
+
+%labels
+    relaymd.localdev "true"
+    relaymd.component "orchestrator-base"
+    relaymd.parity_source "Dockerfile.orchestrator-base"
+
+%environment
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg \
+        openssh-client
+    mkdir -p --mode=0755 /usr/share/keyrings
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+        -o /usr/share/keyrings/tailscale-archive-keyring.gpg
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
+        -o /etc/apt/sources.list.d/tailscale.list
+
+    # Frontend dependencies require Node >=20; install Node 22 once in the reusable base.
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        bash \
+        coreutils \
+        tar \
+        nodejs \
+        tailscale
+    python -m pip install --no-cache-dir --upgrade pip uv
+    uv pip install --system --no-cache \
+        hatchling \
+        aiosqlite \
+        alembic \
+        apscheduler \
+        "attrs>=21.3.0" \
+        boto3 \
+        "fastapi>=0.111" \
+        httpx \
+        "infisical-python>=2.0,<2.2" \
+        "itsdangerous>=2.0" \
+        jinja2 \
+        orjson \
+        "pydantic>=2.0" \
+        "pydantic-settings[yaml]>=2.0" \
+        "python-multipart>=0.0.7" \
+        pyyaml \
+        "rich>=13.0" \
+        "sqlmodel>=0.0.18" \
+        structlog \
+        "tenacity>=8.2" \
+        typer \
+        "uvicorn[standard]"
+    node --version
+    npm --version
+    tailscale version
+    rm -rf /var/lib/apt/lists/*
+
+%runscript
+    exec python "$@"

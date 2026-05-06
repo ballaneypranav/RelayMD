@@ -99,15 +99,27 @@ if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
   _APPTAINER_IMAGE="${_SIF_PATH}"
 fi
 
-apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
-  --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}" \
-  --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}" \
-  --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}" \
-  --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}" \
-  --env ORCHESTRATOR_TIMEOUT_SECONDS="{{ worker_orchestrator_timeout_seconds | default(30.0) }}" \
-  --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}" \
-  --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}" \
-  --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}" \
-  --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}" \
-  --env SLURM_JOB_ID="${SLURM_JOB_ID}" \
-  "${_APPTAINER_IMAGE}" python -m relaymd.worker
+apptainer_args=(
+  --nv
+  --cleanenv
+  --writable-tmpfs
+  --bind /tmp:/tmp
+{% if worker_bind_paths_shell_quoted %}
+  --bind {{ worker_bind_paths_shell_quoted }}
+{% endif %}
+{% if worker_pythonpath %}
+  --env PYTHONPATH="{{ worker_pythonpath }}"
+{% endif %}
+  --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
+  --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}"
+  --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}"
+  --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}"
+  --env ORCHESTRATOR_TIMEOUT_SECONDS="{{ worker_orchestrator_timeout_seconds | default(30.0) }}"
+  --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}"
+  --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}"
+  --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}"
+  --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}"
+  --env SLURM_JOB_ID="${SLURM_JOB_ID}"
+)
+
+apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc {{ worker_command_shell_quoted | default("'python -m relaymd.worker'") }}

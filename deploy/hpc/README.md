@@ -23,6 +23,124 @@ Default state/config layout:
 
 ## Commands
 
+### Fast Local Dev Workflow (No GitHub Actions Wait)
+
+Use this when iterating on branch code and you want local artifacts immediately.
+
+1) Build local OCI images from current workspace:
+
+```bash
+make local-build-images
+```
+
+2) Build and activate local Apptainer runtime artifacts (supported default path):
+
+```bash
+make local-build-sif-or-sandbox
+```
+
+This uses local OCI image URIs (`docker-daemon://...`) and updates
+`/depot/plow/apps/relaymd/current` to the chosen release directory.
+
+3) Build and install local CLI into active service path:
+
+```bash
+make local-install-cli
+```
+
+4) Restart service and run fast smoke:
+
+```bash
+relaymd restart
+make local-smoke
+```
+
+Alternative Apptainer `.def` path for HPC hosts with fakeroot:
+
+```bash
+make local-build-from-def
+```
+
+Fastest bind-mounted source path for branch iteration:
+
+```bash
+make local-activate-bind
+RELAYMD_ENV_FILE=/depot/plow/data/pballane/relaymd-service/config/relaymd-local-bind.env relaymd restart
+```
+
+`local-activate-bind` runs `scripts/local_activate_bind_mount.sh`. It builds or
+reuses only the local worker/orchestrator base SIFs, promotes those bases under
+`current/`, writes a `current/relaymd` dev CLI wrapper, and writes an env overlay
+that bind-mounts the current checkout into both the tmux-managed
+orchestrator/proxy and Slurm worker jobs. Use this when Python source is changing
+but runtime dependencies are not. Run `make frontend-build` first when frontend
+assets changed, because the bind-mounted orchestrator serves `frontend/dist`.
+
+`local-build-from-def` runs `scripts/local_build_from_def.sh`, which builds
+worker and orchestrator artifacts directly from local source without Docker or
+GitHub Actions. This path is for fast branch-local iteration only; production
+rollouts still use GHCR images and `relaymd upgrade`.
+
+The local `.def` flow uses reusable bases:
+
+- `deploy/hpc/apptainer/relaymd-worker-base.localdev.def`
+- `deploy/hpc/apptainer/relaymd-orchestrator-base.localdev.def`
+
+The worker base contains the slow/stable runtime dependencies from
+`Dockerfile.worker-base`: CUDA runtime, Python 3.11, Tailscale, micromamba,
+OpenMM, pinned AToM-OpenMM, and the stable third-party Python dependencies used
+by the RelayMD worker packages. The worker app def installs the current
+workspace RelayMD source packages on top of that base without resolving
+dependencies again.
+
+The orchestrator base contains the slow/stable runtime dependencies from
+`Dockerfile.orchestrator-base`: Python 3.11, Tailscale, `uv`, and Node 22. Node
+is included in the local base because Apptainer builds are single-stage, while
+the Docker orchestrator image uses a separate Node builder stage. The
+orchestrator app def installs the current workspace RelayMD package and builds
+frontend assets on top of that base.
+
+Default base cache paths:
+
+```text
+build/local-def-stage/relaymd-worker-base.sif
+build/local-def-stage/relaymd-orchestrator-base.sif
+```
+
+Fast default rebuild:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox
+```
+
+Rebuild bases explicitly:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-worker-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-orchestrator-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-bases
+```
+
+Use custom prebuilt bases:
+
+```bash
+./scripts/local_build_from_def.sh \
+  --worker-base-sif /path/to/relaymd-worker-base.sif \
+  --orchestrator-base-sif /path/to/relaymd-orchestrator-base.sif
+```
+
+`--mode sandbox` is the default and usually fastest for local development. It
+builds directory sandboxes and creates compatibility symlinks named
+`relaymd-worker.sif` and `relaymd-orchestrator.sif` in the activated release
+directory. Use `--mode sif` when you need immutable single-file SIFs.
+
+If you want `.def` failures to fall back to the local OCI conversion workflow,
+run:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --fallback
+```
+
 Pull and activate using explicit image URIs (backward-compatible mode):
 
 ```bash

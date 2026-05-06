@@ -27,16 +27,32 @@ RUN apt-get update \
         git \
         wget \
         curl \
+        bzip2 \
         tailscale \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
     && python -m pip install --no-cache-dir --upgrade pip uv \
     && rm -rf /var/lib/apt/lists/*
 
-# AToM-OpenMM requires OpenMM plus configobj and numpy.
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system \
-    "openmm>=8.4" \
-    configobj \
-    numpy \
-    setproctitle \
-    "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}"
+# Install required Python packages using uv (no conda/micromamba).
+# OpenMM is installed via pip wheel from PyPI (available via conda-forge channel on pip)
+# The base image already includes Python 3.11.
+
+# Install OpenMM and other dependencies directly with uv.
+RUN uv pip install --system --no-cache \
+        openmm==8.4.0 \
+        configobj \
+        numpy \
+        setproctitle \
+        "git+${ATOM_REPO_URL}@${ATOM_REPO_REF}" \
+        hatchling \
+        "attrs>=21.3.0" \
+        boto3 \
+        "httpx[socks]>=0.24.1" \
+        "infisical-python>=2.0,<2.2" \
+        nvidia-ml-py \
+        orjson \
+        "pydantic>=2.0" \
+        "pydantic-settings>=2.0" \
+        "sqlmodel>=0.0.18" \
+        structlog \
+        "tenacity>=8.2"

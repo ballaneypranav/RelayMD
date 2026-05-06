@@ -1,4 +1,4 @@
-.PHONY: frontend-build docker-build docker-push docker-build-worker docker-push-worker docker-build-orchestrator docker-push-orchestrator release-cli setup-hooks
+.PHONY: frontend-build docker-build docker-push docker-build-worker docker-push-worker docker-build-orchestrator docker-push-orchestrator release-cli setup-hooks local-build-images local-build-sif-or-sandbox local-build-from-def local-activate-bind local-install-cli local-smoke
 
 setup-hooks:
 	git config core.hooksPath .githooks
@@ -9,6 +9,7 @@ BASE_IMAGE ?= ghcr.io/$(ORG)/relaymd-base:latest
 WORKER_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest
 ORCHESTRATOR_IMAGE ?= ghcr.io/$(ORG)/relaymd-orchestrator:latest
 IMAGE ?= $(WORKER_IMAGE)
+BUILD ?= 0
 
 frontend-build:
 	cd frontend && npm --cache ./.npm install
@@ -58,3 +59,25 @@ release-cli:
 	else \
 		./scripts/release_cli.sh "$$ver"; \
 	fi
+
+local-build-images:
+	./scripts/local_build_images.sh
+
+local-build-sif-or-sandbox:
+	./scripts/local_build_sif_or_sandbox.sh
+
+local-build-from-def:
+	./scripts/local_build_from_def.sh
+
+local-activate-bind:
+	./scripts/local_activate_bind_mount.sh
+
+local-install-cli:
+ifeq ($(BUILD),0)
+	./scripts/local_install_cli.sh
+else
+	./scripts/local_install_cli.sh --build
+endif
+
+local-smoke:
+	./scripts/local_smoke.sh

@@ -14,6 +14,94 @@ OCI image -> GHCR -> apptainer pull on HPC
 
 Local `apptainer build --fakeroot` is not part of the supported rollout path.
 
+For branch-local iteration without waiting for GitHub Actions, there are two
+local helper workflows.
+
+### Local OCI Conversion Workflow
+
+Use this when Docker or Podman is available on the development host:
+
+```bash
+make local-build-images
+make local-build-sif-or-sandbox
+make local-install-cli
+relaymd restart
+make local-smoke
+```
+
+This builds local OCI images from the workspace, converts them to Apptainer
+artifacts, activates the release directory, installs the local CLI binary, and
+restarts the service.
+
+### Local Apptainer Definition Workflow
+
+Use this on HPC systems where Docker is unavailable but Apptainer fakeroot works:
+
+```bash
+make local-build-from-def
+make local-install-cli
+relaymd restart
+make local-smoke
+```
+
+`scripts/local_build_from_def.sh` builds local-only Apptainer artifacts directly
+from definition files under `deploy/hpc/apptainer/`. It does not change the
+GitHub Actions or release workflow.
+
+The `.def` workflow is split into reusable base layers and fast app layers:
+
+- `relaymd-worker-base.localdev.def`: mirrors `Dockerfile.worker-base`; includes
+  CUDA runtime, Python 3.11, Tailscale, micromamba, OpenMM, and pinned
+  AToM-OpenMM.
+- `relaymd-worker.localdev.def`: installs current workspace worker packages on
+  top of the worker base.
+- `relaymd-orchestrator-base.localdev.def`: mirrors
+  `Dockerfile.orchestrator-base`; includes Python 3.11, Tailscale, `uv`, and
+  Node 22 for local frontend builds.
+- `relaymd-orchestrator.localdev.def`: installs current workspace orchestrator
+  packages and bundles frontend assets on top of the orchestrator base.
+
+Default reusable base SIFs are cached under `build/local-def-stage/`:
+
+- `build/local-def-stage/relaymd-worker-base.sif`
+- `build/local-def-stage/relaymd-orchestrator-base.sif`
+
+Normal iteration reuses those bases:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox
+```
+
+Rebuild a base only when the corresponding Docker base dependency set changes:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-worker-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-orchestrator-base
+./scripts/local_build_from_def.sh --mode sandbox --rebuild-bases
+```
+
+Use custom base paths when sharing prebuilt local bases:
+
+```bash
+./scripts/local_build_from_def.sh \
+  --worker-base-sif /path/to/relaymd-worker-base.sif \
+  --orchestrator-base-sif /path/to/relaymd-orchestrator-base.sif
+```
+
+`--mode sandbox` is the default and is preferred for local development because
+it writes directory sandboxes instead of compressed SIF files. This is faster to
+build and easier to inspect. The script creates compatibility symlinks named
+`relaymd-worker.sif` and `relaymd-orchestrator.sif` pointing at the sandbox
+directories so existing service paths keep working. Use `--mode sif` when you
+need immutable single-file artifacts.
+
+Add `--fallback` if you want a failed `.def` build to fall back to the local
+OCI->Apptainer conversion workflow:
+
+```bash
+./scripts/local_build_from_def.sh --mode sandbox --fallback
+```
+
 ## Config and State
 
 Keep runtime config outside the image and keep all mutable state on shared

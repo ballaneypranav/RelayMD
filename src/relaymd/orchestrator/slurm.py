@@ -177,6 +177,11 @@ def _render_sbatch_script(
     worker_id = worker_id or uuid4()
     docker_username = os.environ.get("APPTAINER_DOCKER_USERNAME", "").strip()
     docker_password = os.environ.get("APPTAINER_DOCKER_PASSWORD", "")
+    worker_bind_paths = os.environ.get("RELAYMD_WORKER_BIND_PATHS", "").strip()
+    worker_pythonpath = os.environ.get("RELAYMD_WORKER_PYTHONPATH", "").strip()
+    worker_command = (
+        os.environ.get("RELAYMD_WORKER_COMMAND", "").strip() or "python -m relaymd.worker"
+    )
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
@@ -199,6 +204,13 @@ def _render_sbatch_script(
         apptainer_docker_password_shell_quoted=(
             _shell_single_quote(docker_password) if docker_password else None
         ),
+        worker_bind_paths_shell_quoted=(
+            _shell_single_quote(worker_bind_paths) if worker_bind_paths else None
+        ),
+        worker_pythonpath_shell_quoted=(
+            _shell_single_quote(worker_pythonpath) if worker_pythonpath else None
+        ),
+        worker_command_shell_quoted=_shell_single_quote(worker_command),
         slurm_sigterm_margin_seconds=settings.slurm_sigterm_margin_seconds,
         worker_heartbeat_interval_seconds=settings.worker_heartbeat_interval_seconds,
         worker_checkpoint_poll_interval_seconds=settings.worker_checkpoint_poll_interval_seconds,
