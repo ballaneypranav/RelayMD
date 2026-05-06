@@ -122,6 +122,10 @@ salad_api_timeout_seconds: 10.0
 # Orchestrator base URL for relaymd CLI commands.
 orchestrator_url: http://localhost:36158
 
+# Storage provider used by relaymd submit/checkpoint paths.
+# Supported values: cloudflare_backblaze, purdue
+storage_provider: cloudflare_backblaze
+
 # B2 S3-compatible endpoint used by relaymd submit for direct bundle uploads.
 b2_endpoint_url: https://s3.us-west-000.backblazeb2.com
 
@@ -139,6 +143,13 @@ cf_worker_url: https://cloudflare-backblaze-worker.pranav-purdue-account.workers
 
 # Optional bearer token for Cloudflare Worker downloads.
 cf_bearer_token: ""
+
+# Purdue S3 settings (used when storage_provider: purdue).
+purdue_s3_endpoint: https://s3.rcac.purdue.edu
+purdue_s3_bucket_name: your-purdue-bucket
+purdue_s3_access_key: your-purdue-access-key
+purdue_s3_secret_key: your-purdue-secret-key
+purdue_s3_user: your-purdue-user
 
 # Timeout for CLI requests to the orchestrator API.
 # Can be set via ORCHESTRATOR_TIMEOUT_SECONDS env var.
