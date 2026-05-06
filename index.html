@@ -1164,6 +1164,10 @@ implementation decisions are split across focused documents in <code>docs/</code
 <li><code>ghcr.io/&lt;org&gt;/relaymd-orchestrator:&lt;tag&gt;</code></li>
 </ul>
 <p>Use immutable <code>sha-&lt;shortsha&gt;</code> tags for deploys.</p>
+<p>For branch-local HPC iteration, <code>make local-build-from-def</code> builds Apptainer
+artifacts directly from local source using reusable worker and orchestrator base
+SIFs under <code>build/local-def-stage/</code>. See <a href="deployment/">Deployment Guide</a> for
+the full local development workflow.</p>
 <p>Build and push commands:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>make<span class="w"> </span>docker-build-worker<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>make<span class="w"> </span>docker-push-worker<span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;

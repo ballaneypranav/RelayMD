@@ -926,6 +926,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#local-oci-conversion-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local OCI Conversion Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-apptainer-definition-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Apptainer Definition Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#config-and-state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1153,6 +1175,28 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#local-oci-conversion-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local OCI Conversion Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-apptainer-definition-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Apptainer Definition Workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#config-and-state" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1249,6 +1293,70 @@ as Apptainer SIFs on the login node:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>OCI image -&gt; GHCR -&gt; apptainer pull on HPC
 </span></code></pre></div>
 <p>Local <code>apptainer build --fakeroot</code> is not part of the supported rollout path.</p>
+<p>For branch-local iteration without waiting for GitHub Actions, there are two
+local helper workflows.</p>
+<h3 id="local-oci-conversion-workflow">Local OCI Conversion Workflow</h3>
+<p>Use this when Docker or Podman is available on the development host:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>local-build-images
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>local-build-sif-or-sandbox
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>make<span class="w"> </span>local-install-cli
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>relaymd<span class="w"> </span>restart
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>make<span class="w"> </span>local-smoke
+</span></code></pre></div>
+<p>This builds local OCI images from the workspace, converts them to Apptainer
+artifacts, activates the release directory, installs the local CLI binary, and
+restarts the service.</p>
+<h3 id="local-apptainer-definition-workflow">Local Apptainer Definition Workflow</h3>
+<p>Use this on HPC systems where Docker is unavailable but Apptainer fakeroot works:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>local-build-from-def
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>local-install-cli
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>relaymd<span class="w"> </span>restart
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>make<span class="w"> </span>local-smoke
+</span></code></pre></div>
+<p><code>scripts/local_build_from_def.sh</code> builds local-only Apptainer artifacts directly
+from definition files under <code>deploy/hpc/apptainer/</code>. It does not change the
+GitHub Actions or release workflow.</p>
+<p>The <code>.def</code> workflow is split into reusable base layers and fast app layers:</p>
+<ul>
+<li><code>relaymd-worker-base.localdev.def</code>: mirrors <code>Dockerfile.worker-base</code>; includes
+  CUDA runtime, Python 3.11, Tailscale, micromamba, OpenMM, and pinned
+  AToM-OpenMM.</li>
+<li><code>relaymd-worker.localdev.def</code>: installs current workspace worker packages on
+  top of the worker base.</li>
+<li><code>relaymd-orchestrator-base.localdev.def</code>: mirrors
+  <code>Dockerfile.orchestrator-base</code>; includes Python 3.11, Tailscale, <code>uv</code>, and
+  Node 22 for local frontend builds.</li>
+<li><code>relaymd-orchestrator.localdev.def</code>: installs current workspace orchestrator
+  packages and bundles frontend assets on top of the orchestrator base.</li>
+</ul>
+<p>Default reusable base SIFs are cached under <code>build/local-def-stage/</code>:</p>
+<ul>
+<li><code>build/local-def-stage/relaymd-worker-base.sif</code></li>
+<li><code>build/local-def-stage/relaymd-orchestrator-base.sif</code></li>
+</ul>
+<p>Normal iteration reuses those bases:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>./scripts/local_build_from_def.sh<span class="w"> </span>--mode<span class="w"> </span>sandbox
+</span></code></pre></div>
+<p>Rebuild a base only when the corresponding Docker base dependency set changes:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./scripts/local_build_from_def.sh<span class="w"> </span>--mode<span class="w"> </span>sandbox<span class="w"> </span>--rebuild-worker-base
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>./scripts/local_build_from_def.sh<span class="w"> </span>--mode<span class="w"> </span>sandbox<span class="w"> </span>--rebuild-orchestrator-base
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>./scripts/local_build_from_def.sh<span class="w"> </span>--mode<span class="w"> </span>sandbox<span class="w"> </span>--rebuild-bases
+</span></code></pre></div>
+<p>Use custom base paths when sharing prebuilt local bases:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>./scripts/local_build_from_def.sh<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--worker-base-sif<span class="w"> </span>/path/to/relaymd-worker-base.sif<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--orchestrator-base-sif<span class="w"> </span>/path/to/relaymd-orchestrator-base.sif
+</span></code></pre></div>
+<p><code>--mode sandbox</code> is the default and is preferred for local development because
+it writes directory sandboxes instead of compressed SIF files. This is faster to
+build and easier to inspect. The script creates compatibility symlinks named
+<code>relaymd-worker.sif</code> and <code>relaymd-orchestrator.sif</code> pointing at the sandbox
+directories so existing service paths keep working. Use <code>--mode sif</code> when you
+need immutable single-file artifacts.</p>
+<p>Add <code>--fallback</code> if you want a failed <code>.def</code> build to fall back to the local
+OCI-&gt;Apptainer conversion workflow:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>./scripts/local_build_from_def.sh<span class="w"> </span>--mode<span class="w"> </span>sandbox<span class="w"> </span>--fallback
+</span></code></pre></div>
 <h2 id="config-and-state">Config and State</h2>
 <p>Keep runtime config outside the image and keep all mutable state on shared
 storage.</p>
@@ -1309,31 +1417,31 @@ symlink:</p>
 <li><code>relaymd down</code></li>
 </ul>
 <p>Install wrappers/modulefile once:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>./deploy/hpc/install-service-layout.sh
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>module<span class="w"> </span>use<span class="w"> </span>/depot/plow/apps/modulefiles
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>module<span class="w"> </span>load<span class="w"> </span>relaymd/current
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>./deploy/hpc/install-service-layout.sh
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>module<span class="w"> </span>use<span class="w"> </span>/depot/plow/apps/modulefiles
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>module<span class="w"> </span>load<span class="w"> </span>relaymd/current
 </span></code></pre></div>
 <p>After loading the module, <code>relaymd</code> is on <code>PATH</code> via
 <code>/depot/plow/apps/relaymd/bin</code>.</p>
 <p>Validate CLI exposure:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>which<span class="w"> </span>relaymd
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>relaymd<span class="w"> </span>--help
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>--help
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>which<span class="w"> </span>relaymd
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>relaymd<span class="w"> </span>--help
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>--help
 </span></code></pre></div>
 <p>Machine output for automation:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./input<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;job&quot;</span><span class="w"> </span>--json
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--json
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>relaymd<span class="w"> </span>workers<span class="w"> </span>list<span class="w"> </span>--json
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>relaymd<span class="w"> </span>status<span class="w"> </span>--json
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>checkpoint<span class="w"> </span>download<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./input<span class="w"> </span>--title<span class="w"> </span><span class="s2">&quot;job&quot;</span><span class="w"> </span>--json
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>list<span class="w"> </span>--json
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>relaymd<span class="w"> </span>workers<span class="w"> </span>list<span class="w"> </span>--json
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>relaymd<span class="w"> </span>status<span class="w"> </span>--json
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>checkpoint<span class="w"> </span>download<span class="w"> </span>&lt;job-id&gt;<span class="w"> </span>--json
 </span></code></pre></div>
 <p>Automated smoke check:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./deploy/hpc/relaymd-module-smoke-check
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./deploy/hpc/relaymd-module-smoke-check
 </span></code></pre></div>
 <p>Pull and activate a release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--orchestrator-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--worker-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>&lt;release-version&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span>--orchestrator-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-orchestrator:sha-&lt;shortsha&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--worker-image<span class="w"> </span>docker://ghcr.io/&lt;org&gt;/relaymd-worker:sha-&lt;shortsha&gt;
 </span></code></pre></div>
 <p>This also downloads and activates a host-side <code>relaymd</code> CLI binary under
 <code>/depot/plow/apps/relaymd/current/relaymd</code>.</p>
@@ -1344,12 +1452,12 @@ publish a coherent release set.</p>
 <p>Every pushed branch that changes source, tests, deployment assets, release
 automation, or operator docs should carry an explicit version bump. For CLI-
 affecting changes, bump the root RelayMD version with:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span>X.Y.Z
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>make<span class="w"> </span>release-cli<span class="w"> </span><span class="nv">VERSION</span><span class="o">=</span>X.Y.Z
 </span></code></pre></div>
 <p>That keeps <code>pyproject.toml</code>, <code>src/relaymd/_version.py</code>, and <code>uv.lock</code> aligned
 and creates the matching <code>vX.Y.Z</code> tag. Push both the branch and tag:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>&lt;branch&gt;
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>vX.Y.Z
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>git<span class="w"> </span>push<span class="w"> </span>-u<span class="w"> </span>origin<span class="w"> </span>&lt;branch&gt;
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>vX.Y.Z
 </span></code></pre></div>
 <p>On protected-branch CI, GitHub Actions publishes immutable <code>sha-&lt;shortsha&gt;</code>
 release artifacts, refreshes the <code>latest</code> GitHub Release, and uploads
@@ -1358,10 +1466,10 @@ orchestrator image, worker image, CLI URI, CLI version, and source commit
 together. Do not hand-edit release manifests or reuse an old tag for new
 artifacts.</p>
 <p>Auto-resolve by tag:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
 </span></code></pre></div>
 <p>Auto-resolve latest pinned release set:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>latest
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>latest
 </span></code></pre></div>
 <p><code>latest</code> resolves from release manifest
 <code>relaymd-release-manifest.json</code> on GitHub release <code>latest</code>, so orchestrator,
@@ -1371,10 +1479,10 @@ worker, and CLI are promoted as one pinned set. If manifest resolution fails,
 <code>/tmp/relaymd-service-$UID</code> (override with <code>RELAYMD_SCRATCH_ROOT</code>,
 <code>APPTAINER_TMPDIR</code>, or <code>APPTAINER_CACHEDIR</code>).</p>
 <p>Start service in tmux from the active release:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>relaymd<span class="w"> </span>up
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>relaymd<span class="w"> </span>up
 </span></code></pre></div>
 <p>Check live status (heartbeat freshness + tmux + ports):</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>relaymd<span class="w"> </span>status
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>relaymd<span class="w"> </span>status
 </span></code></pre></div>
 <p><code>relaymd up</code> starts the orchestrator and dashboard proxy through the installed
 service wrappers. Runtime env vars from <code>relaymd-service.env</code>/shell env are
