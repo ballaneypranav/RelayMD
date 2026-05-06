@@ -34,11 +34,18 @@ Config path selection is:
 Start from the reference config file (`deploy/config.example.yaml` in the repo) and set:
 - `orchestrator_url` (Note: YAML configuration takes precedence over the `RELAYMD_ORCHESTRATOR_URL` environment variable)
 - `api_token`
+- `storage_provider` (`cloudflare_backblaze` or `purdue`)
+- if `storage_provider=cloudflare_backblaze`:
 - `b2_endpoint_url`
 - `b2_bucket_name`
 - `b2_access_key_id`
 - `b2_secret_access_key`
-- `cf_worker_url` (if using Cloudflare proxy for downloads)
+- `cf_worker_url` (Cloudflare proxy download path)
+- if `storage_provider=purdue`:
+- `purdue_s3_endpoint`
+- `purdue_s3_bucket_name`
+- `purdue_s3_access_key`
+- `purdue_s3_secret_key`
 - `orchestrator_timeout_seconds` (optional)
 
 `INFISICAL_TOKEN` must be set in the environment (for HPC service installs, set it
