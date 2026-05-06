@@ -251,16 +251,45 @@ def _build_storage_client(
     config: WorkerConfig,
     runtime_settings: WorkerRuntimeSettings,
 ) -> StorageClient:
+    if runtime_settings.storage_provider == "purdue":
+        missing: list[str] = []
+        if not config.purdue_s3_endpoint.strip():
+            missing.append("PURDUE_S3_ENDPOINT")
+        if not config.purdue_s3_bucket_name.strip():
+            missing.append("PURDUE_S3_BUCKET_NAME")
+        if not config.purdue_s3_access_key.strip():
+            missing.append("PURDUE_S3_ACCESS_KEY")
+        if not config.purdue_s3_secret_key.strip():
+            missing.append("PURDUE_S3_SECRET_KEY")
+        if missing:
+            missing_text = ", ".join(missing)
+            raise RuntimeError(
+                "Missing required Purdue S3 bootstrap secrets: "
+                f"{missing_text}. Configure these in Infisical."
+            )
+        return StorageClient(
+            storage_provider="purdue",
+            b2_endpoint_url=config.purdue_s3_endpoint,
+            b2_bucket_name=config.purdue_s3_bucket_name,
+            b2_access_key_id=config.purdue_s3_access_key,
+            b2_secret_access_key=config.purdue_s3_secret_key,
+            cf_worker_url=runtime_settings.cf_worker_url,
+            cf_bearer_token="",
+            s3_region_name="us-east-1",
+        )
+
     cf_bearer_token = (
         config.download_bearer_token or runtime_settings.cf_bearer_token or config.relaymd_api_token
     )
     return StorageClient(
+        storage_provider="cloudflare_backblaze",
         b2_endpoint_url=config.b2_endpoint,
         b2_bucket_name=config.bucket_name,
         b2_access_key_id=config.b2_application_key_id,
         b2_secret_access_key=config.b2_application_key,
         cf_worker_url=runtime_settings.cf_worker_url,
         cf_bearer_token=cf_bearer_token,
+        s3_region_name=None,
     )
 
 

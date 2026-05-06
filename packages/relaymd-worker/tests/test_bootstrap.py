@@ -31,7 +31,10 @@ class _FakeInfisicalClient:
                 options.path,
             )
         )
-        return _FakeSecret(self.values[options.secret_name])
+        try:
+            return _FakeSecret(self.values[options.secret_name])
+        except KeyError as exc:
+            raise RuntimeError("secret not found") from exc
 
 
 def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -69,6 +72,11 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         b2_application_key="key-secret",
         b2_endpoint="https://s3.us-east-005.backblazeb2.com",
         bucket_name="relaymd-bucket",
+        purdue_s3_access_key="",
+        purdue_s3_secret_key="",
+        purdue_s3_endpoint="",
+        purdue_s3_bucket_name="",
+        purdue_s3_user="",
         download_bearer_token="download-token",
         tailscale_auth_key="tskey-ephemeral",
         relaymd_api_token="relay-token",
@@ -88,6 +96,11 @@ def test_run_bootstrap_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "TAILSCALE_AUTH_KEY",
         "RELAYMD_API_TOKEN",
         "RELAYMD_ORCHESTRATOR_URL",
+        "PURDUE_S3_ACCESS_KEY",
+        "PURDUE_S3_SECRET_KEY",
+        "PURDUE_S3_ENDPOINT",
+        "PURDUE_S3_BUCKET_NAME",
+        "PURDUE_S3_USER",
     }
     joined.assert_called_once_with("tskey-ephemeral", "worker-a")
 

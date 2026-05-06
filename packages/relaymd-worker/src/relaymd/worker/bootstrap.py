@@ -55,6 +55,11 @@ class WorkerConfig(BaseModel):
     b2_application_key: str
     b2_endpoint: str
     bucket_name: str
+    purdue_s3_access_key: str = ""
+    purdue_s3_secret_key: str = ""
+    purdue_s3_endpoint: str = ""
+    purdue_s3_bucket_name: str = ""
+    purdue_s3_user: str = ""
     download_bearer_token: str = ""
     tailscale_auth_key: str
     relaymd_api_token: str
@@ -528,10 +533,15 @@ def run_bootstrap() -> WorkerConfig:
 
         axiom_token = secret_values["axiom_token"]
         config = WorkerConfig(
-            b2_application_key_id=secret_values["b2_application_key_id"],
-            b2_application_key=secret_values["b2_application_key"],
-            b2_endpoint=secret_values["b2_endpoint"],
-            bucket_name=secret_values["bucket_name"],
+            b2_application_key_id=secret_values.get("b2_application_key_id", ""),
+            b2_application_key=secret_values.get("b2_application_key", ""),
+            b2_endpoint=secret_values.get("b2_endpoint", ""),
+            bucket_name=secret_values.get("bucket_name", ""),
+            purdue_s3_access_key=secret_values.get("purdue_s3_access_key", ""),
+            purdue_s3_secret_key=secret_values.get("purdue_s3_secret_key", ""),
+            purdue_s3_endpoint=secret_values.get("purdue_s3_endpoint", ""),
+            purdue_s3_bucket_name=secret_values.get("purdue_s3_bucket_name", ""),
+            purdue_s3_user=secret_values.get("purdue_s3_user", ""),
             download_bearer_token=secret_values.get("download_bearer_token", ""),
             tailscale_auth_key=secret_values["tailscale_auth_key"],
             relaymd_api_token=secret_values["relaymd_api_token"],
