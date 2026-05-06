@@ -6,11 +6,12 @@ See [Storage Layout for Checkpoints and Inputs](storage-layout.md) for the actua
 
 `relaymd-storage` is a shared Python package in `packages/relaymd-core/src/relaymd/storage/`. It exposes one class: `StorageClient`.
 
-## Dual Endpoints
+## Providers
 
-The `StorageClient` is initialized with two endpoints:
-1. `b2_endpoint_url` (where writes go)
-2. `cf_worker_url` (where reads come from)
+Storage mode is selected by `storage_provider` in config:
+
+1. `cloudflare_backblaze` (default)
+2. `purdue`
 
 It uses `boto3` synchronously, but wrapped internally so that consumers of `StorageClient` just call `client.upload_file(local_path, b2_key)` and `client.download_file(b2_key, local_path)`.
 
@@ -20,7 +21,8 @@ Uses `boto3.client("s3").upload_file(...)` with multipart threshold and concurre
 
 ## Downloads
 
-Uses `httpx.Client.stream(...)` to fetch from the Cloudflare Worker proxy (`https://relaymd-proxy.<user>.workers.dev`). The Cloudflare Worker is authenticated via a hard-coded static Bearer token passed in the `Authorization` header. Cloudflare fetches from B2 using native caching.
+- `cloudflare_backblaze`: uses `httpx.Client.stream(...)` to fetch from the Cloudflare Worker proxy (`https://relaymd-proxy.<user>.workers.dev`) using `DOWNLOAD_BEARER_TOKEN`.
+- `purdue`: uses direct S3 download (`boto3` `download_file`) from `PURDUE_S3_ENDPOINT` (for example `https://s3.rcac.purdue.edu`).
 
 Using `boto3.client("s3").download_file` would incur B2 egress fees and bypass the Cloudflare Bandwidth Alliance. The dual-endpoint setup is what makes checkpoints free.
 
