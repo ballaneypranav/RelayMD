@@ -1,18 +1,21 @@
 # Orchestrator Persistent Deployment
 
-RelayMD phase-1 HPC deployment uses two OCI images published to GHCR and pulled
-as Apptainer SIFs on the login node:
+RelayMD publishes both Docker/OCI images and Apptainer SIFs. SaladCloud uses the
+Docker images directly; HPC uses the matching SIF release artifacts when
+available and falls back to `apptainer pull` from GHCR when needed:
 
 - `ghcr.io/<org>/relaymd-orchestrator:<tag>`
 - `ghcr.io/<org>/relaymd-worker:<tag>`
 
-The supported deployment path is:
+The supported production paths are:
 
 ```text
-OCI image -> GHCR -> apptainer pull on HPC
+Docker image -> GHCR -> SaladCloud
+Docker image -> GHCR -> prebuilt SIF release artifact -> HPC
 ```
 
-Local `apptainer build --fakeroot` is not part of the supported rollout path.
+Local `apptainer build --fakeroot` is for development iteration, not production
+promotion.
 
 For branch-local iteration without waiting for GitHub Actions, there are two
 local helper workflows.
@@ -31,7 +34,8 @@ make local-smoke
 
 This builds local OCI images from the workspace, converts them to Apptainer
 artifacts, activates the release directory, installs the local CLI binary, and
-restarts the service.
+restarts the service. Worker and orchestrator Apptainer conversions run in
+parallel.
 
 ### Local Apptainer Definition Workflow
 
@@ -46,7 +50,8 @@ make local-smoke
 
 `scripts/local_build_from_def.sh` builds local-only Apptainer artifacts directly
 from definition files under `deploy/hpc/apptainer/`. It does not change the
-GitHub Actions or release workflow.
+GitHub Actions or release workflow. It can reuse existing base SIFs, seed them
+from CI-published base SIF URLs, or build them locally when needed.
 
 The `.def` workflow is split into reusable base layers and fast app layers:
 
@@ -60,6 +65,9 @@ The `.def` workflow is split into reusable base layers and fast app layers:
   Node 22 for local frontend builds.
 - `relaymd-orchestrator.localdev.def`: installs current workspace orchestrator
   packages and bundles frontend assets on top of the orchestrator base.
+- `relaymd-orchestrator.dockerbase.def`: CI-only app layer for production SIFs;
+  it starts from the Docker-equivalent orchestrator base and copies prebuilt
+  frontend assets.
 
 Default reusable base SIFs are cached under `build/local-def-stage/`:
 
@@ -237,9 +245,9 @@ git push origin vX.Y.Z
 On protected-branch CI, GitHub Actions publishes immutable `sha-<shortsha>`
 release artifacts, refreshes the `latest` GitHub Release, and uploads
 `relaymd-release-manifest.json`. The manifest is the source of truth tying the
-orchestrator image, worker image, CLI URI, CLI version, and source commit
-together. Do not hand-edit release manifests or reuse an old tag for new
-artifacts.
+orchestrator image, worker image, optional reusable base SIF URIs, CLI URI, CLI
+version, and source commit together. Do not hand-edit release manifests or reuse
+an old tag for new artifacts.
 
 Auto-resolve by tag:
 

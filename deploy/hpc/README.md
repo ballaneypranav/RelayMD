@@ -45,14 +45,15 @@ Use this when iterating on branch code and you want local artifacts immediately.
 make local-build-images
 ```
 
-2) Build and activate local Apptainer runtime artifacts (supported default path):
+2) Build and activate local Apptainer runtime artifacts from those images:
 
 ```bash
 make local-build-sif-or-sandbox
 ```
 
 This uses local OCI image URIs (`docker-daemon://...`) and updates
-`/depot/plow/apps/relaymd/current` to the chosen release directory.
+`/depot/plow/apps/relaymd/current` to the chosen release directory. Worker and
+orchestrator conversions run in parallel.
 
 3) Build and install local CLI into active service path:
 
@@ -67,7 +68,7 @@ relaymd restart
 make local-smoke
 ```
 
-Alternative Apptainer `.def` path for HPC hosts with fakeroot:
+Recommended Apptainer `.def` path for repeated HPC-local source iteration:
 
 ```bash
 make local-build-from-def
@@ -91,7 +92,8 @@ assets changed, because the bind-mounted orchestrator serves `frontend/dist`.
 `local-build-from-def` runs `scripts/local_build_from_def.sh`, which builds
 worker and orchestrator artifacts directly from local source without Docker or
 GitHub Actions. This path is for fast branch-local iteration only; production
-rollouts still use GHCR images and `relaymd upgrade`.
+rollouts still use GHCR Docker images for SaladCloud, prebuilt SIF release
+artifacts for HPC, and `relaymd upgrade`.
 
 The local `.def` flow uses reusable bases:
 
@@ -111,6 +113,11 @@ is included in the local base because Apptainer builds are single-stage, while
 the Docker orchestrator image uses a separate Node builder stage. The
 orchestrator app def installs the current workspace RelayMD package and builds
 frontend assets on top of that base.
+
+CI uses `relaymd-orchestrator.dockerbase.def` for production SIFs. That
+definition starts from the Docker-equivalent orchestrator base and copies
+prebuilt `frontend/dist` assets, preserving parity with `Dockerfile.orchestrator`
+while avoiding Node inside the runtime base.
 
 Default base cache paths:
 
@@ -140,6 +147,18 @@ Use custom prebuilt bases:
   --worker-base-sif /path/to/relaymd-worker-base.sif \
   --orchestrator-base-sif /path/to/relaymd-orchestrator-base.sif
 ```
+
+Seed the reusable local bases from CI-published base SIFs, then build only the
+current source layer locally:
+
+```bash
+./scripts/local_build_from_def.sh \
+  --worker-base-uri https://github.com/<org>/relaymd/releases/download/base-worker-sha256-<digest>/relaymd-worker-base.sif \
+  --orchestrator-base-uri https://github.com/<org>/relaymd/releases/download/base-orchestrator-sha256-<digest>/relaymd-orchestrator-base.sif
+```
+
+The `latest` release manifest records the current `worker_base_sif_uri` and
+`orchestrator_base_sif_uri` fields when CI has published them.
 
 `--mode sandbox` is the default and usually fastest for local development. It
 builds directory sandboxes and creates compatibility symlinks named
@@ -179,6 +198,9 @@ relaymd upgrade latest
 `latest` first resolves from release manifest
 `relaymd-release-manifest.json` (published to GitHub release tag `latest`),
 which pins orchestrator image, worker image, and CLI URI together.
+Docker image URIs remain the SaladCloud runtime contract. HPC upgrades use the
+matching prebuilt SIF artifacts when available before falling back to local
+`apptainer pull`.
 If manifest resolution fails, it falls back to newest shared `sha-*` present in
 both `relaymd-orchestrator` and `relaymd-worker` package tags.
 

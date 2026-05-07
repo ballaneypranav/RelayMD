@@ -70,12 +70,51 @@ RELEASES_DIR="${RELAYMD_SERVICE_ROOT}/releases"
 RELEASE_DIR="${RELEASES_DIR}/${RELEASE_NAME}"
 mkdir -p "${RELEASE_DIR}"
 
+_build_artifact() {
+    local label="$1"
+    local uri="$2"
+    local output="$3"
+    local tmp_output="${output}.tmp.$$"
+
+    rm -rf "${tmp_output}"
+
+    if [[ "${MODE}" == "sif" ]]; then
+        echo "[${label}] Pulling ${uri} into ${output}"
+        apptainer pull "${tmp_output}" "${uri}"
+    else
+        echo "[${label}] Building sandbox from ${uri} into ${output}"
+        apptainer build --sandbox "${tmp_output}" "${uri}"
+    fi
+
+    if [[ -e "${output}" ]]; then
+        echo "[${label}] Replacing existing local artifact at ${output}"
+        rm -rf "${output}"
+    fi
+    mv "${tmp_output}" "${output}"
+}
+
 if [[ "${MODE}" == "sif" ]]; then
-    apptainer pull "${RELEASE_DIR}/relaymd-worker.sif" "${WORKER_URI}"
-    apptainer pull "${RELEASE_DIR}/relaymd-orchestrator.sif" "${ORCHESTRATOR_URI}"
+    worker_output="${RELEASE_DIR}/relaymd-worker.sif"
+    orchestrator_output="${RELEASE_DIR}/relaymd-orchestrator.sif"
 else
-    apptainer build --sandbox "${RELEASE_DIR}/relaymd-worker.sandbox" "${WORKER_URI}"
-    apptainer build --sandbox "${RELEASE_DIR}/relaymd-orchestrator.sandbox" "${ORCHESTRATOR_URI}"
+    worker_output="${RELEASE_DIR}/relaymd-worker.sandbox"
+    orchestrator_output="${RELEASE_DIR}/relaymd-orchestrator.sandbox"
+fi
+
+_build_artifact "worker" "${WORKER_URI}" "${worker_output}" &
+WORKER_PID=$!
+_build_artifact "orchestrator" "${ORCHESTRATOR_URI}" "${orchestrator_output}" &
+ORCH_PID=$!
+
+WORKER_EXIT=0; wait "${WORKER_PID}" || WORKER_EXIT=$?
+ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
+[[ "${WORKER_EXIT}" -eq 0 ]] || echo "[worker] Local artifact build failed (exit ${WORKER_EXIT})." >&2
+[[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] Local artifact build failed (exit ${ORCH_EXIT})." >&2
+[[ "${WORKER_EXIT}" -eq 0 && "${ORCH_EXIT}" -eq 0 ]] || exit 1
+
+if [[ "${MODE}" == "sandbox" ]]; then
+    ln -sfn "relaymd-worker.sandbox" "${RELEASE_DIR}/relaymd-worker.sif"
+    ln -sfn "relaymd-orchestrator.sandbox" "${RELEASE_DIR}/relaymd-orchestrator.sif"
 fi
 
 if [[ -z "${CURRENT_LINK}" ]]; then

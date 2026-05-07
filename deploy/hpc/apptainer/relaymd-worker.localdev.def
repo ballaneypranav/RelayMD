@@ -24,7 +24,6 @@ From: /depot/plow/apps/relaymd/current/relaymd-worker.sif
 
 %post
     set -eux
-    test -x /opt/atom-openmm/bin/python
     python - <<'PY'
 import atom_openmm
 import openmm

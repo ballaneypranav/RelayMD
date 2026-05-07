@@ -236,5 +236,5 @@ can be used to confirm a session is running the expected binary.
 GitHub Actions builds immutable SHA-tagged CLI, worker, and orchestrator
 artifacts, refreshes the `latest` GitHub Release, and publishes
 `relaymd-release-manifest.json`. The manifest pins release version, image URIs,
-CLI binary URI, CLI version, and source commit together; do not hand-edit it or
-reuse old tags for new artifacts.
+optional reusable base SIF URIs, CLI binary URI, CLI version, and source commit
+together; do not hand-edit it or reuse old tags for new artifacts.
