@@ -6,6 +6,7 @@ from relaymd.cli.config import CliSettings
 
 def _settings(**overrides: object) -> CliSettings:
     base: dict[str, object] = {
+        "storage_provider": "cloudflare_backblaze",
         "orchestrator_url": "https://orchestrator.example/",
         "orchestrator_timeout_seconds": 17.5,
         "api_token": "test-token",

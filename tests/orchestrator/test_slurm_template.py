@@ -37,6 +37,7 @@ def test_job_template_renders_cluster_a_values() -> None:
     assert "#SBATCH --time=3:30:00" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
+    assert '--env RELAYMD_STORAGE_PROVIDER="purdue"' in rendered
 
 
 def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:

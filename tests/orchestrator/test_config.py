@@ -172,6 +172,26 @@ def test_relaymd_log_directory_env_is_loaded(monkeypatch, tmp_path) -> None:
     assert settings.log_directory == "/tmp/from-env"
 
 
+def test_storage_provider_defaults_to_purdue(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+    monkeypatch.delenv("RELAYMD_STORAGE_PROVIDER", raising=False)
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.storage_provider == "purdue"
+
+
+def test_relaymd_storage_provider_env_override(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("storage_provider: purdue\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+    monkeypatch.setenv("RELAYMD_STORAGE_PROVIDER", "cloudflare_backblaze")
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.storage_provider == "cloudflare_backblaze"
+
+
 def test_cluster_config_supports_registry_image_uri() -> None:
     cluster = ClusterConfig(
         name="test",

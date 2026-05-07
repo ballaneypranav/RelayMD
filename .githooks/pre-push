@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if command -v uv >/dev/null 2>&1; then
+    uv run pytest
+else
+    pytest
+fi
+
 # Source paths whose changes require a version bump via make release-cli.
 CLI_PATHS=(
     "src/relaymd/"

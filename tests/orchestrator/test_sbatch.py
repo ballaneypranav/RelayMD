@@ -123,6 +123,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
+    assert '--env RELAYMD_STORAGE_PROVIDER="purdue"' in rendered
     assert '--env RELAYMD_CLUSTER_NAME="gilbreth"' in rendered
     assert '--env SLURM_JOB_ID="${SLURM_JOB_ID}"' in rendered
 
@@ -189,6 +190,49 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     assert "#SBATCH --qos=standby" in rendered
     assert "#SBATCH --mem=120G" in rendered
     assert "--mem-per-gpu" not in rendered
+
+
+@pytest.mark.asyncio
+async def test_submit_slurm_job_passes_purdue_storage_provider(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="gilbreth",
+        partition="gpu",
+        account="lab-account",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        gpu_type="a100",
+        gpu_count=1,
+        sif_path="/shared/relaymd.sif",
+    )
+    settings = OrchestratorSettings(
+        storage_provider="purdue",
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    assert '--env RELAYMD_STORAGE_PROVIDER="purdue"' in captured["script"]
 
 
 @pytest.mark.asyncio

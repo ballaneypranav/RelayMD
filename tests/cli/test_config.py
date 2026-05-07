@@ -15,6 +15,24 @@ def test_relaymd_orchestrator_url_env_override(monkeypatch) -> None:
     assert settings.orchestrator_url == "https://orchestrator.example"
 
 
+def test_storage_provider_defaults_to_purdue(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+    monkeypatch.delenv("RELAYMD_STORAGE_PROVIDER", raising=False)
+
+    settings = CliSettings()
+
+    assert settings.storage_provider == "purdue"
+
+
+def test_relaymd_storage_provider_env_override(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_STORAGE_PROVIDER", "cloudflare_backblaze")
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+
+    settings = CliSettings()
+
+    assert settings.storage_provider == "cloudflare_backblaze"
+
+
 def test_yaml_orchestrator_url_overrides_env(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
@@ -159,8 +177,10 @@ def test_data_root_sets_default_config_path(monkeypatch, tmp_path) -> None:
     assert settings.api_token == "data-root-token"
 
 
-def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> None:
-    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "relaymd-config.yaml"
+    config_path.write_text("storage_provider: cloudflare_backblaze\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
     monkeypatch.delenv("API_TOKEN", raising=False)
@@ -245,8 +265,10 @@ def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch) -> No
     ]
 
 
-def test_load_settings_infisical_values_win_over_env(monkeypatch) -> None:
-    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-config-does-not-exist.yaml")
+def test_load_settings_infisical_values_win_over_env(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "relaymd-config.yaml"
+    config_path.write_text("storage_provider: cloudflare_backblaze\n", encoding="utf-8")
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.setenv("INFISICAL_TOKEN", "client-id:client-secret")
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-relay-token")
     monkeypatch.setenv("B2_ENDPOINT_URL", "https://env.endpoint")
@@ -383,8 +405,6 @@ def test_load_settings_requires_purdue_secrets_when_provider_is_purdue(
     )
     with pytest.raises(
         RuntimeError,
-        match=(
-            "PURDUE_S3_ENDPOINT, PURDUE_S3_BUCKET_NAME, PURDUE_S3_ACCESS_KEY, PURDUE_S3_SECRET_KEY"
-        ),
+        match=("PURDUE_S3_ENDPOINT, PURDUE_S3_ACCESS_KEY, PURDUE_S3_SECRET_KEY"),
     ):
         cli_config.load_settings()

@@ -104,6 +104,10 @@ class ClusterConfig(BaseModel):
 
 
 class OrchestratorSettings(BaseSettings):
+    storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
+        default="purdue",
+        validation_alias=AliasChoices("storage_provider", "RELAYMD_STORAGE_PROVIDER"),
+    )
     database_url: str = "sqlite+aiosqlite:///./relaymd.db"
     log_directory: str | None = Field(
         default=None,
@@ -280,6 +284,7 @@ class OrchestratorSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
+                "storage_provider": ("RELAYMD_STORAGE_PROVIDER",),
                 "log_directory": ("RELAYMD_LOG_DIRECTORY",),
                 "infisical_token": ("INFISICAL_TOKEN",),
                 "salad_api_key": ("SALAD_API_KEY",),

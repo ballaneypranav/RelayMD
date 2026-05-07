@@ -28,8 +28,8 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 class CliSettings(BaseSettings):
     storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
-        default="cloudflare_backblaze",
-        validation_alias=AliasChoices("storage_provider"),
+        default="purdue",
+        validation_alias=AliasChoices("storage_provider", "RELAYMD_STORAGE_PROVIDER"),
     )
     orchestrator_url: str = Field(
         default=DEFAULT_ORCHESTRATOR_URL,
@@ -122,6 +122,7 @@ class CliSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
+                "storage_provider": ("RELAYMD_STORAGE_PROVIDER",),
                 "infisical_token": ("INFISICAL_TOKEN",),
                 "orchestrator_url": ("RELAYMD_ORCHESTRATOR_URL",),
                 "cf_worker_url": ("CF_WORKER_URL",),
@@ -150,8 +151,6 @@ def load_settings() -> CliSettings:
     if settings.storage_provider == "purdue":
         if not settings.purdue_s3_endpoint.strip():
             missing.append("PURDUE_S3_ENDPOINT")
-        if not settings.purdue_s3_bucket_name.strip():
-            missing.append("PURDUE_S3_BUCKET_NAME")
         if not settings.purdue_s3_access_key.strip():
             missing.append("PURDUE_S3_ACCESS_KEY")
         if not settings.purdue_s3_secret_key.strip():
