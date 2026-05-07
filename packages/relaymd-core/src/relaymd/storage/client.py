@@ -62,7 +62,7 @@ class StorageClient:
         b2_secret_access_key: str,
         cf_worker_url: str,
         cf_bearer_token: str,
-        storage_provider: Literal["cloudflare_backblaze", "purdue"] = "cloudflare_backblaze",
+        storage_provider: Literal["cloudflare_backblaze", "purdue"] = "purdue",
         s3_region_name: str | None = None,
     ) -> None:
         self._storage_provider = storage_provider

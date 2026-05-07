@@ -36,6 +36,7 @@ class _ClientContextManager:
 class _FakeContext:
     def __init__(self) -> None:
         self.settings = CliSettings(
+            storage_provider="cloudflare_backblaze",
             api_token="test-token",
             b2_endpoint_url="https://b2.example",
             b2_bucket_name="relaymd-bucket",
@@ -201,6 +202,7 @@ def test_submit_service_upload_bundle_delegates_to_storage() -> None:
 def test_submit_service_upload_bundle_requires_b2_settings() -> None:
     context = _FakeContext()
     context.settings = CliSettings(
+        storage_provider="cloudflare_backblaze",
         api_token="test-token",
         b2_endpoint_url="",
         b2_bucket_name="",

@@ -111,6 +111,7 @@ apptainer_args=(
   --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}"
   --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}"
   --env ORCHESTRATOR_TIMEOUT_SECONDS="{{ worker_orchestrator_timeout_seconds | default(30.0) }}"
+  --env RELAYMD_STORAGE_PROVIDER="{{ worker_storage_provider | default('purdue') }}"
   --env SIGTERM_CHECKPOINT_WAIT_SECONDS="{{ worker_sigterm_checkpoint_wait_seconds | default(60) }}"
   --env SIGTERM_CHECKPOINT_POLL_SECONDS="{{ worker_sigterm_checkpoint_poll_seconds | default(2) }}"
   --env SIGTERM_PROCESS_WAIT_SECONDS="{{ worker_sigterm_process_wait_seconds | default(10) }}"

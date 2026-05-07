@@ -28,7 +28,7 @@ INFISICAL_SECRET_PATH = "/RelayMD"
 
 class CliSettings(BaseSettings):
     storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
-        default="cloudflare_backblaze",
+        default="purdue",
         validation_alias=AliasChoices("storage_provider"),
     )
     orchestrator_url: str = Field(
