@@ -1283,16 +1283,19 @@
 
 
 <h1 id="orchestrator-persistent-deployment">Orchestrator Persistent Deployment</h1>
-<p>RelayMD phase-1 HPC deployment uses two OCI images published to GHCR and pulled
-as Apptainer SIFs on the login node:</p>
+<p>RelayMD publishes both Docker/OCI images and Apptainer SIFs. SaladCloud uses the
+Docker images directly; HPC uses the matching SIF release artifacts when
+available and falls back to <code>apptainer pull</code> from GHCR when needed:</p>
 <ul>
 <li><code>ghcr.io/&lt;org&gt;/relaymd-orchestrator:&lt;tag&gt;</code></li>
 <li><code>ghcr.io/&lt;org&gt;/relaymd-worker:&lt;tag&gt;</code></li>
 </ul>
-<p>The supported deployment path is:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>OCI image -&gt; GHCR -&gt; apptainer pull on HPC
+<p>The supported production paths are:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Docker image -&gt; GHCR -&gt; SaladCloud
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Docker image -&gt; GHCR -&gt; prebuilt SIF release artifact -&gt; HPC
 </span></code></pre></div>
-<p>Local <code>apptainer build --fakeroot</code> is not part of the supported rollout path.</p>
+<p>Local <code>apptainer build --fakeroot</code> is for development iteration, not production
+promotion.</p>
 <p>For branch-local iteration without waiting for GitHub Actions, there are two
 local helper workflows.</p>
 <h3 id="local-oci-conversion-workflow">Local OCI Conversion Workflow</h3>
@@ -1305,7 +1308,8 @@ local helper workflows.</p>
 </span></code></pre></div>
 <p>This builds local OCI images from the workspace, converts them to Apptainer
 artifacts, activates the release directory, installs the local CLI binary, and
-restarts the service.</p>
+restarts the service. Worker and orchestrator Apptainer conversions run in
+parallel.</p>
 <h3 id="local-apptainer-definition-workflow">Local Apptainer Definition Workflow</h3>
 <p>Use this on HPC systems where Docker is unavailable but Apptainer fakeroot works:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>local-build-from-def
@@ -1315,7 +1319,8 @@ restarts the service.</p>
 </span></code></pre></div>
 <p><code>scripts/local_build_from_def.sh</code> builds local-only Apptainer artifacts directly
 from definition files under <code>deploy/hpc/apptainer/</code>. It does not change the
-GitHub Actions or release workflow.</p>
+GitHub Actions or release workflow. It can reuse existing base SIFs, seed them
+from CI-published base SIF URLs, or build them locally when needed.</p>
 <p>The <code>.def</code> workflow is split into reusable base layers and fast app layers:</p>
 <ul>
 <li><code>relaymd-worker-base.localdev.def</code>: mirrors <code>Dockerfile.worker-base</code>; includes
@@ -1328,6 +1333,9 @@ GitHub Actions or release workflow.</p>
   Node 22 for local frontend builds.</li>
 <li><code>relaymd-orchestrator.localdev.def</code>: installs current workspace orchestrator
   packages and bundles frontend assets on top of the orchestrator base.</li>
+<li><code>relaymd-orchestrator.dockerbase.def</code>: CI-only app layer for production SIFs;
+  it starts from the Docker-equivalent orchestrator base and copies prebuilt
+  frontend assets.</li>
 </ul>
 <p>Default reusable base SIFs are cached under <code>build/local-def-stage/</code>:</p>
 <ul>
@@ -1462,9 +1470,9 @@ and creates the matching <code>vX.Y.Z</code> tag. Push both the branch and tag:<
 <p>On protected-branch CI, GitHub Actions publishes immutable <code>sha-&lt;shortsha&gt;</code>
 release artifacts, refreshes the <code>latest</code> GitHub Release, and uploads
 <code>relaymd-release-manifest.json</code>. The manifest is the source of truth tying the
-orchestrator image, worker image, CLI URI, CLI version, and source commit
-together. Do not hand-edit release manifests or reuse an old tag for new
-artifacts.</p>
+orchestrator image, worker image, optional reusable base SIF URIs, CLI URI, CLI
+version, and source commit together. Do not hand-edit release manifests or reuse
+an old tag for new artifacts.</p>
 <p>Auto-resolve by tag:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>relaymd<span class="w"> </span>upgrade<span class="w"> </span>sha-&lt;shortsha&gt;
 </span></code></pre></div>
