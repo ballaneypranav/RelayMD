@@ -65,9 +65,9 @@ The `.def` workflow is split into reusable base layers and fast app layers:
   Node 22 for local frontend builds.
 - `relaymd-orchestrator.localdev.def`: installs current workspace orchestrator
   packages and bundles frontend assets on top of the orchestrator base.
-- `relaymd-orchestrator.dockerbase.def`: CI-only app layer for production SIFs;
-  it starts from the Docker-equivalent orchestrator base and copies prebuilt
-  frontend assets.
+- `relaymd-orchestrator.dockerbase.def`: Docker-equivalent app layer for
+  environments that can run local Apptainer builds from a Docker-style
+  orchestrator base and prebuilt frontend assets.
 
 Default reusable base SIFs are cached under `build/local-def-stage/`:
 
