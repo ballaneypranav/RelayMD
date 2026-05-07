@@ -492,11 +492,17 @@ jobs:
       contents: write
       packages: read
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_base_image == 'true' && needs.build-worker-base.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: eWaterCycle/setup-apptainer@v2
-        with:
-          apptainer-version: 1.3.3
+      - name: Install Apptainer
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer-suid
+          apptainer version
       - name: Build release URI
         id: uri
         env:
@@ -551,11 +557,17 @@ jobs:
       contents: write
       packages: read
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_base_image == 'true' && needs.build-orchestrator-base.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: eWaterCycle/setup-apptainer@v2
-        with:
-          apptainer-version: 1.3.3
+      - name: Install Apptainer
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer-suid
+          apptainer version
       - name: Build release URI
         id: uri
         env:
@@ -607,11 +619,22 @@ jobs:
       contents: write
       packages: read
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: eWaterCycle/setup-apptainer@v2
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
-          apptainer-version: 1.3.3
+          python-version: "3.11"
+      - run: ./scripts/generate_api_client.sh
+      - name: Install Apptainer
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer-suid
+          apptainer version
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -621,21 +644,55 @@ jobs:
         with:
           path: relaymd-worker.sif
           key: sif-worker-digest-${{ needs.build-worker.outputs.image_digest }}
-      - name: Restore Apptainer OCI blob cache
+      - name: Resolve worker base SIF release
+        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
+        id: worker-base-sif
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
+        run: |
+          set -euo pipefail
+          sif_uri="${SIF_URI}"
+          if [[ -z "${sif_uri}" ]]; then
+            manifest="$(mktemp)"
+            gh release download latest --pattern relaymd-release-manifest.json --output "${manifest}"
+            sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${manifest}")"
+          fi
+          if [[ -z "${sif_uri}" ]]; then
+            echo "Unable to resolve worker base SIF URI from this run or latest release manifest." >&2
+            exit 1
+          fi
+          tag="${sif_uri#*"/releases/download/"}"
+          tag="${tag%%/*}"
+          if [[ -z "${tag}" || "${tag}" == "${sif_uri}" ]]; then
+            echo "Unable to parse release tag from worker base SIF URI: ${sif_uri}" >&2
+            exit 1
+          fi
+          echo "uri=${sif_uri}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Restore worker base SIF cache
+        id: cache-worker-base-for-app
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
-          path: ~/.apptainer/cache
-          key: apptainer-oci-worker-${{ needs.build-worker.outputs.image_digest }}
-          restore-keys: |
-            apptainer-oci-worker-
-            apptainer-oci-
+          path: relaymd-worker-base.sif
+          key: sif-worker-base-release-${{ steps.worker-base-sif.outputs.tag }}
+      - name: Download worker base SIF
+        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' && steps.cache-worker-base-for-app.outputs.cache-hit != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ steps.worker-base-sif.outputs.tag }}" --pattern relaymd-worker-base.sif
       - name: Build worker SIF
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-worker.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${{ steps.sha.outputs.short }}"
+        run: |
+          set -euo pipefail
+          worker_base_sif="$(pwd)/relaymd-worker-base.sif"
+          worker_def="${RUNNER_TEMP}/relaymd-worker.ci.def"
+          sed \
+            -e "s#^From: .*#From: ${worker_base_sif}#" \
+            -e 's#relaymd.localdev "true"#relaymd.localdev "false"#' \
+            deploy/hpc/apptainer/relaymd-worker.localdev.def > "${worker_def}"
+          apptainer build --fakeroot relaymd-worker.sif "${worker_def}"
       - name: Upload worker SIF to immutable release
         uses: softprops/action-gh-release@v3
         with:
@@ -651,11 +708,31 @@ jobs:
       contents: write
       packages: read
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - uses: eWaterCycle/setup-apptainer@v2
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
         with:
-          apptainer-version: 1.3.3
+          python-version: "3.11"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: ./scripts/generate_api_client.sh
+      - run: npm --cache ./.npm ci
+        working-directory: frontend
+      - run: npm --cache ./.npm run build
+        working-directory: frontend
+      - name: Install Apptainer
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer-suid
+          apptainer version
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -665,21 +742,54 @@ jobs:
         with:
           path: relaymd-orchestrator.sif
           key: sif-orchestrator-digest-${{ needs.build-orchestrator.outputs.image_digest }}
-      - name: Restore Apptainer OCI blob cache
+      - name: Resolve orchestrator base SIF release
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
+        id: orchestrator-base-sif
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIF_URI: ${{ needs.build-orchestrator-base-sif.outputs.sif_uri }}
+        run: |
+          set -euo pipefail
+          sif_uri="${SIF_URI}"
+          if [[ -z "${sif_uri}" ]]; then
+            manifest="$(mktemp)"
+            gh release download latest --pattern relaymd-release-manifest.json --output "${manifest}"
+            sif_uri="$(jq -r '.orchestrator_base_sif_uri // empty' "${manifest}")"
+          fi
+          if [[ -z "${sif_uri}" ]]; then
+            echo "Unable to resolve orchestrator base SIF URI from this run or latest release manifest." >&2
+            exit 1
+          fi
+          tag="${sif_uri#*"/releases/download/"}"
+          tag="${tag%%/*}"
+          if [[ -z "${tag}" || "${tag}" == "${sif_uri}" ]]; then
+            echo "Unable to parse release tag from orchestrator base SIF URI: ${sif_uri}" >&2
+            exit 1
+          fi
+          echo "uri=${sif_uri}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+      - name: Restore orchestrator base SIF cache
+        id: cache-orchestrator-base-for-app
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         uses: actions/cache@v4
         with:
-          path: ~/.apptainer/cache
-          key: apptainer-oci-orchestrator-${{ needs.build-orchestrator.outputs.image_digest }}
-          restore-keys: |
-            apptainer-oci-orchestrator-
-            apptainer-oci-
+          path: relaymd-orchestrator-base.sif
+          key: sif-orchestrator-base-release-${{ steps.orchestrator-base-sif.outputs.tag }}
+      - name: Download orchestrator base SIF
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' && steps.cache-orchestrator-base-for-app.outputs.cache-hit != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ steps.orchestrator-base-sif.outputs.tag }}" --pattern relaymd-orchestrator-base.sif
       - name: Build orchestrator SIF
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-orchestrator.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:sha-${{ steps.sha.outputs.short }}"
+        run: |
+          set -euo pipefail
+          orchestrator_base_sif="$(pwd)/relaymd-orchestrator-base.sif"
+          orchestrator_def="${RUNNER_TEMP}/relaymd-orchestrator.ci.def"
+          sed \
+            -e "s#^From: .*#From: ${orchestrator_base_sif}#" \
+            deploy/hpc/apptainer/relaymd-orchestrator.dockerbase.def > "${orchestrator_def}"
+          apptainer build --fakeroot relaymd-orchestrator.sif "${orchestrator_def}"
       - name: Upload orchestrator SIF to immutable release
         uses: softprops/action-gh-release@v3
         with:
