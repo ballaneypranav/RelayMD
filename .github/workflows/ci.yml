@@ -42,6 +42,7 @@ jobs:
             worker_image:
               - 'Dockerfile'
               - 'Dockerfile.worker-base'
+              - 'deploy/hpc/apptainer/relaymd-worker.localdev.def'
               - 'packages/**'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -50,6 +51,7 @@ jobs:
             orchestrator_image:
               - 'Dockerfile.orchestrator-base'
               - 'Dockerfile.orchestrator'
+              - 'deploy/hpc/apptainer/relaymd-orchestrator.dockerbase.def'
               - 'frontend/**'
               - 'src/**'
               - 'packages/**'
@@ -124,6 +126,8 @@ jobs:
 
   build-worker-base:
     needs: [changes]
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -159,6 +163,8 @@ jobs:
 
   build-orchestrator-base:
     needs: [changes]
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -243,11 +249,18 @@ jobs:
           provenance: false
       - name: Build worker image (PR)
         if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image == 'true' }}
-        run: |
-          docker build \
-            --build-arg BASE_IMAGE=relaymd-worker-base:ci \
-            -t relaymd-worker:ci \
-            .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: relaymd-worker:ci
+          build-args: |
+            BASE_IMAGE=relaymd-worker-base:ci
+          cache-from: |
+            type=gha,scope=worker
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest
+          cache-to: type=gha,mode=max,scope=worker
+          provenance: false
       - name: Build worker image with cache (PR)
         if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image != 'true' }}
         uses: docker/build-push-action@v7
@@ -340,12 +353,19 @@ jobs:
           fi
       - name: Build orchestrator image locally (PR)
         if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.orchestrator_base_image == 'true' }}
-        run: |
-          docker build \
-            -f Dockerfile.orchestrator \
-            --build-arg BASE_IMAGE=relaymd-orchestrator-base:ci \
-            -t relaymd-orchestrator:ci \
-            .
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.orchestrator
+          load: true
+          tags: relaymd-orchestrator:ci
+          build-args: |
+            BASE_IMAGE=relaymd-orchestrator-base:ci
+          cache-from: |
+            type=gha,scope=orchestrator
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:latest
+          cache-to: type=gha,mode=max,scope=orchestrator
+          provenance: false
       - name: Build orchestrator image with cache (PR)
         if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.orchestrator_base_image != 'true' }}
         uses: docker/build-push-action@v7
@@ -465,14 +485,146 @@ jobs:
           make_latest: true
           files: dist/relaymd-linux-x86_64
 
-  build-worker-sif:
-    needs: [changes, build-worker, cli-version-guard]
+  build-worker-base-sif:
+    needs: [changes, build-worker-base]
+    outputs:
+      sif_tag: ${{ steps.uri.outputs.tag }}
+      sif_uri: ${{ steps.uri.outputs.sif_uri }}
     permissions:
       contents: write
       packages: read
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_base_image == 'true' && needs.build-worker-base.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - uses: eWaterCycle/setup-apptainer@v2
+        with:
+          apptainer-version: 1.3.3
+      - name: Build release URI
+        id: uri
+        env:
+          IMAGE_DIGEST: ${{ needs.build-worker-base.outputs.image_digest }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          digest="${IMAGE_DIGEST#sha256:}"
+          if [[ -z "${digest}" || "${digest}" == "${IMAGE_DIGEST}" ]]; then
+            echo "Unexpected worker base digest: ${IMAGE_DIGEST}" >&2
+            exit 1
+          fi
+          tag="base-worker-sha256-${digest}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=https://github.com/${OWNER}/relaymd/releases/download/${tag}/relaymd-worker-base.sif" >> "$GITHUB_OUTPUT"
+      - name: Restore worker base SIF cache
+        id: cache-worker-base
+        uses: actions/cache@v4
+        with:
+          path: relaymd-worker-base.sif
+          key: sif-worker-base-digest-${{ needs.build-worker-base.outputs.image_digest }}
+      - name: Restore Apptainer worker base OCI blob cache
+        if: ${{ steps.cache-worker-base.outputs.cache-hit != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.apptainer/cache
+          key: apptainer-oci-worker-base-${{ needs.build-worker-base.outputs.image_digest }}
+          restore-keys: |
+            apptainer-oci-worker-base-
+            apptainer-oci-
+      - name: Build worker base SIF
+        if: ${{ steps.cache-worker-base.outputs.cache-hit != 'true' }}
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
+      - name: Upload immutable worker base SIF
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.uri.outputs.tag }}
+          name: ${{ steps.uri.outputs.tag }}
+          prerelease: false
+          make_latest: false
+          files: relaymd-worker-base.sif
+
+  build-orchestrator-base-sif:
+    needs: [changes, build-orchestrator-base]
+    outputs:
+      sif_tag: ${{ steps.uri.outputs.tag }}
+      sif_uri: ${{ steps.uri.outputs.sif_uri }}
+    permissions:
+      contents: write
+      packages: read
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_base_image == 'true' && needs.build-orchestrator-base.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: eWaterCycle/setup-apptainer@v2
+        with:
+          apptainer-version: 1.3.3
+      - name: Build release URI
+        id: uri
+        env:
+          IMAGE_DIGEST: ${{ needs.build-orchestrator-base.outputs.image_digest }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          digest="${IMAGE_DIGEST#sha256:}"
+          if [[ -z "${digest}" || "${digest}" == "${IMAGE_DIGEST}" ]]; then
+            echo "Unexpected orchestrator base digest: ${IMAGE_DIGEST}" >&2
+            exit 1
+          fi
+          tag="base-orchestrator-sha256-${digest}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=https://github.com/${OWNER}/relaymd/releases/download/${tag}/relaymd-orchestrator-base.sif" >> "$GITHUB_OUTPUT"
+      - name: Restore orchestrator base SIF cache
+        id: cache-orchestrator-base
+        uses: actions/cache@v4
+        with:
+          path: relaymd-orchestrator-base.sif
+          key: sif-orchestrator-base-digest-${{ needs.build-orchestrator-base.outputs.image_digest }}
+      - name: Restore Apptainer orchestrator base OCI blob cache
+        if: ${{ steps.cache-orchestrator-base.outputs.cache-hit != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.apptainer/cache
+          key: apptainer-oci-orchestrator-base-${{ needs.build-orchestrator-base.outputs.image_digest }}
+          restore-keys: |
+            apptainer-oci-orchestrator-base-
+            apptainer-oci-
+      - name: Build orchestrator base SIF
+        if: ${{ steps.cache-orchestrator-base.outputs.cache-hit != 'true' }}
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-orchestrator-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest"
+      - name: Upload immutable orchestrator base SIF
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.uri.outputs.tag }}
+          name: ${{ steps.uri.outputs.tag }}
+          prerelease: false
+          make_latest: false
+          files: relaymd-orchestrator-base.sif
+
+  build-worker-sif:
+    needs: [changes, build-worker, build-worker-base-sif, cli-version-guard]
+    permissions:
+      contents: write
+      packages: read
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: ./scripts/generate_api_client.sh
+      - run: npm --cache ./.npm ci
+        working-directory: frontend
+      - run: npm --cache ./.npm run build
+        working-directory: frontend
       - uses: eWaterCycle/setup-apptainer@v2
         with:
           apptainer-version: 1.3.3
@@ -494,12 +646,38 @@ jobs:
           restore-keys: |
             apptainer-oci-worker-
             apptainer-oci-
-      - name: Build worker SIF
+      - name: Restore worker base SIF cache
+        id: cache-worker-base-for-app
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: relaymd-worker-base.sif
+          key: sif-worker-base-source-${{ hashFiles('Dockerfile.worker-base', '.github/workflows/ci.yml') }}
+      - name: Download freshly published worker base SIF
+        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' && steps.cache-worker-base-for-app.outputs.cache-hit != 'true' && needs.build-worker-base-sif.outputs.sif_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ needs.build-worker-base-sif.outputs.sif_tag }}" --pattern relaymd-worker-base.sif
+      - name: Pull worker base SIF
+        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' && steps.cache-worker-base-for-app.outputs.cache-hit != 'true' }}
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-worker.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${{ steps.sha.outputs.short }}"
+        run: |
+          if [[ ! -f relaymd-worker-base.sif ]]; then
+            apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
+          fi
+      - name: Build worker SIF
+        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
+        run: |
+          set -euo pipefail
+          worker_base_sif="$(pwd)/relaymd-worker-base.sif"
+          worker_def="${RUNNER_TEMP}/relaymd-worker.ci.def"
+          sed \
+            -e "s#^From: .*#From: ${worker_base_sif}#" \
+            -e 's#relaymd.localdev "true"#relaymd.localdev "false"#' \
+            deploy/hpc/apptainer/relaymd-worker.localdev.def > "${worker_def}"
+          apptainer build --fakeroot relaymd-worker.sif "${worker_def}"
       - name: Upload worker SIF to immutable release
         uses: softprops/action-gh-release@v3
         with:
@@ -510,13 +688,18 @@ jobs:
           files: relaymd-worker.sif
 
   build-orchestrator-sif:
-    needs: [changes, build-orchestrator, cli-version-guard]
+    needs: [changes, build-orchestrator, build-orchestrator-base-sif, cli-version-guard]
     permissions:
       contents: write
       packages: read
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.11"
+      - run: ./scripts/generate_api_client.sh
       - uses: eWaterCycle/setup-apptainer@v2
         with:
           apptainer-version: 1.3.3
@@ -538,12 +721,37 @@ jobs:
           restore-keys: |
             apptainer-oci-orchestrator-
             apptainer-oci-
-      - name: Build orchestrator SIF
+      - name: Restore orchestrator base SIF cache
+        id: cache-orchestrator-base-for-app
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
+        uses: actions/cache@v4
+        with:
+          path: relaymd-orchestrator-base.sif
+          key: sif-orchestrator-base-source-${{ hashFiles('Dockerfile.orchestrator-base', '.github/workflows/ci.yml') }}
+      - name: Download freshly published orchestrator base SIF
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' && steps.cache-orchestrator-base-for-app.outputs.cache-hit != 'true' && needs.build-orchestrator-base-sif.outputs.sif_tag != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release download "${{ needs.build-orchestrator-base-sif.outputs.sif_tag }}" --pattern relaymd-orchestrator-base.sif
+      - name: Pull orchestrator base SIF
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' && steps.cache-orchestrator-base-for-app.outputs.cache-hit != 'true' }}
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-orchestrator.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:sha-${{ steps.sha.outputs.short }}"
+        run: |
+          if [[ ! -f relaymd-orchestrator-base.sif ]]; then
+            apptainer pull relaymd-orchestrator-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest"
+          fi
+      - name: Build orchestrator SIF
+        if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
+        run: |
+          set -euo pipefail
+          orchestrator_base_sif="$(pwd)/relaymd-orchestrator-base.sif"
+          orchestrator_def="${RUNNER_TEMP}/relaymd-orchestrator.ci.def"
+          sed \
+            -e "s#^From: .*#From: ${orchestrator_base_sif}#" \
+            deploy/hpc/apptainer/relaymd-orchestrator.dockerbase.def > "${orchestrator_def}"
+          apptainer build --fakeroot relaymd-orchestrator.sif "${orchestrator_def}"
       - name: Upload orchestrator SIF to immutable release
         uses: softprops/action-gh-release@v3
         with:
@@ -554,10 +762,10 @@ jobs:
           files: relaymd-orchestrator.sif
 
   publish-release-manifest:
-    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli, build-worker-sif, build-orchestrator-sif]
+    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli, build-worker-base-sif, build-orchestrator-base-sif, build-worker-sif, build-orchestrator-sif]
     permissions:
       contents: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -570,6 +778,10 @@ jobs:
           WORKER_CHANGED: ${{ needs.changes.outputs.worker_image }}
           ORCH_CHANGED: ${{ needs.changes.outputs.orchestrator_image }}
           CLI_CHANGED: ${{ needs.changes.outputs.cli }}
+          WORKER_BASE_CHANGED: ${{ needs.changes.outputs.worker_base_image }}
+          ORCH_BASE_CHANGED: ${{ needs.changes.outputs.orchestrator_base_image }}
+          WORKER_BASE_SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
+          ORCH_BASE_SIF_URI: ${{ needs.build-orchestrator-base-sif.outputs.sif_uri }}
         run: |
           set -euo pipefail
           short_sha="${SOURCE_SHA:0:7}"
@@ -587,6 +799,8 @@ jobs:
           prev_release_version="$(jq -r '.release_version // empty' "${prev_manifest}")"
           prev_worker_image="$(jq -r '.worker_image // empty' "${prev_manifest}")"
           prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
+          prev_worker_base_sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${prev_manifest}")"
+          prev_orch_base_sif_uri="$(jq -r '.orchestrator_base_sif_uri // empty' "${prev_manifest}")"
           prev_cli_uri="$(jq -r '.cli_uri // empty' "${prev_manifest}")"
           prev_cli_version="$(jq -r '.cli_version // empty' "${prev_manifest}")"
           current_cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
@@ -616,6 +830,18 @@ jobs:
             cli_version="${prev_cli_version:-${current_cli_version}}"
           fi
 
+          if [[ "${WORKER_BASE_CHANGED}" == "true" && -n "${WORKER_BASE_SIF_URI}" ]]; then
+            worker_base_sif_uri="${WORKER_BASE_SIF_URI}"
+          else
+            worker_base_sif_uri="${prev_worker_base_sif_uri}"
+          fi
+
+          if [[ "${ORCH_BASE_CHANGED}" == "true" && -n "${ORCH_BASE_SIF_URI}" ]]; then
+            orchestrator_base_sif_uri="${ORCH_BASE_SIF_URI}"
+          else
+            orchestrator_base_sif_uri="${prev_orch_base_sif_uri}"
+          fi
+
           if [[ "${WORKER_CHANGED}" == "true" || "${ORCH_CHANGED}" == "true" || "${CLI_CHANGED}" == "true" ]]; then
             release_version="sha-${short_sha}"
           else
@@ -626,6 +852,8 @@ jobs:
             --arg release_version "${release_version}" \
             --arg orchestrator_image "${orchestrator_image}" \
             --arg worker_image "${worker_image}" \
+            --arg worker_base_sif_uri "${worker_base_sif_uri}" \
+            --arg orchestrator_base_sif_uri "${orchestrator_base_sif_uri}" \
             --arg cli_uri "${cli_uri}" \
             --arg cli_version "${cli_version}" \
             --arg source_commit "${SOURCE_SHA}" \
@@ -634,6 +862,8 @@ jobs:
               release_version: $release_version,
               orchestrator_image: $orchestrator_image,
               worker_image: $worker_image,
+              worker_base_sif_uri: $worker_base_sif_uri,
+              orchestrator_base_sif_uri: $orchestrator_base_sif_uri,
               cli_uri: $cli_uri,
               cli_version: $cli_version,
               source_commit: $source_commit,

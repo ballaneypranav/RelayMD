@@ -5,6 +5,7 @@ usage() {
     cat <<'USAGE'
 Usage: local_build_from_def.sh [--release <name>] [--mode sandbox|sif] [--current-link <path>] [--service-root <path>] [--fallback]
                                [--worker-base-sif <path>] [--orchestrator-base-sif <path>]
+                               [--worker-base-uri <uri>] [--orchestrator-base-uri <uri>]
                                [--rebuild-worker-base] [--rebuild-orchestrator-base] [--rebuild-bases]
 
 Self-contained local-only path:
@@ -22,6 +23,8 @@ RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 CURRENT_LINK="${CURRENT_LINK:-}"
 WORKER_BASE_SIF="${WORKER_BASE_SIF:-}"
 ORCHESTRATOR_BASE_SIF="${ORCHESTRATOR_BASE_SIF:-}"
+WORKER_BASE_URI="${WORKER_BASE_URI:-}"
+ORCHESTRATOR_BASE_URI="${ORCHESTRATOR_BASE_URI:-}"
 REBUILD_WORKER_BASE="${REBUILD_WORKER_BASE:-0}"
 REBUILD_ORCHESTRATOR_BASE="${REBUILD_ORCHESTRATOR_BASE:-0}"
 
@@ -53,6 +56,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --orchestrator-base-sif)
             ORCHESTRATOR_BASE_SIF="$2"
+            shift 2
+            ;;
+        --worker-base-uri)
+            WORKER_BASE_URI="$2"
+            shift 2
+            ;;
+        --orchestrator-base-uri)
+            ORCHESTRATOR_BASE_URI="$2"
             shift 2
             ;;
         --rebuild-worker-base)
@@ -124,6 +135,20 @@ copy_if_exists() {
     fi
 }
 
+download_file() {
+    local uri="$1"
+    local output="$2"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "${uri}" -o "${output}"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "${output}" "${uri}"
+    else
+        echo "Missing downloader: install curl or wget to use prebuilt base SIF URIs." >&2
+        return 1
+    fi
+}
+
 # Stage only frontend build inputs to avoid copying node_modules/.npm/dist/coverage.
 cp -a "${ROOT_DIR}/frontend/package.json" "${stage_frontend_dir}/"
 copy_if_exists "${ROOT_DIR}/frontend/package-lock.json" "${stage_frontend_dir}/"
@@ -154,58 +179,93 @@ sed -i "s#^From: .*#From: ${ORCHESTRATOR_BASE_SIF}#" "${orch_def_staged}"
 sed "s#^From: .*#From: ${WORKER_BASE_SIF}#" "${WORKER_DEF}" > "${worker_def_staged}"
 
 if [[ "${MODE}" == "sandbox" ]]; then
-    worker_output="${RELEASE_DIR}/relaymd-worker.sandbox"
-    orch_output="${RELEASE_DIR}/relaymd-orchestrator.sandbox"
-    rm -rf "${worker_output}" "${orch_output}"
+    worker_final="${RELEASE_DIR}/relaymd-worker.sandbox"
+    orch_final="${RELEASE_DIR}/relaymd-orchestrator.sandbox"
 else
-    worker_output="${RELEASE_DIR}/relaymd-worker.sif"
-    orch_output="${RELEASE_DIR}/relaymd-orchestrator.sif"
+    worker_final="${RELEASE_DIR}/relaymd-worker.sif"
+    orch_final="${RELEASE_DIR}/relaymd-orchestrator.sif"
 fi
+worker_output="${worker_final}.tmp.$$"
+orch_output="${orch_final}.tmp.$$"
+rm -rf "${worker_output}" "${orch_output}"
 
 set +e
-if [[ "${REBUILD_WORKER_BASE}" == "1" || ! -f "${WORKER_BASE_SIF}" ]]; then
-    mkdir -p "$(dirname "${WORKER_BASE_SIF}")"
-    worker_base_tmp="${WORKER_BASE_SIF}.tmp.$$"
-    rm -f "${worker_base_tmp}"
-    apptainer build --fakeroot "${worker_base_tmp}" "${WORKER_BASE_DEF}"
-    worker_base_rc=$?
-    if [[ "${worker_base_rc}" -eq 0 ]]; then
-        mv "${worker_base_tmp}" "${WORKER_BASE_SIF}"
-    else
-        rm -f "${worker_base_tmp}"
+_build_base() {
+    local label="$1"
+    local rebuild="$2"
+    local base_sif="$3"
+    local base_def="$4"
+    local base_uri="$5"
+
+    if [[ "${rebuild}" != "1" && -f "${base_sif}" ]]; then
+        echo "[${label}] Reusing local base ${base_sif}"
+        return 0
     fi
-else
-    worker_base_rc=0
-fi
-if [[ "${REBUILD_ORCHESTRATOR_BASE}" == "1" || ! -f "${ORCHESTRATOR_BASE_SIF}" ]]; then
-    mkdir -p "$(dirname "${ORCHESTRATOR_BASE_SIF}")"
-    orch_base_tmp="${ORCHESTRATOR_BASE_SIF}.tmp.$$"
-    rm -f "${orch_base_tmp}"
-    apptainer build --fakeroot "${orch_base_tmp}" "${ORCHESTRATOR_BASE_DEF}"
-    orch_base_rc=$?
-    if [[ "${orch_base_rc}" -eq 0 ]]; then
-        mv "${orch_base_tmp}" "${ORCHESTRATOR_BASE_SIF}"
-    else
-        rm -f "${orch_base_tmp}"
+
+    mkdir -p "$(dirname "${base_sif}")"
+    local base_tmp="${base_sif}.tmp.$$"
+    rm -f "${base_tmp}"
+
+    if [[ "${rebuild}" != "1" && -n "${base_uri}" ]]; then
+        echo "[${label}] Downloading prebuilt base ${base_uri}"
+        if download_file "${base_uri}" "${base_tmp}"; then
+            mv "${base_tmp}" "${base_sif}"
+            return 0
+        fi
+        rm -f "${base_tmp}"
+        echo "[${label}] Prebuilt base download failed; falling back to local build." >&2
     fi
+
+    echo "[${label}] Building local base ${base_sif}"
+    apptainer build --fakeroot "${base_tmp}" "${base_def}"
+    local rc=$?
+    if [[ "${rc}" -eq 0 ]]; then
+        mv "${base_tmp}" "${base_sif}"
+    else
+        rm -f "${base_tmp}"
+    fi
+    return "${rc}"
+}
+
+_build_from_def() {
+    local label="$1"
+    local output="$2"
+    local def_file="$3"
+
+    echo "[${label}] Building ${MODE} artifact ${output}"
+    if [[ "${MODE}" == "sandbox" ]]; then
+        apptainer build --fakeroot --sandbox "${output}" "${def_file}"
+    else
+        apptainer build --fakeroot "${output}" "${def_file}"
+    fi
+}
+
+_build_base "worker-base" "${REBUILD_WORKER_BASE}" "${WORKER_BASE_SIF}" "${WORKER_BASE_DEF}" "${WORKER_BASE_URI}" &
+WORKER_BASE_PID=$!
+_build_base "orchestrator-base" "${REBUILD_ORCHESTRATOR_BASE}" "${ORCHESTRATOR_BASE_SIF}" "${ORCHESTRATOR_BASE_DEF}" "${ORCHESTRATOR_BASE_URI}" &
+ORCH_BASE_PID=$!
+
+worker_base_rc=0; wait "${WORKER_BASE_PID}" || worker_base_rc=$?
+orch_base_rc=0; wait "${ORCH_BASE_PID}" || orch_base_rc=$?
+
+if [[ "${worker_base_rc}" -eq 0 && "${orch_base_rc}" -eq 0 ]]; then
+    _build_from_def "worker" "${worker_output}" "${worker_def_staged}" &
+    WORKER_PID=$!
+    _build_from_def "orchestrator" "${orch_output}" "${orch_def_staged}" &
+    ORCH_PID=$!
+
+    worker_rc=0; wait "${WORKER_PID}" || worker_rc=$?
+    orch_rc=0; wait "${ORCH_PID}" || orch_rc=$?
 else
-    orch_base_rc=0
+    worker_rc=1
+    orch_rc=1
 fi
-if [[ "${MODE}" == "sandbox" ]]; then
-    apptainer build --fakeroot --sandbox "${worker_output}" "${worker_def_staged}"
-else
-    apptainer build --fakeroot "${worker_output}" "${worker_def_staged}"
-fi
-worker_rc=$?
-if [[ "${MODE}" == "sandbox" ]]; then
-    apptainer build --fakeroot --sandbox "${orch_output}" "${orch_def_staged}"
-else
-    apptainer build --fakeroot "${orch_output}" "${orch_def_staged}"
-fi
-orch_rc=$?
 set -e
 
 if [[ "${worker_base_rc}" -eq 0 && "${orch_base_rc}" -eq 0 && "${worker_rc}" -eq 0 && "${orch_rc}" -eq 0 ]]; then
+    rm -rf "${worker_final}" "${orch_final}"
+    mv "${worker_output}" "${worker_final}"
+    mv "${orch_output}" "${orch_final}"
     if [[ "${MODE}" == "sandbox" ]]; then
         ln -sfn "relaymd-worker.sandbox" "${RELEASE_DIR}/relaymd-worker.sif"
         ln -sfn "relaymd-orchestrator.sandbox" "${RELEASE_DIR}/relaymd-orchestrator.sif"
@@ -221,6 +281,8 @@ Self-contained .def build succeeded.
 OUT
     exit 0
 fi
+
+rm -rf "${worker_output}" "${orch_output}"
 
 if [[ "${FALLBACK}" -eq 1 ]]; then
     echo "Self-contained .def build failed; using fallback local OCI->Apptainer flow." >&2
