@@ -405,8 +405,6 @@ def test_load_settings_requires_purdue_secrets_when_provider_is_purdue(
     )
     with pytest.raises(
         RuntimeError,
-        match=(
-            "PURDUE_S3_ENDPOINT, PURDUE_S3_ACCESS_KEY, PURDUE_S3_SECRET_KEY"
-        ),
+        match=("PURDUE_S3_ENDPOINT, PURDUE_S3_ACCESS_KEY, PURDUE_S3_SECRET_KEY"),
     ):
         cli_config.load_settings()
