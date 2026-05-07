@@ -13,6 +13,18 @@ Default install layout:
 - Worker SIF: `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
 - CLI binary: `/depot/plow/apps/relaymd/current/relaymd`
 
+If `/depot` is unavailable, install the same service layout under scratch instead:
+
+```bash
+./deploy/hpc/install-service-layout.sh --scratch
+```
+
+This switches the installer-managed roots to:
+
+- Service root: `/scratch/gilbreth/pballane/apps/relaymd`
+- Modulefiles root: `/scratch/gilbreth/pballane/apps/modulefiles`
+- State/config root: `/scratch/gilbreth/pballane/apps/relaymd-service`
+
 Default state/config layout:
 
 - State root: `/depot/plow/data/pballane/relaymd-service`

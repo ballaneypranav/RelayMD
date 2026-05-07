@@ -214,6 +214,27 @@ def test_storage_client_normalizes_host_only_urls(monkeypatch) -> None:
     )
     _, kwargs = boto_client.call_args
     assert kwargs["endpoint_url"] == "https://s3.us-east-005.backblazeb2.com"
+    assert kwargs["config"] is None
+
+
+def test_storage_client_uses_path_style_for_purdue(monkeypatch) -> None:
+    boto_client = Mock()
+    monkeypatch.setattr("relaymd.storage.client.boto3.client", boto_client)
+
+    StorageClient(
+        storage_provider="purdue",
+        b2_endpoint_url="https://s3.rcac.purdue.edu",
+        b2_bucket_name="relaymd-bucket",
+        b2_access_key_id="test-access-key-id",
+        b2_secret_access_key="test-secret-access-key",
+        cf_worker_url="cloudflare-backblaze-worker.pranav-purdue-account.workers.dev",
+        cf_bearer_token="download-token",
+        s3_region_name="us-east-1",
+    )
+
+    _, kwargs = boto_client.call_args
+    assert kwargs["endpoint_url"] == "https://s3.rcac.purdue.edu"
+    assert kwargs["config"].s3 == {"addressing_style": "path"}
 
 
 def test_download_file_purdue_uses_s3_not_cloudflare(tmp_path: Path) -> None:

@@ -1,9 +1,61 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
-RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
-MODULEFILES_ROOT="${MODULEFILES_ROOT:-/depot/plow/apps/modulefiles}"
+DEFAULT_DEPOT_SERVICE_ROOT="/depot/plow/apps/relaymd"
+DEFAULT_DEPOT_DATA_ROOT="/depot/plow/data/pballane/relaymd-service"
+DEFAULT_DEPOT_MODULEFILES_ROOT="/depot/plow/apps/modulefiles"
+DEFAULT_SCRATCH_APPS_ROOT="/scratch/gilbreth/pballane/apps"
+DEFAULT_SCRATCH_SERVICE_ROOT="${DEFAULT_SCRATCH_APPS_ROOT}/relaymd"
+DEFAULT_SCRATCH_DATA_ROOT="${DEFAULT_SCRATCH_APPS_ROOT}/relaymd-service"
+DEFAULT_SCRATCH_MODULEFILES_ROOT="${DEFAULT_SCRATCH_APPS_ROOT}/modulefiles"
+
+usage() {
+    cat <<'EOF'
+Usage: install-service-layout.sh [--scratch]
+
+Options:
+  --scratch  Install RelayMD under /scratch/gilbreth/pballane/apps instead of /depot.
+  -h, --help Show this help text.
+
+Environment overrides still take precedence:
+  RELAYMD_SERVICE_ROOT
+  RELAYMD_DATA_ROOT
+  MODULEFILES_ROOT
+EOF
+}
+
+use_scratch=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --scratch)
+            use_scratch=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+if [[ ${use_scratch} -eq 1 ]]; then
+    default_service_root="${DEFAULT_SCRATCH_SERVICE_ROOT}"
+    default_data_root="${DEFAULT_SCRATCH_DATA_ROOT}"
+    default_modulefiles_root="${DEFAULT_SCRATCH_MODULEFILES_ROOT}"
+else
+    default_service_root="${DEFAULT_DEPOT_SERVICE_ROOT}"
+    default_data_root="${DEFAULT_DEPOT_DATA_ROOT}"
+    default_modulefiles_root="${DEFAULT_DEPOT_MODULEFILES_ROOT}"
+fi
+
+RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-${default_service_root}}"
+RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-${default_data_root}}"
+MODULEFILES_ROOT="${MODULEFILES_ROOT:-${default_modulefiles_root}}"
 MODULE_NAME="${MODULE_NAME:-relaymd}"
 MODULE_VERSION="${MODULE_VERSION:-current}"
 
@@ -47,6 +99,9 @@ sed \
     "${REPO_ROOT}/deploy/hpc/modulefiles/relaymd.lua" > "${MODULEFILE_PATH}"
 chmod 0644 "${MODULEFILE_PATH}"
 
+if [[ ${use_scratch} -eq 1 ]]; then
+    echo "Install mode: scratch"
+fi
 echo "Installed wrappers to: ${BIN_DIR}"
 echo "Installed CLI wrapper: ${BIN_DIR}/relaymd"
 echo "Modulefile: ${MODULEFILE_PATH}"

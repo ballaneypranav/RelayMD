@@ -7,6 +7,7 @@ from urllib.parse import quote
 import boto3
 import httpx
 from boto3.s3.transfer import TransferConfig
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, EndpointResolutionError
 from tenacity import (
     retry,
@@ -75,12 +76,16 @@ class StorageClient:
             use_threads=True,
         )
         normalized_b2_endpoint_url = _normalize_url(b2_endpoint_url)
+        client_config = (
+            Config(s3={"addressing_style": "path"}) if storage_provider == "purdue" else None
+        )
         self._s3 = boto3.client(
             "s3",
             endpoint_url=normalized_b2_endpoint_url,
             aws_access_key_id=b2_access_key_id,
             aws_secret_access_key=b2_secret_access_key,
             region_name=s3_region_name,
+            config=client_config,
         )
 
     @retry(
