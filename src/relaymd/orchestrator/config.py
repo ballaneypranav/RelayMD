@@ -284,6 +284,7 @@ class OrchestratorSettings(BaseSettings):
             settings_cls=settings_cls,
             init_settings=init_settings,
             env_override_map={
+                "storage_provider": ("RELAYMD_STORAGE_PROVIDER",),
                 "log_directory": ("RELAYMD_LOG_DIRECTORY",),
                 "infisical_token": ("INFISICAL_TOKEN",),
                 "salad_api_key": ("SALAD_API_KEY",),
