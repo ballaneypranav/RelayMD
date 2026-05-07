@@ -114,10 +114,11 @@ the Docker orchestrator image uses a separate Node builder stage. The
 orchestrator app def installs the current workspace RelayMD package and builds
 frontend assets on top of that base.
 
-CI uses `relaymd-orchestrator.dockerbase.def` for production SIFs. That
-definition starts from the Docker-equivalent orchestrator base and copies
-prebuilt `frontend/dist` assets, preserving parity with `Dockerfile.orchestrator`
-while avoiding Node inside the runtime base.
+Production SIFs published by CI are converted from the already-built Docker
+images with `apptainer pull`, which works on GitHub-hosted runners without
+fakeroot privileges. The `relaymd-orchestrator.dockerbase.def` definition is
+kept as a Docker-equivalent app-layer definition for environments that can run
+local Apptainer builds.
 
 Default base cache paths:
 
