@@ -296,8 +296,9 @@ Use loopback binding and forward only proxy port `36159` to your laptop.
 1. start services with `relaymd up`
 2. forward `36159` in VS Code/SSH tunnel
 
-The proxy injects `RELAYMD_API_TOKEN` upstream, so browsers never need direct
-API token handling.
+The proxy hydrates `RELAYMD_API_TOKEN` and dashboard login credentials from
+Infisical, then injects the API token upstream so browsers never need direct API
+token handling.
 
 Note: login-node tmux services are non-durable and can be culled/restarted by
 cluster maintenance. Operationally, use `relaymd status` and wrapper

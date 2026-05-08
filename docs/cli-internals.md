@@ -74,5 +74,5 @@ When neither env var is set, standalone fallback paths are
 `~/.config/relaymd/config.yaml` and then `./relaymd-config.yaml`.
 `INFISICAL_TOKEN` is env-only and is intentionally ignored in YAML; for HPC
 service installs it belongs in `$RELAYMD_DATA_ROOT/config/relaymd-service.env`.
-The CLI then hydrates missing `api_token` and B2 credentials via Infisical
-before executing commands.
+The CLI then hydrates runtime secrets such as `api_token`, storage credentials,
+and optional download bearer token via Infisical before executing commands.

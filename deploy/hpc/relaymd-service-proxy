@@ -118,18 +118,8 @@ if [[ -n "${locked_host}" && "${locked_host}" != "${CURRENT_HOST}" ]]; then
     fi
 fi
 
-if [[ -z "${RELAYMD_API_TOKEN:-}" ]]; then
-    echo "RELAYMD_API_TOKEN is required" >&2
-    exit 1
-fi
-
-if [[ -z "${RELAYMD_DASHBOARD_USERNAME:-}" ]]; then
-    echo "RELAYMD_DASHBOARD_USERNAME is required" >&2
-    exit 1
-fi
-
-if [[ -z "${RELAYMD_DASHBOARD_PASSWORD:-}" ]]; then
-    echo "RELAYMD_DASHBOARD_PASSWORD is required" >&2
+if [[ -z "${INFISICAL_TOKEN:-}" ]]; then
+    echo "INFISICAL_TOKEN is required (set it in environment or ${RELAYMD_ENV_FILE})" >&2
     exit 1
 fi
 
@@ -159,10 +149,8 @@ fi
 
 tmux new-session -d -s "${SESSION_NAME}" -n "relaymd-proxy"
 
-# Inject credentials via session environment so they are not exposed in command-line args.
-tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_API_TOKEN "${RELAYMD_API_TOKEN}"
-tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_USERNAME "${RELAYMD_DASHBOARD_USERNAME}"
-tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_RELAYMD_DASHBOARD_PASSWORD "${RELAYMD_DASHBOARD_PASSWORD}"
+# Inject only the Infisical bootstrap token; proxy credentials are hydrated in-container.
+tmux set-environment -t "${SESSION_NAME}" APPTAINERENV_INFISICAL_TOKEN "${INFISICAL_TOKEN}"
 tmux set-environment -t "${SESSION_NAME}" APPTAINER_TMPDIR "${APPTAINER_TMPDIR}"
 tmux set-environment -t "${SESSION_NAME}" APPTAINER_CACHEDIR "${APPTAINER_CACHEDIR}"
 tmux set-environment -t "${SESSION_NAME}" TMPDIR "${TMPDIR}"
