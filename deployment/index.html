@@ -1504,8 +1504,9 @@ start/exit metadata plus heartbeat updates in the shared status file.</p>
 <li>start services with <code>relaymd up</code></li>
 <li>forward <code>36159</code> in VS Code/SSH tunnel</li>
 </ol>
-<p>The proxy injects <code>RELAYMD_API_TOKEN</code> upstream, so browsers never need direct
-API token handling.</p>
+<p>The proxy hydrates <code>RELAYMD_API_TOKEN</code> and dashboard login credentials from
+Infisical, then injects the API token upstream so browsers never need direct API
+token handling.</p>
 <p>Note: login-node tmux services are non-durable and can be culled/restarted by
 cluster maintenance. Operationally, use <code>relaymd status</code> and wrapper
 logs to verify service health after reconnects or host events.</p>
