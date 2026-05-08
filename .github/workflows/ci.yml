@@ -517,7 +517,7 @@ jobs:
           fi
           tag="base-worker-sha256-${digest}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-worker-base-sif:${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-worker-base:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore worker base SIF cache
         id: cache-worker-base
         uses: actions/cache@v4
@@ -545,7 +545,7 @@ jobs:
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           apptainer push relaymd-worker-base.sif \
-            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base-sif:${{ steps.uri.outputs.tag }}"
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:${{ steps.uri.outputs.tag }}"
 
   build-orchestrator-base-sif:
     needs: [changes, build-orchestrator-base]
@@ -581,7 +581,7 @@ jobs:
           fi
           tag="base-orchestrator-sha256-${digest}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-orchestrator-base-sif:${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-orchestrator-base:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore orchestrator base SIF cache
         id: cache-orchestrator-base
         uses: actions/cache@v4
@@ -609,7 +609,7 @@ jobs:
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: |
           apptainer push relaymd-orchestrator-base.sif \
-            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base-sif:${{ steps.uri.outputs.tag }}"
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:${{ steps.uri.outputs.tag }}"
 
   build-worker-sif:
     needs: [changes, build-worker, build-worker-base-sif, cli-version-guard]
