@@ -16,6 +16,8 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
                 "database_url: sqlite+aiosqlite:////tmp/relaymd.db",
                 "log_directory: /tmp/relaymd-logs",
                 "api_token: yaml-token",
+                "axiom_token: yaml-axiom-token",
+                "tailscale_auth_key: yaml-ts-key",
                 "heartbeat_timeout_multiplier: 2.5",
                 "slurm_cluster_configs:",
                 "  - name: gilbreth-a30",
@@ -46,8 +48,10 @@ def test_loads_yaml_config_from_relaymd_config_path(monkeypatch, tmp_path) -> No
 
     assert settings.database_url == "sqlite+aiosqlite:////tmp/relaymd.db"
     assert settings.log_directory == "/tmp/relaymd-logs"
-    assert settings.api_token == "yaml-token"
+    assert settings.api_token == ""
+    assert settings.axiom_token == "test"
     assert settings.infisical_token == ""
+    assert settings.tailscale_auth_key == ""
     assert settings.heartbeat_timeout_multiplier == 2.5
     assert settings.slurm_cluster_configs == [
         ClusterConfig(
@@ -81,15 +85,26 @@ def test_missing_yaml_path_is_non_fatal(monkeypatch, tmp_path) -> None:
     assert settings.database_url == "sqlite+aiosqlite:///./relaymd.db"
 
 
-def test_yaml_value_not_overridden_by_unlisted_env_var(monkeypatch, tmp_path) -> None:
+def test_secret_yaml_values_are_ignored(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
-    config_path.write_text("api_token: yaml-token\n", encoding="utf-8")
+    config_path.write_text(
+        "\n".join(
+            [
+                "api_token: yaml-token",
+                "axiom_token: yaml-axiom-token",
+                "tailscale_auth_key: yaml-ts-key",
+            ]
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
     monkeypatch.setenv("RELAYMD_API_TOKEN", "env-token")
 
-    settings = OrchestratorSettings(axiom_token="test")
+    settings = OrchestratorSettings()
 
-    assert settings.api_token == "yaml-token"
+    assert settings.api_token == ""
+    assert settings.axiom_token == ""
+    assert settings.tailscale_auth_key == ""
 
 
 def test_unregistered_env_and_yaml_alias_keys_are_ignored(monkeypatch, tmp_path) -> None:
@@ -125,11 +140,14 @@ def test_infisical_token_yaml_keys_are_ignored(monkeypatch, tmp_path) -> None:
 
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     home_config = tmp_path / "home-config.yaml"
-    home_config.write_text("api_token: home-token\n", encoding="utf-8")
+    home_config.write_text("database_url: sqlite+aiosqlite:////tmp/home.db\n", encoding="utf-8")
 
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
-    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "database_url: sqlite+aiosqlite:////tmp/cwd.db\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
     monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
@@ -140,16 +158,22 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
 
     settings = OrchestratorSettings(axiom_token="test")
 
-    assert settings.api_token == "cwd-token"
+    assert settings.database_url == "sqlite+aiosqlite:////tmp/cwd.db"
 
 
 def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     explicit_config = tmp_path / "explicit-config.yaml"
-    explicit_config.write_text("api_token: explicit-token\n", encoding="utf-8")
+    explicit_config.write_text(
+        "database_url: sqlite+aiosqlite:////tmp/explicit.db\n",
+        encoding="utf-8",
+    )
 
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
-    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "database_url: sqlite+aiosqlite:////tmp/cwd.db\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setenv("RELAYMD_CONFIG", str(explicit_config))
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
@@ -158,7 +182,7 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
 
     settings = OrchestratorSettings(axiom_token="test")
 
-    assert settings.api_token == "explicit-token"
+    assert settings.database_url == "sqlite+aiosqlite:////tmp/explicit.db"
 
 
 def test_relaymd_log_directory_env_is_loaded(monkeypatch, tmp_path) -> None:

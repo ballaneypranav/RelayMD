@@ -85,16 +85,23 @@ def test_infisical_token_yaml_key_is_ignored(monkeypatch, tmp_path) -> None:
     assert settings.infisical_token == ""
 
 
-def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path) -> None:
+def test_secret_yaml_values_are_ignored(monkeypatch, tmp_path) -> None:
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
     (cwd_dir / "relaymd-config.yaml").write_text(
         "\n".join(
             [
+                "api_token: yaml-token",
                 "b2_endpoint_url: https://yaml.endpoint",
                 "b2_bucket_name: yaml-bucket",
                 "b2_access_key_id: yaml-access",
                 "b2_secret_access_key: yaml-secret",
+                "cf_bearer_token: yaml-bearer",
+                "purdue_s3_endpoint: https://yaml.purdue",
+                "purdue_s3_bucket_name: yaml-purdue-bucket",
+                "purdue_s3_access_key: yaml-purdue-access",
+                "purdue_s3_secret_key: yaml-purdue-secret",
+                "purdue_s3_user: yaml-purdue-user",
                 "",
             ]
         ),
@@ -111,19 +118,29 @@ def test_b2_yaml_values_not_overridden_by_non_aliased_env(monkeypatch, tmp_path)
 
     settings = CliSettings()
 
-    assert settings.b2_endpoint_url == "https://yaml.endpoint"
-    assert settings.b2_bucket_name == "yaml-bucket"
-    assert settings.b2_access_key_id == "yaml-access"
-    assert settings.b2_secret_access_key == "yaml-secret"
+    assert settings.api_token == ""
+    assert settings.b2_endpoint_url == ""
+    assert settings.b2_bucket_name == ""
+    assert settings.b2_access_key_id == ""
+    assert settings.b2_secret_access_key == ""
+    assert settings.cf_bearer_token == ""
+    assert settings.purdue_s3_endpoint == ""
+    assert settings.purdue_s3_bucket_name == ""
+    assert settings.purdue_s3_access_key == ""
+    assert settings.purdue_s3_secret_key == ""
+    assert settings.purdue_s3_user == ""
 
 
 def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
     home_config = tmp_path / "home-config.yaml"
-    home_config.write_text("api_token: home-token\n", encoding="utf-8")
+    home_config.write_text("orchestrator_timeout_seconds: 10\n", encoding="utf-8")
 
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
-    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "orchestrator_timeout_seconds: 20\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
     monkeypatch.delenv("RELAYMD_DATA_ROOT", raising=False)
@@ -134,16 +151,19 @@ def test_cwd_config_overrides_home_config(monkeypatch, tmp_path) -> None:
 
     settings = CliSettings()
 
-    assert settings.api_token == "cwd-token"
+    assert settings.orchestrator_timeout_seconds == 20
 
 
 def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
     explicit_config = tmp_path / "explicit-config.yaml"
-    explicit_config.write_text("api_token: explicit-token\n", encoding="utf-8")
+    explicit_config.write_text("orchestrator_timeout_seconds: 10\n", encoding="utf-8")
 
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
-    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "orchestrator_timeout_seconds: 20\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setenv("RELAYMD_CONFIG", str(explicit_config))
     monkeypatch.delenv("RELAYMD_API_TOKEN", raising=False)
@@ -152,7 +172,7 @@ def test_explicit_relaymd_config_env_skips_cwd(monkeypatch, tmp_path) -> None:
 
     settings = CliSettings()
 
-    assert settings.api_token == "explicit-token"
+    assert settings.orchestrator_timeout_seconds == 10
 
 
 def test_data_root_sets_default_config_path(monkeypatch, tmp_path) -> None:
@@ -160,13 +180,16 @@ def test_data_root_sets_default_config_path(monkeypatch, tmp_path) -> None:
     config_dir = data_root / "config"
     config_dir.mkdir(parents=True)
     (config_dir / "relaymd-config.yaml").write_text(
-        "api_token: data-root-token\n",
+        "orchestrator_timeout_seconds: 10\n",
         encoding="utf-8",
     )
 
     cwd_dir = tmp_path / "project"
     cwd_dir.mkdir()
-    (cwd_dir / "relaymd-config.yaml").write_text("api_token: cwd-token\n", encoding="utf-8")
+    (cwd_dir / "relaymd-config.yaml").write_text(
+        "orchestrator_timeout_seconds: 20\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.delenv("RELAYMD_CONFIG", raising=False)
     monkeypatch.setenv("RELAYMD_DATA_ROOT", str(data_root))
@@ -174,7 +197,7 @@ def test_data_root_sets_default_config_path(monkeypatch, tmp_path) -> None:
 
     settings = CliSettings()
 
-    assert settings.api_token == "data-root-token"
+    assert settings.orchestrator_timeout_seconds == 10
 
 
 def test_load_settings_hydrates_missing_values_from_infisical(monkeypatch, tmp_path) -> None:

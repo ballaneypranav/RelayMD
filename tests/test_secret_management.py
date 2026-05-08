@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from relaymd.secret_management import InfisicalSecretManager, MissingRequiredSecretsError
+from relaymd.secret_management import (
+    DashboardProxySecretManager,
+    InfisicalSecretManager,
+    MissingRequiredSecretsError,
+)
 
 
 def _dependency_loader_for(
@@ -122,3 +126,28 @@ def test_fetch_mapped_secrets_reraises_optional_keyerror() -> None:
             required={"required": "REQUIRED"},
             optional={"optional": "OPTIONAL"},
         )
+
+
+def test_dashboard_proxy_secret_manager_fetches_proxy_values() -> None:
+    manager = DashboardProxySecretManager(
+        machine_token="client-id:client-secret",
+        dependency_loader=lambda: _dependency_loader_for(
+            values={
+                "RELAYMD_API_TOKEN": "api-token",
+                "RELAYMD_DASHBOARD_USERNAME": "operator",
+                "RELAYMD_DASHBOARD_PASSWORD": "password",
+                "RELAYMD_DASHBOARD_SESSION_SECRET": "session-secret",
+            }
+        ),
+        base_url="https://app.infisical.com",
+        workspace_id="workspace",
+        environment="prod",
+        secret_path="/RelayMD",
+    )
+
+    assert manager.fetch_proxy_values() == {
+        "api_token": "api-token",
+        "dashboard_username": "operator",
+        "dashboard_password": "password",
+        "dashboard_session_secret": "session-secret",
+    }
