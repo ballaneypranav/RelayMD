@@ -1,5 +1,6 @@
 from relaymd.core_secret_management import (
     CliSecretManager,
+    DashboardProxySecretManager,
     InfisicalSecretManager,
     MissingRequiredSecretsError,
     OrchestratorSecretManager,
@@ -8,6 +9,7 @@ from relaymd.core_secret_management import (
 
 __all__ = [
     "CliSecretManager",
+    "DashboardProxySecretManager",
     "InfisicalSecretManager",
     "MissingRequiredSecretsError",
     "OrchestratorSecretManager",

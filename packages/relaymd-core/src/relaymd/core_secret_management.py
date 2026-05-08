@@ -166,3 +166,17 @@ class WorkerSecretManager(InfisicalSecretManager):
                 "purdue_s3_user": "PURDUE_S3_USER",
             },
         )
+
+
+class DashboardProxySecretManager(InfisicalSecretManager):
+    def fetch_proxy_values(self) -> dict[str, str]:
+        return self.fetch_mapped_secrets(
+            required={
+                "api_token": "RELAYMD_API_TOKEN",
+                "dashboard_username": "RELAYMD_DASHBOARD_USERNAME",
+                "dashboard_password": "RELAYMD_DASHBOARD_PASSWORD",
+            },
+            optional={
+                "dashboard_session_secret": "RELAYMD_DASHBOARD_SESSION_SECRET",
+            },
+        )

@@ -296,7 +296,12 @@ class OrchestratorSettings(BaseSettings):
                 "axiom_dataset": ("AXIOM_DATASET",),
             },
             config_paths=cls.config_paths(),
-            yaml_env_only_fields={"infisical_token"},
+            yaml_env_only_fields={
+                "api_token",
+                "axiom_token",
+                "infisical_token",
+                "tailscale_auth_key",
+            },
         )
 
 
