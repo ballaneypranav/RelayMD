@@ -120,6 +120,8 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert "#SBATCH --export=ALL" in rendered
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
     assert "export INFISICAL_BOOTSTRAP_TOKEN='client-id:client-secret'" in rendered
+    assert "export APPTAINERENV_INFISICAL_TOKEN=\"${INFISICAL_BOOTSTRAP_TOKEN}\"" in rendered
+    assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
@@ -440,6 +442,7 @@ async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> Non
     assert len(fake_logger.messages) == 1
     logged_script = fake_logger.messages[0]
     assert "export INFISICAL_BOOTSTRAP_TOKEN='[REDACTED]'" in logged_script
+    assert "export APPTAINERENV_INFISICAL_TOKEN='[REDACTED]'" in logged_script
     assert "export APPTAINER_DOCKER_PASSWORD='[REDACTED]'" in logged_script
     assert "client-id:client-secret" not in logged_script
     assert "gh-token" not in logged_script
@@ -596,6 +599,7 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
     assert "#SBATCH --account=lab-account" in content
     assert "client-id:client-secret" not in content
     assert "export INFISICAL_BOOTSTRAP_TOKEN='[REDACTED]'" in content
+    assert "export APPTAINERENV_INFISICAL_TOKEN='[REDACTED]'" in content
 
 
 @pytest.mark.asyncio
@@ -641,6 +645,8 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
 
     rendered = captured["script"]
     assert "export INFISICAL_BOOTSTRAP_TOKEN='tok$HOME`date`'\"'\"'abc\\def'" in rendered
+    assert "export APPTAINERENV_INFISICAL_TOKEN=\"${INFISICAL_BOOTSTRAP_TOKEN}\"" in rendered
+    assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
 
 
 @pytest.mark.asyncio

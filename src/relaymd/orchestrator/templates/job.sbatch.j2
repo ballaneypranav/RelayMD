@@ -31,6 +31,7 @@ set -euo pipefail
 
 export INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token_shell_quoted }}
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
+export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
 {% if apptainer_docker_login %}
 export APPTAINER_DOCKER_USERNAME={{ apptainer_docker_username_shell_quoted }}
 export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
@@ -106,7 +107,6 @@ apptainer_args=(
 {% if worker_pythonpath_shell_quoted %}
   --env PYTHONPATH={{ worker_pythonpath_shell_quoted }}
 {% endif %}
-  --env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
   --env WORKER_PLATFORM="{{ worker_platform | default("hpc") }}"
   --env HEARTBEAT_INTERVAL_SECONDS="{{ worker_heartbeat_interval_seconds | default(60) }}"
   --env CHECKPOINT_POLL_INTERVAL_SECONDS="{{ worker_checkpoint_poll_interval_seconds | default(300) }}"
