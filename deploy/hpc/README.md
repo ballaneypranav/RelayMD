@@ -340,7 +340,10 @@ The installer seeds:
 - `/depot/plow/data/pballane/relaymd-service/config/relaymd-config.yaml`
 - `/depot/plow/data/pballane/relaymd-service/config/relaymd-service.env`
 
-Edit `relaymd-service.env` and keep it private (`chmod 600`).
+Edit `relaymd-service.env` and keep it private (`chmod 600`). It should contain
+the Infisical bootstrap token and service-wrapper overrides only; runtime
+secrets such as storage credentials, API token, and dashboard credentials are
+sourced from Infisical.
 Use [relaymd-service.env.example](./relaymd-service.env.example) as template.
 
 ## Overrides

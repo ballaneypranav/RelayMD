@@ -60,7 +60,9 @@ The rendered script includes:
 - `#SBATCH --mem-per-gpu={{ memory_per_gpu }}` (when configured)
 - `#SBATCH --time={{ wall_time }}`
 - `#SBATCH --signal=TERM@{{ slurm_sigterm_margin_seconds }}`
-- `#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token }}`
+- `#SBATCH --export=ALL`
+- `export INFISICAL_BOOTSTRAP_TOKEN=...`
+- `export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"`
 
 For private registry pulls (`image_uri`), set Apptainer auth env vars in the
 service env file before startup:

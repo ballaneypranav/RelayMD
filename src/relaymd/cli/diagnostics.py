@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from relaymd import dashboard_proxy_main
 from relaymd.cli import config as cli_config
 from relaymd.cli.runtime_paths import RelaymdPaths, resolve_paths
 from relaymd.orchestrator import config as orchestrator_config
@@ -162,12 +163,13 @@ def _requires_tailscale(settings: orchestrator_config.OrchestratorSettings) -> b
 def _secrets_section(
     cli_status: dict[str, Any],
     orchestrator_status: dict[str, Any],
+    proxy_status: dict[str, Any],
 ) -> dict[str, Any]:
     token_present = bool(os.environ.get("INFISICAL_TOKEN", "").strip())
-    hydration_ok = bool(cli_status["ok"] and orchestrator_status["ok"])
+    hydration_ok = bool(cli_status["ok"] and orchestrator_status["ok"] and proxy_status["ok"])
     errors = [
         status.get("error", "")
-        for status in (cli_status, orchestrator_status)
+        for status in (cli_status, orchestrator_status, proxy_status)
         if status.get("error")
     ]
     return _section(
@@ -201,9 +203,20 @@ def _release_section(paths: RelaymdPaths) -> dict[str, Any]:
 
 
 def _proxy_auth_section() -> dict[str, Any]:
-    api_token = _present(os.environ.get("RELAYMD_API_TOKEN"))
-    username = _present(os.environ.get("RELAYMD_DASHBOARD_USERNAME"))
-    password = _present(os.environ.get("RELAYMD_DASHBOARD_PASSWORD"))
+    try:
+        settings = dashboard_proxy_main.load_proxy_settings()
+    except Exception as exc:  # noqa: BLE001
+        return _section(
+            False,
+            api_token="missing",
+            username="missing",
+            password="missing",
+            error=_redact_error(exc),
+        )
+
+    api_token = _present(settings.upstream_api_token)
+    username = _present(settings.username)
+    password = _present(settings.password)
     return _section(
         api_token == username == password == "present",
         api_token=api_token,
@@ -317,14 +330,15 @@ def collect_readiness(paths: RelaymdPaths | None = None) -> dict[str, Any]:
     config = _config_section(active_paths)
     cli_submit, _cli_settings = _cli_submit_section()
     orchestrator_status, orchestrator_settings = _orchestrator_section()
+    proxy_auth = _proxy_auth_section()
     readiness: dict[str, Any] = {
         "env_file": env_file,
         "config": config,
-        "secrets": _secrets_section(cli_submit, orchestrator_status),
+        "secrets": _secrets_section(cli_submit, orchestrator_status, proxy_auth),
         "cli_submit": cli_submit,
         "orchestrator_config": orchestrator_status,
         "release": _release_section(active_paths),
-        "proxy_auth": _proxy_auth_section(),
+        "proxy_auth": proxy_auth,
         "scheduler": _scheduler_section(orchestrator_settings),
         "network": _network_section(orchestrator_settings),
         "database": _database_section(orchestrator_settings),

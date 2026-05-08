@@ -132,7 +132,20 @@ class CliSettings(BaseSettings):
                 ),
             },
             config_paths=cls.config_paths(),
-            yaml_env_only_fields={"infisical_token"},
+            yaml_env_only_fields={
+                "api_token",
+                "infisical_token",
+                "b2_endpoint_url",
+                "b2_bucket_name",
+                "b2_access_key_id",
+                "b2_secret_access_key",
+                "cf_bearer_token",
+                "purdue_s3_endpoint",
+                "purdue_s3_bucket_name",
+                "purdue_s3_access_key",
+                "purdue_s3_secret_key",
+                "purdue_s3_user",
+            },
         )
 
 

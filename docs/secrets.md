@@ -23,8 +23,16 @@ Primary runtime secrets:
 - `B2_ENDPOINT`
 - `BUCKET_NAME`
 - `DOWNLOAD_BEARER_TOKEN` (optional)
+- `PURDUE_S3_ENDPOINT`
+- `PURDUE_S3_BUCKET_NAME`
+- `PURDUE_S3_ACCESS_KEY`
+- `PURDUE_S3_SECRET_KEY`
+- `PURDUE_S3_USER` (optional)
 - `RELAYMD_ORCHESTRATOR_URL`
 - `TAILSCALE_AUTH_KEY`
+- `RELAYMD_DASHBOARD_USERNAME`
+- `RELAYMD_DASHBOARD_PASSWORD`
+- `RELAYMD_DASHBOARD_SESSION_SECRET` (optional)
 
 Additional infra-level secrets (currently not consumed by core Python runtime):
 - `CLOUDFLARE_ACCOUNT_ID`
@@ -58,6 +66,11 @@ optional download bearer token, and Axiom token).
 Infisical before use. CLI startup fails fast when the token is missing/invalid or when required
 hydrated values are missing. The optional download bearer token is also read from Infisical when
 present.
+
+### Dashboard proxy
+
+`src/relaymd/dashboard_proxy_main.py` requires `INFISICAL_TOKEN` and hydrates the upstream
+API token plus dashboard login credentials from Infisical before starting the proxy.
 
 `relaymd status` also performs live Infisical validation through the internal
 `relaymd config diagnose --json` command. The status output reports only redacted

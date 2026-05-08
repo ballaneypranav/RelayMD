@@ -82,6 +82,14 @@ def _fake_orchestrator_settings_without_provisioning(tmp_path: Path) -> SimpleNa
     )
 
 
+def _fake_proxy_settings() -> SimpleNamespace:
+    return SimpleNamespace(
+        upstream_api_token="api-token",
+        username="operator",
+        password="password",
+    )
+
+
 def _prepare_release(paths: RelaymdPaths) -> None:
     paths.env_file.parent.mkdir(parents=True)
     paths.env_file.write_text("INFISICAL_TOKEN=client:secret\n", encoding="utf-8")
@@ -155,6 +163,11 @@ def test_collect_readiness_reports_successful_full_readiness(
     monkeypatch.setattr(diagnostics.cli_config, "load_settings", _fake_cli_settings)
     orch_settings = _fake_orchestrator_settings(tmp_path)
     _patch_orchestrator_settings(monkeypatch, orch_settings)
+    monkeypatch.setattr(
+        diagnostics.dashboard_proxy_main,
+        "load_proxy_settings",
+        _fake_proxy_settings,
+    )
     monkeypatch.setattr(diagnostics.shutil, "which", lambda name: f"/usr/bin/{name}")
 
     readiness = diagnostics.collect_readiness(paths)
@@ -179,6 +192,11 @@ def test_collect_readiness_reports_missing_proxy_auth(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(diagnostics.cli_config, "load_settings", _fake_cli_settings)
     orch_settings = _fake_orchestrator_settings(tmp_path)
     _patch_orchestrator_settings(monkeypatch, orch_settings)
+    monkeypatch.setattr(
+        diagnostics.dashboard_proxy_main,
+        "load_proxy_settings",
+        lambda: (_ for _ in ()).throw(RuntimeError("RELAYMD_DASHBOARD_PASSWORD missing")),
+    )
     monkeypatch.setattr(diagnostics.shutil, "which", lambda name: f"/usr/bin/{name}")
 
     readiness = diagnostics.collect_readiness(paths)
@@ -201,6 +219,11 @@ def test_collect_readiness_does_not_require_tailscale_without_provisioning(
     monkeypatch.setattr(diagnostics.cli_config, "load_settings", _fake_cli_settings)
     orch_settings = _fake_orchestrator_settings_without_provisioning(tmp_path)
     _patch_orchestrator_settings(monkeypatch, orch_settings)
+    monkeypatch.setattr(
+        diagnostics.dashboard_proxy_main,
+        "load_proxy_settings",
+        _fake_proxy_settings,
+    )
 
     readiness = diagnostics.collect_readiness(paths)
 

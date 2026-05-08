@@ -6,10 +6,8 @@
 # Path to the SQLite database file. Use an absolute path on a stable filesystem.
 database_url: sqlite+aiosqlite:////depot/plow/data/pballane/relaymd-service/db/relaymd.db
 
-# API token is sourced from Infisical at runtime.
-# Do not set local overrides; provide INFISICAL_TOKEN via environment
-# (for service installs: relaymd-service.env).
-# api_token: ""
+# API token and other runtime secrets are sourced from Infisical at runtime.
+# Provide INFISICAL_TOKEN via environment (for service installs: relaymd-service.env).
 
 # Tailscale settings for the orchestrator.
 # tailscale_hostname is used as the stable MagicDNS name for this orchestrator
@@ -124,32 +122,11 @@ orchestrator_url: http://localhost:36158
 
 # Storage provider used by relaymd submit/checkpoint paths.
 # Supported values: cloudflare_backblaze, purdue
+# Storage credentials for the selected provider are sourced from Infisical.
 storage_provider: purdue
-
-# B2 S3-compatible endpoint used by relaymd submit for direct bundle uploads.
-b2_endpoint_url: https://s3.us-west-000.backblazeb2.com
-
-# B2 bucket name for job bundles.
-b2_bucket_name: relaymd-bucket
-
-# B2 application key ID for uploads.
-b2_access_key_id: your-key-id
-
-# B2 application key secret for uploads.
-b2_secret_access_key: your-secret
 
 # Cloudflare Worker URL used by relaymd storage downloads.
 cf_worker_url: https://cloudflare-backblaze-worker.pranav-purdue-account.workers.dev
-
-# Optional bearer token for Cloudflare Worker downloads.
-cf_bearer_token: ""
-
-# Purdue S3 settings (used when storage_provider: purdue).
-purdue_s3_endpoint: https://s3.rcac.purdue.edu
-purdue_s3_bucket_name: your-purdue-bucket
-purdue_s3_access_key: your-purdue-access-key
-purdue_s3_secret_key: your-purdue-secret-key
-purdue_s3_user: your-purdue-user
 
 # Timeout for CLI requests to the orchestrator API.
 # Can be set via ORCHESTRATOR_TIMEOUT_SECONDS env var.

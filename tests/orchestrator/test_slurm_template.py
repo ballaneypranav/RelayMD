@@ -33,7 +33,10 @@ def test_job_template_renders_cluster_a_values() -> None:
     assert "#SBATCH --partition=gpu" in rendered
     assert "#SBATCH --gres=gpu:a100:2" in rendered
     assert "#SBATCH --mem-per-gpu=60G" in rendered
-    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" in rendered
+    assert "#SBATCH --export=ALL" in rendered
+    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
+    assert 'export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' in rendered
+    assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
     assert "#SBATCH --time=3:30:00" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered
@@ -64,7 +67,12 @@ def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
     assert "#SBATCH --ntasks=8" in rendered
     assert "#SBATCH --qos=standby" in rendered
     assert "#SBATCH --mem=80G" in rendered
-    assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" in rendered
+    assert "#SBATCH --export=ALL" in rendered
+    assert (
+        "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" not in rendered
+    )
+    assert 'export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' in rendered
+    assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
     assert "#SBATCH --time=4:00:00" in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env WORKER_PLATFORM="hpc"' in rendered

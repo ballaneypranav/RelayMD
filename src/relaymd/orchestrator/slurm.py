@@ -255,7 +255,7 @@ def _write_sbatch_script_to_disk(
 
 def _redact_sbatch_script_for_disk(rendered_script: str) -> str:
     redacted = re.sub(
-        r"(?m)^(export INFISICAL_BOOTSTRAP_TOKEN=).*$",
+        r"(?m)^(export (?:INFISICAL_BOOTSTRAP_TOKEN|APPTAINERENV_INFISICAL_TOKEN)=).*$",
         r"\1'[REDACTED]'",
         rendered_script,
     )

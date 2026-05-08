@@ -33,33 +33,18 @@ Config path selection is:
 
 Start from the reference config file (`deploy/config.example.yaml` in the repo) and set:
 - `orchestrator_url` (Note: YAML configuration takes precedence over the `RELAYMD_ORCHESTRATOR_URL` environment variable)
-- `api_token`
 - `storage_provider` (`cloudflare_backblaze` or `purdue`)
-- if `storage_provider=cloudflare_backblaze`:
-- `b2_endpoint_url`
-- `b2_bucket_name`
-- `b2_access_key_id`
-- `b2_secret_access_key`
 - `cf_worker_url` (Cloudflare proxy download path)
-- if `storage_provider=purdue`:
-- `purdue_s3_endpoint`
-- `purdue_s3_bucket_name`
-- `purdue_s3_access_key`
-- `purdue_s3_secret_key`
 - `orchestrator_timeout_seconds` (optional)
 
 `INFISICAL_TOKEN` must be set in the environment (for HPC service installs, set it
 in `$RELAYMD_DATA_ROOT/config/relaymd-service.env`).
+Runtime secrets such as `RELAYMD_API_TOKEN`, B2 credentials, Purdue S3
+credentials, and `DOWNLOAD_BEARER_TOKEN` are sourced from Infisical, not YAML.
 
 Environment overrides (take precedence over YAML):
-- `RELAYMD_API_TOKEN` or `API_TOKEN`
-- `INFISICAL_TOKEN` or `RELAYMD_INFISICAL_TOKEN`
-- `B2_ENDPOINT_URL` or `B2_ENDPOINT`
-- `B2_BUCKET_NAME` or `BUCKET_NAME`
-- `B2_ACCESS_KEY_ID` or `B2_APPLICATION_KEY_ID`
-- `B2_SECRET_ACCESS_KEY` or `B2_APPLICATION_KEY`
+- `INFISICAL_TOKEN`
 - `CF_WORKER_URL`
-- `CF_BEARER_TOKEN` or `DOWNLOAD_BEARER_TOKEN`
 - `RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS` (optional)
 
 ## Commands
