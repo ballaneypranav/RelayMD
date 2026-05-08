@@ -490,7 +490,7 @@ jobs:
       sif_uri: ${{ steps.uri.outputs.sif_uri }}
     permissions:
       contents: write
-      packages: read
+      packages: write
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_base_image == 'true' && needs.build-worker-base.result == 'success' }}
     runs-on: ubuntu-22.04
     steps:
@@ -554,7 +554,7 @@ jobs:
       sif_uri: ${{ steps.uri.outputs.sif_uri }}
     permissions:
       contents: write
-      packages: read
+      packages: write
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_base_image == 'true' && needs.build-orchestrator-base.result == 'success' }}
     runs-on: ubuntu-22.04
     steps:
