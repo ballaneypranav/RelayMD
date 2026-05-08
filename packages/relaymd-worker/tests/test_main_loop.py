@@ -1551,8 +1551,8 @@ def test_run_assigned_job_fails_fast_when_cuda_required_but_unavailable(
     _write_bundle_tar_with_yaml(bundle_tar, "CUDA")
 
     storage = Mock()
-    storage.download_file.side_effect = lambda src, dst: bundle_tar.read_bytes() and dst.write_bytes(
-        bundle_tar.read_bytes()
+    storage.download_file.side_effect = lambda src, dst: (
+        bundle_tar.read_bytes() and dst.write_bytes(bundle_tar.read_bytes())
     )
     gateway = Mock()
     logger = Mock()
