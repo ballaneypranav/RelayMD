@@ -517,7 +517,7 @@ jobs:
           fi
           tag="base-worker-sha256-${digest}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=https://github.com/${OWNER}/relaymd/releases/download/${tag}/relaymd-worker-base.sif" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-worker-base-sif:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore worker base SIF cache
         id: cache-worker-base
         uses: actions/cache@v4
@@ -539,14 +539,13 @@ jobs:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
-      - name: Upload immutable worker base SIF
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.uri.outputs.tag }}
-          name: ${{ steps.uri.outputs.tag }}
-          prerelease: false
-          make_latest: false
-          files: relaymd-worker-base.sif
+      - name: Push worker base SIF to GHCR
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer push relaymd-worker-base.sif \
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base-sif:${{ steps.uri.outputs.tag }}"
 
   build-orchestrator-base-sif:
     needs: [changes, build-orchestrator-base]
@@ -582,7 +581,7 @@ jobs:
           fi
           tag="base-orchestrator-sha256-${digest}"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=https://github.com/${OWNER}/relaymd/releases/download/${tag}/relaymd-orchestrator-base.sif" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-orchestrator-base-sif:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore orchestrator base SIF cache
         id: cache-orchestrator-base
         uses: actions/cache@v4
@@ -604,14 +603,13 @@ jobs:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: apptainer pull relaymd-orchestrator-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest"
-      - name: Upload immutable orchestrator base SIF
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.uri.outputs.tag }}
-          name: ${{ steps.uri.outputs.tag }}
-          prerelease: false
-          make_latest: false
-          files: relaymd-orchestrator-base.sif
+      - name: Push orchestrator base SIF to GHCR
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer push relaymd-orchestrator-base.sif \
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base-sif:${{ steps.uri.outputs.tag }}"
 
   build-worker-sif:
     needs: [changes, build-worker, build-worker-base-sif, cli-version-guard]
@@ -662,10 +660,9 @@ jobs:
             echo "Unable to resolve worker base SIF URI from this run or latest release manifest." >&2
             exit 1
           fi
-          tag="${sif_uri#*"/releases/download/"}"
-          tag="${tag%%/*}"
+          tag="${sif_uri##*:}"
           if [[ -z "${tag}" || "${tag}" == "${sif_uri}" ]]; then
-            echo "Unable to parse release tag from worker base SIF URI: ${sif_uri}" >&2
+            echo "Unable to parse tag from worker base SIF URI: ${sif_uri}" >&2
             exit 1
           fi
           echo "uri=${sif_uri}" >> "$GITHUB_OUTPUT"
@@ -680,8 +677,9 @@ jobs:
       - name: Download worker base SIF
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' && steps.cache-worker-base-for-app.outputs.cache-hit != 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download "${{ steps.worker-base-sif.outputs.tag }}" --pattern relaymd-worker-base.sif
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-worker-base.sif "${{ steps.worker-base-sif.outputs.uri }}"
       - name: Build worker SIF
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         run: |
@@ -760,10 +758,9 @@ jobs:
             echo "Unable to resolve orchestrator base SIF URI from this run or latest release manifest." >&2
             exit 1
           fi
-          tag="${sif_uri#*"/releases/download/"}"
-          tag="${tag%%/*}"
+          tag="${sif_uri##*:}"
           if [[ -z "${tag}" || "${tag}" == "${sif_uri}" ]]; then
-            echo "Unable to parse release tag from orchestrator base SIF URI: ${sif_uri}" >&2
+            echo "Unable to parse tag from orchestrator base SIF URI: ${sif_uri}" >&2
             exit 1
           fi
           echo "uri=${sif_uri}" >> "$GITHUB_OUTPUT"
@@ -778,8 +775,9 @@ jobs:
       - name: Download orchestrator base SIF
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' && steps.cache-orchestrator-base-for-app.outputs.cache-hit != 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download "${{ steps.orchestrator-base-sif.outputs.tag }}" --pattern relaymd-orchestrator-base.sif
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: apptainer pull relaymd-orchestrator-base.sif "${{ steps.orchestrator-base-sif.outputs.uri }}"
       - name: Build orchestrator SIF
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         run: |
