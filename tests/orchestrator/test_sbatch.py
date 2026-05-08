@@ -120,7 +120,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
     assert "#SBATCH --export=ALL" in rendered
     assert "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=client-id:client-secret" not in rendered
     assert "export INFISICAL_BOOTSTRAP_TOKEN='client-id:client-secret'" in rendered
-    assert "export APPTAINERENV_INFISICAL_TOKEN=\"${INFISICAL_BOOTSTRAP_TOKEN}\"" in rendered
+    assert 'export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' in rendered
     assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
     assert "#SBATCH --signal=TERM@300" in rendered
     assert '--env HEARTBEAT_INTERVAL_SECONDS="60"' in rendered
@@ -645,7 +645,7 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
 
     rendered = captured["script"]
     assert "export INFISICAL_BOOTSTRAP_TOKEN='tok$HOME`date`'\"'\"'abc\\def'" in rendered
-    assert "export APPTAINERENV_INFISICAL_TOKEN=\"${INFISICAL_BOOTSTRAP_TOKEN}\"" in rendered
+    assert 'export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' in rendered
     assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
 
 

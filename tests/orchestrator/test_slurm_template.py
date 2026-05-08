@@ -69,8 +69,7 @@ def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
     assert "#SBATCH --mem=80G" in rendered
     assert "#SBATCH --export=ALL" in rendered
     assert (
-        "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret"
-        not in rendered
+        "#SBATCH --export=ALL,INFISICAL_BOOTSTRAP_TOKEN=other-client:other-secret" not in rendered
     )
     assert 'export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' in rendered
     assert '--env INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"' not in rendered
