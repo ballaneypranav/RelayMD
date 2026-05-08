@@ -21,6 +21,7 @@ from relaymd.worker.main import (
     _build_storage_client,
     _extract_input_bundle,
     _load_bundle_execution_config,
+    _required_openmm_platform,
     _run_assigned_job,
     _upload_checkpoint,
     _wait_for_final_checkpoint,
@@ -627,6 +628,7 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     _run_assigned_job(context=context, assignment=assignment)
@@ -736,6 +738,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     _run_assigned_job(context=context, assignment=assignment)
@@ -848,6 +851,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     _run_assigned_job(context=context, assignment=assignment)
@@ -1029,6 +1033,7 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     _run_assigned_job(context=context, assignment=assignment)
@@ -1119,6 +1124,7 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     _run_assigned_job(context=context, assignment=assignment)
@@ -1214,6 +1220,7 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
         sigterm_checkpoint_poll_seconds=2,
         sigterm_process_wait_seconds=10,
         logger=logger,
+        openmm_platforms=[],
     )
 
     with pytest.raises(RuntimeError, match="upload failed"):
@@ -1478,3 +1485,161 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
     assert len(job_run_calls) == 2
     assert str(job_run_calls[0].job_id) == job_1_id
     assert str(job_run_calls[1].job_id) == job_2_id
+
+
+# ---------------------------------------------------------------------------
+# _required_openmm_platform
+# ---------------------------------------------------------------------------
+
+
+def test_required_openmm_platform_returns_none_when_no_yaml(tmp_path: Path) -> None:
+    (tmp_path / "relaymd-worker.json").write_text(
+        '{"command": ["run.sh"], "checkpoint_glob_pattern": "*.chk"}', encoding="utf-8"
+    )
+    assert _required_openmm_platform(tmp_path) is None
+
+
+def test_required_openmm_platform_returns_none_when_yaml_has_no_platform(tmp_path: Path) -> None:
+    (tmp_path / "job.yaml").write_text("JOBNAME: test\nCYCLE_TIME: 10\n", encoding="utf-8")
+    assert _required_openmm_platform(tmp_path) is None
+
+
+def test_required_openmm_platform_returns_cuda_from_yaml(tmp_path: Path) -> None:
+    (tmp_path / "APT_FOL.yaml").write_text(
+        "JOBNAME: APT_FOL\nOPENMM_PLATFORM: CUDA\nCYCLE_TIME: 10\n", encoding="utf-8"
+    )
+    assert _required_openmm_platform(tmp_path) == "CUDA"
+
+
+def test_required_openmm_platform_normalises_value_to_upper(tmp_path: Path) -> None:
+    (tmp_path / "job.yaml").write_text("OPENMM_PLATFORM: cuda\n", encoding="utf-8")
+    assert _required_openmm_platform(tmp_path) == "CUDA"
+
+
+# ---------------------------------------------------------------------------
+# preflight guard in _run_assigned_job
+# ---------------------------------------------------------------------------
+
+
+def _write_bundle_tar_with_yaml(local_path: Path, openmm_platform: str) -> None:
+    bundle_config = b'{"command": ["md-engine", "--run"], "checkpoint_glob_pattern": "*.chk"}'
+    job_yaml = f"JOBNAME: test\nOPENMM_PLATFORM: {openmm_platform}\n".encode()
+
+    with tarfile.open(local_path, "w:gz") as archive:
+        config_info = tarfile.TarInfo("relaymd-worker.json")
+        config_info.size = len(bundle_config)
+        archive.addfile(config_info, io.BytesIO(bundle_config))
+
+        yaml_info = tarfile.TarInfo("job.yaml")
+        yaml_info.size = len(job_yaml)
+        archive.addfile(yaml_info, io.BytesIO(job_yaml))
+
+
+def test_run_assigned_job_fails_fast_when_cuda_required_but_unavailable(
+    monkeypatch, tmp_path: Path
+) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    bundle_tar = tmp_path / "bundle.tar.gz"
+    _write_bundle_tar_with_yaml(bundle_tar, "CUDA")
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda src, dst: (
+        bundle_tar.read_bytes() and dst.write_bytes(bundle_tar.read_bytes())
+    )
+    gateway = Mock()
+    logger = Mock()
+    logger.bind.return_value = logger
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=threading.Event(),
+        checkpoint_poll_interval_seconds=60,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=["Reference", "CPU"],
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.complete_job.assert_not_called()
+
+
+def test_run_assigned_job_proceeds_when_cuda_required_and_available(
+    monkeypatch, tmp_path: Path
+) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    bundle_tar = tmp_path / "bundle.tar.gz"
+    _write_bundle_tar_with_yaml(bundle_tar, "CUDA")
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda src, dst: dst.write_bytes(bundle_tar.read_bytes())
+    gateway = Mock()
+    logger = Mock()
+    logger.bind.return_value = logger
+
+    execution_started = []
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+
+        def start(self) -> None:
+            execution_started.append(True)
+
+        def poll_exit_code(self):
+            return 0
+
+        def iter_new_checkpoints(self):
+            return iter([])
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self):
+            return False
+
+        def supervision_failure(self, now):
+            return None
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=threading.Event(),
+        checkpoint_poll_interval_seconds=60,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=["Reference", "CPU", "CUDA"],
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    assert execution_started, "JobExecution.start() should have been called"
+    gateway.fail_job.assert_not_called()
+    gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)

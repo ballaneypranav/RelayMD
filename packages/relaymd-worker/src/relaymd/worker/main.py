@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 import signal
 import tarfile
@@ -86,6 +87,22 @@ def detect_openmm_platforms() -> list[str]:
     except Exception:
         LOG.exception("openmm_preflight_platform_probe_failed")
         return []
+
+
+_OPENMM_PLATFORM_RE = re.compile(r"^\s*OPENMM_PLATFORM\s*:\s*(\S+)", re.IGNORECASE)
+
+
+def _required_openmm_platform(bundle_root: Path) -> str | None:
+    """Return the OPENMM_PLATFORM value found in any bundle YAML, or None."""
+    for yaml_file in sorted(bundle_root.rglob("*.yaml")) + sorted(bundle_root.rglob("*.yml")):
+        try:
+            for line in yaml_file.read_text(encoding="utf-8", errors="replace").splitlines():
+                m = _OPENMM_PLATFORM_RE.match(line)
+                if m:
+                    return m.group(1).upper()
+        except OSError:
+            continue
+    return None
 
 
 def _find_latest_checkpoint(workdir: Path, pattern: str) -> Path | None:
@@ -396,6 +413,17 @@ def _run_assigned_job(
             )
 
         execution_config = _load_bundle_execution_config(bundle_root)
+
+        required_platform = _required_openmm_platform(bundle_root)
+        if required_platform is not None and required_platform not in context.openmm_platforms:
+            job_log.warning(
+                "openmm_platform_unavailable",
+                required_platform=required_platform,
+                available_platforms=context.openmm_platforms,
+            )
+            context.gateway.fail_job(job_id=assignment.job_id)
+            return
+
         execution = JobExecution(
             command=execution_config.command,
             workdir=bundle_root,
@@ -665,6 +693,7 @@ def run_worker(config: WorkerConfig) -> None:
                 sigterm_checkpoint_poll_seconds=runtime_settings.sigterm_checkpoint_poll_seconds,
                 sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
                 logger=worker_log,
+                openmm_platforms=openmm_platforms,
             )
 
             idle_start_time: float | None = None

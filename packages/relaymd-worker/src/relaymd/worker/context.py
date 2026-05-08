@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from relaymd.storage import StorageClient
@@ -18,3 +18,4 @@ class WorkerContext:
     sigterm_checkpoint_poll_seconds: int
     sigterm_process_wait_seconds: int
     logger: Any
+    openmm_platforms: list[str] = field(default_factory=list)
