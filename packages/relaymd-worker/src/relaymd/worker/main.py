@@ -99,7 +99,13 @@ def _required_openmm_platform(bundle_root: Path) -> str | None:
             for line in yaml_file.read_text(encoding="utf-8", errors="replace").splitlines():
                 m = _OPENMM_PLATFORM_RE.match(line)
                 if m:
-                    return m.group(1).upper()
+                    # Strip surrounding quotes if present and normalise to upper case
+                    platform = m.group(1)
+                    if (platform.startswith('"') and platform.endswith('"')) or (
+                        platform.startswith("'") and platform.endswith("'")
+                    ):
+                        platform = platform[1:-1]
+                    return platform.upper()
         except OSError:
             continue
     return None
