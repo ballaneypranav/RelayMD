@@ -617,9 +617,12 @@ jobs:
 
   build-worker-sif:
     needs: [changes, build-worker, build-worker-base-sif, cli-version-guard]
+    outputs:
+      sif_uri: ${{ steps.uri.outputs.sif_uri }}
+      sif_tag: ${{ steps.uri.outputs.sif_tag }}
     permissions:
-      contents: write
-      packages: read
+      contents: read
+      packages: write
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
     runs-on: [self-hosted, Linux, X64, apptainer]
     steps:
@@ -635,6 +638,13 @@ jobs:
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build release URI
+        id: uri
+        run: |
+          set -euo pipefail
+          tag="sif-sha-${{ steps.sha.outputs.short }}"
+          echo "sif_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore worker SIF cache
         id: cache-worker
         uses: actions/cache@v4
@@ -690,20 +700,22 @@ jobs:
             -e 's#relaymd.localdev "true"#relaymd.localdev "false"#' \
             deploy/hpc/apptainer/relaymd-worker.localdev.def > "${worker_def}"
           apptainer build --fakeroot relaymd-worker.sif "${worker_def}"
-      - name: Upload worker SIF to immutable release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: sha-${{ steps.sha.outputs.short }}
-          name: sha-${{ steps.sha.outputs.short }}
-          prerelease: false
-          make_latest: false
-          files: relaymd-worker.sif
+      - name: Push worker SIF to GHCR
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer push relaymd-worker.sif \
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker:${{ steps.uri.outputs.sif_tag }}"
 
   build-orchestrator-sif:
     needs: [changes, build-orchestrator, build-orchestrator-base-sif, cli-version-guard]
+    outputs:
+      sif_uri: ${{ steps.uri.outputs.sif_uri }}
+      sif_tag: ${{ steps.uri.outputs.sif_tag }}
     permissions:
-      contents: write
-      packages: read
+      contents: read
+      packages: write
     if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.orchestrator_image == 'true' && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
     runs-on: [self-hosted, Linux, X64, apptainer]
     steps:
@@ -728,6 +740,13 @@ jobs:
       - name: Get short SHA
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - name: Build release URI
+        id: uri
+        run: |
+          set -euo pipefail
+          tag="sif-sha-${{ steps.sha.outputs.short }}"
+          echo "sif_tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "sif_uri=oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:${tag}" >> "$GITHUB_OUTPUT"
       - name: Restore orchestrator SIF cache
         id: cache-orch
         uses: actions/cache@v4
@@ -782,20 +801,19 @@ jobs:
             -e "s#^From: .*#From: ${orchestrator_base_sif}#" \
             deploy/hpc/apptainer/relaymd-orchestrator.dockerbase.def > "${orchestrator_def}"
           apptainer build --fakeroot relaymd-orchestrator.sif "${orchestrator_def}"
-      - name: Upload orchestrator SIF to immutable release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: sha-${{ steps.sha.outputs.short }}
-          name: sha-${{ steps.sha.outputs.short }}
-          prerelease: false
-          make_latest: false
-          files: relaymd-orchestrator.sif
+      - name: Push orchestrator SIF to GHCR
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          apptainer push relaymd-orchestrator.sif \
+            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:${{ steps.uri.outputs.sif_tag }}"
 
   publish-release-manifest:
     needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli, build-worker-base-sif, build-orchestrator-base-sif, build-worker-sif, build-orchestrator-sif]
     permissions:
       contents: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.build-worker-sif.result == 'success' || needs.build-worker-sif.result == 'skipped') && (needs.build-orchestrator-sif.result == 'success' || needs.build-orchestrator-sif.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -814,6 +832,8 @@ jobs:
           ORCH_BASE_CHANGED: ${{ needs.changes.outputs.orchestrator_base_image }}
           WORKER_BASE_SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
           ORCH_BASE_SIF_URI: ${{ needs.build-orchestrator-base-sif.outputs.sif_uri }}
+          WORKER_SIF_URI: ${{ needs.build-worker-sif.outputs.sif_uri }}
+          ORCH_SIF_URI: ${{ needs.build-orchestrator-sif.outputs.sif_uri }}
         run: |
           set -euo pipefail
           short_sha="${SOURCE_SHA:0:7}"
@@ -833,6 +853,8 @@ jobs:
           prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
           prev_worker_base_sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${prev_manifest}")"
           prev_orch_base_sif_uri="$(jq -r '.orchestrator_base_sif_uri // empty' "${prev_manifest}")"
+          prev_worker_sif_uri="$(jq -r '.worker_sif_uri // empty' "${prev_manifest}")"
+          prev_orch_sif_uri="$(jq -r '.orchestrator_sif_uri // empty' "${prev_manifest}")"
           prev_cli_uri="$(jq -r '.cli_uri // empty' "${prev_manifest}")"
           prev_cli_version="$(jq -r '.cli_version // empty' "${prev_manifest}")"
           current_cli_version="$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n 1)"
@@ -874,6 +896,18 @@ jobs:
             orchestrator_base_sif_uri="${prev_orch_base_sif_uri}"
           fi
 
+          if [[ "${WORKER_CHANGED}" == "true" && -n "${WORKER_SIF_URI}" ]]; then
+            worker_sif_uri="${WORKER_SIF_URI}"
+          else
+            worker_sif_uri="${prev_worker_sif_uri}"
+          fi
+
+          if [[ "${ORCH_CHANGED}" == "true" && -n "${ORCH_SIF_URI}" ]]; then
+            orchestrator_sif_uri="${ORCH_SIF_URI}"
+          else
+            orchestrator_sif_uri="${prev_orch_sif_uri}"
+          fi
+
           if [[ "${WORKER_CHANGED}" == "true" || "${ORCH_CHANGED}" == "true" || "${CLI_CHANGED}" == "true" ]]; then
             release_version="sha-${short_sha}"
           else
@@ -886,6 +920,8 @@ jobs:
             --arg worker_image "${worker_image}" \
             --arg worker_base_sif_uri "${worker_base_sif_uri}" \
             --arg orchestrator_base_sif_uri "${orchestrator_base_sif_uri}" \
+            --arg worker_sif_uri "${worker_sif_uri}" \
+            --arg orchestrator_sif_uri "${orchestrator_sif_uri}" \
             --arg cli_uri "${cli_uri}" \
             --arg cli_version "${cli_version}" \
             --arg source_commit "${SOURCE_SHA}" \
@@ -896,6 +932,8 @@ jobs:
               worker_image: $worker_image,
               worker_base_sif_uri: $worker_base_sif_uri,
               orchestrator_base_sif_uri: $orchestrator_base_sif_uri,
+              worker_sif_uri: $worker_sif_uri,
+              orchestrator_sif_uri: $orchestrator_sif_uri,
               cli_uri: $cli_uri,
               cli_version: $cli_version,
               source_commit: $source_commit,
