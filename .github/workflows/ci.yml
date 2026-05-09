@@ -551,7 +551,9 @@ jobs:
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
+        run: |
+          rm -f relaymd-worker-base.sif
+          apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
       - name: Push worker base SIF to GHCR
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
@@ -606,7 +608,9 @@ jobs:
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-orchestrator-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest"
+        run: |
+          rm -f relaymd-orchestrator-base.sif
+          apptainer pull relaymd-orchestrator-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:latest"
       - name: Push orchestrator base SIF to GHCR
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
@@ -688,7 +692,9 @@ jobs:
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-worker-base.sif "${{ steps.worker-base-sif.outputs.uri }}"
+        run: |
+          rm -f relaymd-worker-base.sif
+          apptainer pull relaymd-worker-base.sif "${{ steps.worker-base-sif.outputs.uri }}"
       - name: Build worker SIF
         if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
         run: |
@@ -699,6 +705,7 @@ jobs:
             -e "s#^From: .*#From: ${worker_base_sif}#" \
             -e 's#relaymd.localdev "true"#relaymd.localdev "false"#' \
             deploy/hpc/apptainer/relaymd-worker.localdev.def > "${worker_def}"
+          rm -f relaymd-worker.sif
           apptainer build --fakeroot relaymd-worker.sif "${worker_def}"
       - name: Push worker SIF to GHCR
         env:
@@ -790,7 +797,9 @@ jobs:
         env:
           APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
           APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: apptainer pull relaymd-orchestrator-base.sif "${{ steps.orchestrator-base-sif.outputs.uri }}"
+        run: |
+          rm -f relaymd-orchestrator-base.sif
+          apptainer pull relaymd-orchestrator-base.sif "${{ steps.orchestrator-base-sif.outputs.uri }}"
       - name: Build orchestrator SIF
         if: ${{ steps.cache-orch.outputs.cache-hit != 'true' }}
         run: |
@@ -800,6 +809,7 @@ jobs:
           sed \
             -e "s#^From: .*#From: ${orchestrator_base_sif}#" \
             deploy/hpc/apptainer/relaymd-orchestrator.dockerbase.def > "${orchestrator_def}"
+          rm -f relaymd-orchestrator.sif
           apptainer build --fakeroot relaymd-orchestrator.sif "${orchestrator_def}"
       - name: Push orchestrator SIF to GHCR
         env:
