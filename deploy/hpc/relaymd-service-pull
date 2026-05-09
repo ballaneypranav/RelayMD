@@ -20,6 +20,8 @@ USAGE
 }
 
 AUTO_RESOLVED_CLI_URI=""
+AUTO_RESOLVED_WORKER_SIF_URI=""
+AUTO_RESOLVED_ORCH_SIF_URI=""
 ALLOW_CLI_FALLBACK=1
 
 stat_uid() {
@@ -295,6 +297,8 @@ resolve_latest_release_manifest() {
     manifest_orch="$(jq -r '.orchestrator_image // empty' "${manifest_json}")"
     manifest_worker="$(jq -r '.worker_image // empty' "${manifest_json}")"
     manifest_cli="$(jq -r '.cli_uri // empty' "${manifest_json}")"
+    manifest_worker_sif="$(jq -r '.worker_sif_uri // empty' "${manifest_json}")"
+    manifest_orch_sif="$(jq -r '.orchestrator_sif_uri // empty' "${manifest_json}")"
     rm -f "${manifest_json}" 2>/dev/null || true
 
     if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_cli}" ]]; then
@@ -306,6 +310,8 @@ resolve_latest_release_manifest() {
     ORCHESTRATOR_IMAGE_URI="${manifest_orch}"
     WORKER_IMAGE_URI="${manifest_worker}"
     AUTO_RESOLVED_CLI_URI="${manifest_cli}"
+    AUTO_RESOLVED_WORKER_SIF_URI="${manifest_worker_sif}"
+    AUTO_RESOLVED_ORCH_SIF_URI="${manifest_orch_sif}"
     ALLOW_CLI_FALLBACK=0
     return 0
 }
@@ -495,6 +501,7 @@ _pull_sif() {
     local image_uri="$2"
     local sif_path="$3"
     local tmp_path="$4"
+    local prebuilt_sif_uri="${5:-}"
     local pull_tmpdir="${RELAYMD_SCRATCH_ROOT}/apptainer/tmp-${label}"
 
     if [[ -f "${sif_path}" ]]; then
@@ -502,7 +509,16 @@ _pull_sif() {
         return 0
     fi
 
-    if [[ -n "${SIF_OWNER}" && "${RELEASE_VERSION}" =~ ^sha- ]]; then
+    if [[ -n "${prebuilt_sif_uri}" ]]; then
+        echo "[${label}] Trying pre-built SIF: ${prebuilt_sif_uri}"
+        mkdir -p "${pull_tmpdir}"
+        if APPTAINER_TMPDIR="${pull_tmpdir}" apptainer pull "${tmp_path}" "${prebuilt_sif_uri}" 2>/dev/null; then
+            mv "${tmp_path}" "${sif_path}"
+            echo "[${label}] Downloaded pre-built SIF from GHCR."
+            return 0
+        fi
+        echo "[${label}] Pre-built SIF unavailable at ${prebuilt_sif_uri}, falling back to apptainer pull." >&2
+    elif [[ -n "${SIF_OWNER}" && "${RELEASE_VERSION}" =~ ^sha- ]]; then
         local prebuilt_uri="https://github.com/${SIF_OWNER}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-${label}.sif"
         echo "[${label}] Trying pre-built SIF: ${prebuilt_uri}"
         if download_file "${prebuilt_uri}" "${tmp_path}" silent; then
@@ -519,9 +535,9 @@ _pull_sif() {
     mv "${tmp_path}" "${sif_path}"
 }
 
-_pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" &
+_pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" "${AUTO_RESOLVED_ORCH_SIF_URI}" &
 ORCH_PID=$!
-_pull_sif "worker" "${WORKER_IMAGE_URI}" "${WORKER_SIF}" "${WORKER_TMP}" &
+_pull_sif "worker" "${WORKER_IMAGE_URI}" "${WORKER_SIF}" "${WORKER_TMP}" "${AUTO_RESOLVED_WORKER_SIF_URI}" &
 WORKER_PID=$!
 
 ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
