@@ -74,6 +74,8 @@ class AssignmentService:
             .values(
                 status=JobStatus.assigned,
                 assigned_worker_id=worker_id,
+                assigned_at=now,
+                status_changed_at=now,
                 updated_at=now,
             )
         )

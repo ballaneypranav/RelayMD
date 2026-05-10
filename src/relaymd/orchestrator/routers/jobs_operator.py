@@ -43,6 +43,7 @@ async def create_job(
         input_bundle_path=payload.input_bundle_path,
         status=JobStatus.queued,
         created_at=now,
+        status_changed_at=now,
         updated_at=now,
     )
     session.add(job)
