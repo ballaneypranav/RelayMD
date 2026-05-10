@@ -443,6 +443,7 @@ def _run_assigned_job(
             fatal_log_patterns=execution_config.fatal_log_patterns,
         )
         execution.start()
+        context.gateway.start_job(job_id=assignment.job_id)
 
         last_uploaded_mtime: float | None = None
         effective_checkpoint_poll_interval_seconds = (
