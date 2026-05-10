@@ -72,14 +72,23 @@ class JobTransitionService:
             job.assigned_worker_id = None
         elif assigned_worker_id is not None:
             job.assigned_worker_id = assigned_worker_id
-        job.updated_at = utcnow_naive()
+        now = utcnow_naive()
+        job.status_changed_at = now
+        job.updated_at = now
         return job
 
     def assign_job(self, job: Job, *, worker_id: UUID) -> Job:
-        return self._transition(job, JobStatus.assigned, assigned_worker_id=worker_id)
+        updated_job = self._transition(job, JobStatus.assigned, assigned_worker_id=worker_id)
+        updated_job.assigned_at = updated_job.status_changed_at
+        return updated_job
 
     def mark_job_running(self, job: Job) -> Job:
-        return self._transition(job, JobStatus.running)
+        if job.status == JobStatus.running:
+            return job
+
+        updated_job = self._transition(job, JobStatus.running)
+        updated_job.started_at = updated_job.status_changed_at
+        return updated_job
 
     def mark_job_completed(self, job: Job) -> Job:
         updated_job = self._transition(job, JobStatus.completed)
@@ -148,5 +157,6 @@ class JobTransitionService:
             last_checkpoint_at=job.last_checkpoint_at,
             assigned_worker_id=None,
             created_at=now,
+            status_changed_at=now,
             updated_at=now,
         )
