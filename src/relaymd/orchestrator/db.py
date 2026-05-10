@@ -98,12 +98,6 @@ def _ensure_job_lifecycle_columns(connection: Connection) -> None:
             "WHERE assigned_at IS NULL AND status IN ('assigned', 'running')"
         )
     )
-    connection.execute(
-        text(
-            "UPDATE job SET started_at = updated_at WHERE started_at IS NULL AND status = 'running'"
-        )
-    )
-
 
 async def dispose_engine() -> None:
     global _engine, _sessionmaker
