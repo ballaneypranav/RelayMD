@@ -11,6 +11,9 @@ export interface JobRead {
   title: string;
   status: JobStatus;
   input_bundle_path: string;
+  assigned_at: string | null;
+  started_at: string | null;
+  status_changed_at: string;
   latest_checkpoint_path: string | null;
   last_checkpoint_at: string | null;
   assigned_worker_id: string | null;
