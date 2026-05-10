@@ -67,21 +67,21 @@ def test_frontend_dist_dir_uses_env_override(
 
 
 @pytest.mark.asyncio
-async def test_root_serves_frontend_index(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+async def test_root_redirects_to_app_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>frontend</body></html>")
     monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
-        response = await client.get("/")
+        response = await client.get("/", follow_redirects=False)
 
-    assert response.status_code == 200
-    assert "frontend" in response.text
+    assert response.status_code == 307
+    assert response.headers["location"] == "/app/jobs"
 
 
 @pytest.mark.asyncio
-async def test_spa_fallback_serves_index_for_non_api_routes(
+async def test_spa_fallback_serves_index_for_app_routes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     dist_dir = tmp_path / "frontend-dist"
@@ -90,7 +90,7 @@ async def test_spa_fallback_serves_index_for_non_api_routes(
     monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
-        response = await client.get("/dashboard/jobs")
+        response = await client.get("/app/jobs")
 
     assert response.status_code == 200
     assert "spa-shell" in response.text
@@ -113,21 +113,19 @@ async def test_api_prefixes_are_not_intercepted_by_spa_fallback(
 
 
 @pytest.mark.asyncio
-async def test_spa_fallback_serves_index_for_paths_with_api_like_prefix(
+async def test_non_app_non_api_routes_are_not_intercepted_by_spa_fallback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A path whose first segment merely *starts with* an API prefix (e.g. /jobs-old/)
-    must still be served as the SPA, not rejected with 404."""
     dist_dir = tmp_path / "frontend-dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text("<html><body>spa-shell</body></html>")
     monkeypatch.setenv("RELAYMD_FRONTEND_DIST_DIR", str(dist_dir))
 
     async with app_client(make_settings()) as client:
-        response = await client.get("/jobs-old/details")
+        response = await client.get("/dashboard/jobs")
 
-    assert response.status_code == 200
-    assert "spa-shell" in response.text
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Not found"
 
 
 def test_frontend_asset_resolution_rejects_path_traversal(tmp_path: Path) -> None:
