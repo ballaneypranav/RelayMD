@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+import relaymd.cli._workspace_bootstrap  # noqa: F401
 from relaymd.cli import __version__
 from relaymd.cli.commands import service as service_commands
 from relaymd.cli.commands.config import app as config_app

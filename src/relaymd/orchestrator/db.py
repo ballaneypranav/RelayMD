@@ -99,6 +99,7 @@ def _ensure_job_lifecycle_columns(connection: Connection) -> None:
         )
     )
 
+
 async def dispose_engine() -> None:
     global _engine, _sessionmaker
     if _engine is not None:

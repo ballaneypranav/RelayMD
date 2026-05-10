@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import httpx
-from relaymd_api_client.client import Client as RelaymdApiClient
 
 from relaymd.cli.config import CliSettings, load_settings
 from relaymd.storage import StorageClient
+
+if TYPE_CHECKING:
+    from relaymd_api_client.client import Client as RelaymdApiClient
 
 
 @dataclass(frozen=True)
@@ -14,6 +17,8 @@ class CliContext:
     settings: CliSettings
 
     def api_client(self) -> RelaymdApiClient:
+        from relaymd_api_client.client import Client as RelaymdApiClient
+
         return RelaymdApiClient(
             base_url=self.settings.orchestrator_url.rstrip("/"),
             timeout=httpx.Timeout(self.settings.orchestrator_timeout_seconds),

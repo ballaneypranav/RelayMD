@@ -6,16 +6,18 @@ import tarfile
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Annotated, Any, NoReturn
+from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
-from relaymd_api_client.models.job_read import JobRead
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from relaymd.cli.context import create_cli_context
 from relaymd.cli.services.submit_service import SubmitService
+
+if TYPE_CHECKING:
+    from relaymd_api_client.models.job_read import JobRead
 
 console = Console()
 
