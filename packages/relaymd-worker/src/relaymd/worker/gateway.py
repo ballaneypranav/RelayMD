@@ -14,6 +14,7 @@ from relaymd_api_client.api.default import (
     register_worker_workers_register_post,
     report_checkpoint_jobs_job_id_checkpoint_post,
     request_job_jobs_request_post,
+    start_job_jobs_job_id_start_post,
 )
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
@@ -52,6 +53,8 @@ class OrchestratorGateway(Protocol):
     def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable: ...
 
     def report_checkpoint(self, *, job_id: UUID, checkpoint_path: str) -> None: ...
+
+    def start_job(self, *, job_id: UUID) -> None: ...
 
     def complete_job(self, *, job_id: UUID) -> None: ...
 
@@ -271,6 +274,17 @@ class ApiOrchestratorGateway:
                 job_id=job_id,
                 client=self.client,
                 body=ApiCheckpointReport(checkpoint_path=checkpoint_path),
+                x_api_token=self._api_token,
+            ),
+        )
+
+    def start_job(self, *, job_id: UUID) -> None:
+        self._call_with_conflict_handling(
+            job_id=job_id,
+            log_event="start_conflict_ignored",
+            api_call=lambda: start_job_jobs_job_id_start_post.sync(
+                job_id=job_id,
+                client=self.client,
                 x_api_token=self._api_token,
             ),
         )
