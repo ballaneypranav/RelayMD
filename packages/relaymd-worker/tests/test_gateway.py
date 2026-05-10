@@ -12,6 +12,7 @@ from relaymd_api_client import errors as api_errors
 from relaymd_api_client.models.platform import Platform as ApiPlatform
 
 REGISTER_SYNC_TARGET = "relaymd.worker.gateway.register_worker_workers_register_post.sync"
+START_SYNC_TARGET = "relaymd.worker.gateway.start_job_jobs_job_id_start_post.sync"
 
 
 def _disable_retry_sleep(monkeypatch) -> None:
@@ -154,3 +155,15 @@ def test_gateway_skips_proxy_when_userspace_proxy_is_unavailable(monkeypatch) ->
 
     assert created_kwargs["httpx_args"] == {}
     logger.info.assert_not_called()
+
+
+def test_start_job_ignores_transition_conflict(monkeypatch) -> None:
+    start_sync = Mock(side_effect=api_errors.UnexpectedStatus(409, b"conflict"))
+    monkeypatch.setattr(START_SYNC_TARGET, start_sync)
+    gateway, logger = _build_gateway()
+    job_id = uuid4()
+
+    gateway.start_job(job_id=job_id)
+
+    start_sync.assert_called_once()
+    logger.warning.assert_called_once_with("start_conflict_ignored", job_id=str(job_id))

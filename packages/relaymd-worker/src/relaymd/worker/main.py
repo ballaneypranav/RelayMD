@@ -442,26 +442,27 @@ def _run_assigned_job(
             fatal_log_path=execution_config.fatal_log_path,
             fatal_log_patterns=execution_config.fatal_log_patterns,
         )
-        execution.start()
-
-        last_uploaded_mtime: float | None = None
-        effective_checkpoint_poll_interval_seconds = (
-            execution_config.checkpoint_poll_interval_seconds
-            if execution_config.checkpoint_poll_interval_seconds is not None
-            else context.checkpoint_poll_interval_seconds
-        )
-        job_log.info(
-            "checkpoint_poll_interval_resolved",
-            checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
-            source=(
-                "bundle"
-                if execution_config.checkpoint_poll_interval_seconds is not None
-                else "runtime_default"
-            ),
-        )
-        checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
-        next_checkpoint_poll_time = time.monotonic()
         try:
+            execution.start()
+            context.gateway.start_job(job_id=assignment.job_id)
+
+            last_uploaded_mtime: float | None = None
+            effective_checkpoint_poll_interval_seconds = (
+                execution_config.checkpoint_poll_interval_seconds
+                if execution_config.checkpoint_poll_interval_seconds is not None
+                else context.checkpoint_poll_interval_seconds
+            )
+            job_log.info(
+                "checkpoint_poll_interval_resolved",
+                checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                source=(
+                    "bundle"
+                    if execution_config.checkpoint_poll_interval_seconds is not None
+                    else "runtime_default"
+                ),
+            )
+            checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
+            next_checkpoint_poll_time = time.monotonic()
             while True:
                 if context.shutdown_event.is_set():
                     job_log.info("shutdown_requested_terminating_job")

@@ -76,7 +76,7 @@ export function buildJobRows(rawJobs: JobRead[], now: Date): JobRow[] {
   return rawJobs.map((job) => {
     const checkpointAt = parseDate(job.last_checkpoint_at);
     const createdAt = parseDate(job.created_at);
-    const updatedAt = parseDate(job.updated_at);
+    const statusChangedAt = parseDate(job.status_changed_at);
 
     return {
       id: job.id,
@@ -84,8 +84,8 @@ export function buildJobRows(rawJobs: JobRead[], now: Date): JobRow[] {
       title: job.title || "-",
       status: job.status,
       age: createdAt ? formatDuration((now.getTime() - createdAt.getTime()) / 1000) : "-",
-      time_in_status: updatedAt
-        ? formatDuration((now.getTime() - updatedAt.getTime()) / 1000)
+      time_in_status: statusChangedAt
+        ? formatDuration((now.getTime() - statusChangedAt.getTime()) / 1000)
         : "-",
       assigned_worker_id: truncateUuid(job.assigned_worker_id),
       time_since_checkpoint: checkpointAt

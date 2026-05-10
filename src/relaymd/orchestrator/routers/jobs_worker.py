@@ -11,6 +11,7 @@ from relaymd.models import (
     Job,
     JobAssigned,
     JobConflict,
+    JobStatus,
     NoJobAvailable,
 )
 from relaymd.orchestrator.auth import require_worker_api_token
@@ -52,6 +53,38 @@ async def request_job(
         input_bundle_path=assigned_job.input_bundle_path,
         latest_checkpoint_path=assigned_job.latest_checkpoint_path,
     )
+
+
+@router.post(
+    "/{job_id}/start",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "model": JobConflict,
+            "description": "Job transition conflict",
+        }
+    },
+)
+async def start_job(
+    job_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    if job.status == JobStatus.running:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    transitions = JobTransitionService()
+    try:
+        transitions.mark_job_running(job)
+    except JobTransitionConflictError as exc:
+        return job_transition_conflict_response(exc)
+
+    session.add(job)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

@@ -186,6 +186,28 @@ export function JobsView({
                 <dd>{parseDate(selectedJob.created_at)?.toISOString() ?? "-"}</dd>
               </div>
               <div>
+                <dt>Assigned</dt>
+                <dd>{parseDate(selectedJob.assigned_at)?.toISOString() ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Started</dt>
+                <dd>{parseDate(selectedJob.started_at)?.toISOString() ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Status Changed</dt>
+                <dd>{parseDate(selectedJob.status_changed_at)?.toISOString() ?? "-"}</dd>
+              </div>
+              {selectedJob.started_at ? (
+                <div>
+                  <dt>Runtime</dt>
+                  <dd>
+                    {formatDuration(
+                      (Date.now() - parseDate(selectedJob.started_at)!.getTime()) / 1000,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              <div>
                 <dt>Updated</dt>
                 <dd>{parseDate(selectedJob.updated_at)?.toISOString() ?? "-"}</dd>
               </div>

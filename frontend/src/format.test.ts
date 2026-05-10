@@ -31,6 +31,9 @@ describe("format helpers", () => {
         title: "protein-folding",
         status: "running" as const,
         input_bundle_path: "/tmp/input",
+        assigned_at: "2026-02-24T11:10:00Z",
+        started_at: "2026-02-24T11:20:00Z",
+        status_changed_at: "2026-02-24T11:20:00Z",
         latest_checkpoint_path: null,
         last_checkpoint_at: "2026-02-24T11:58:45Z",
         assigned_worker_id: "worker-1",
@@ -57,7 +60,33 @@ describe("format helpers", () => {
     ];
 
     expect(buildJobRows(jobs, now)[0].time_since_checkpoint).toBe("1m 15s");
+    expect(buildJobRows(jobs, now)[0].time_in_status).toBe("40m");
     expect(buildWorkerRows(workers, now, jobs)[0].current_job).toContain("protein-folding");
+  });
+
+  it("uses status_changed_at rather than updated_at for time in status", () => {
+    const now = new Date("2026-02-24T12:00:00Z");
+    const jobs = [
+      {
+        id: "job-1",
+        title: "protein-folding",
+        status: "running" as const,
+        input_bundle_path: "/tmp/input",
+        assigned_at: "2026-02-24T11:10:00Z",
+        started_at: "2026-02-24T11:20:00Z",
+        status_changed_at: "2026-02-24T11:20:00Z",
+        latest_checkpoint_path: null,
+        last_checkpoint_at: "2026-02-24T11:58:45Z",
+        assigned_worker_id: "worker-1",
+        created_at: "2026-02-24T11:00:00Z",
+        updated_at: "2026-02-24T11:58:45Z",
+      },
+    ];
+
+    const row = buildJobRows(jobs, now)[0];
+
+    expect(row.time_in_status).toBe("40m");
+    expect(row.time_since_checkpoint).toBe("1m 15s");
   });
 
   it("renders TSV output", () => {

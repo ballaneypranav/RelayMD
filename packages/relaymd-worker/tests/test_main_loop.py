@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import ANY, Mock
+from unittest.mock import ANY, Mock, call
 from uuid import uuid4
 
 import pytest
@@ -377,6 +377,10 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             _ = kwargs
             api_calls.append("/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint")
 
+        def start_job(self, **kwargs):
+            _ = kwargs
+            api_calls.append("/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/start")
+
         def complete_job(self, **kwargs):
             _ = kwargs
             api_calls.append("/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/complete")
@@ -414,6 +418,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     assert api_calls == [
         "/workers/register",
         "/jobs/request",
+        "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/start",
         "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint",
         "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/complete",
         "/jobs/request",
@@ -513,6 +518,9 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             return ApiNoJobAvailable.from_dict({"status": "no_job_available"})
 
         def report_checkpoint(self, **kwargs):
+            _ = kwargs
+
+        def start_job(self, **kwargs):
             _ = kwargs
 
         def complete_job(self, **kwargs):
@@ -635,6 +643,11 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
 
     assert shutdown_event.wait.call_count == 1
     assert shutdown_event.wait.call_args.kwargs == {"timeout": 2.0}
+    assert gateway.method_calls[:2] == [
+        call.start_job(job_id=assignment.job_id),
+        call.complete_job(job_id=assignment.job_id),
+    ]
+    gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
 
@@ -747,6 +760,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     assert execution.iter_calls == 1
     assert shutdown_event.wait.call_count == 3
     assert all(call.kwargs == {"timeout": 2.0} for call in shutdown_event.wait.call_args_list)
+    gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
 
@@ -867,6 +881,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         job_id=assignment.job_id,
         checkpoint_path=f"jobs/{assignment.job_id}/checkpoints/latest",
     )
+    gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_not_called()
 
@@ -1292,13 +1307,16 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
             return ApiNoJobAvailable.from_dict({"status": "no_job_available"})
 
         def report_checkpoint(self, **kwargs):
-            pass
+            _ = kwargs
+
+        def start_job(self, **kwargs):
+            _ = kwargs
 
         def complete_job(self, **kwargs):
-            pass
+            _ = kwargs
 
         def fail_job(self, **kwargs):
-            pass
+            _ = kwargs
 
         def deregister_worker(self, **kwargs):
             _ = kwargs
@@ -1441,13 +1459,16 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
                 return ApiNoJobAvailable.from_dict({"status": "no_job_available"})
 
         def report_checkpoint(self, **kwargs):
-            pass
+            _ = kwargs
+
+        def start_job(self, **kwargs):
+            _ = kwargs
 
         def complete_job(self, **kwargs):
-            pass
+            _ = kwargs
 
         def fail_job(self, **kwargs):
-            pass
+            _ = kwargs
 
         def deregister_worker(self, **kwargs):
             pass

@@ -57,11 +57,49 @@ def test_transition_matrix_rejects_invalid_edges(start: JobStatus, target: JobSt
 def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
     service = JobTransitionService()
     job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=status)
+    status_changed_at = job.status_changed_at
 
     service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
 
     assert job.latest_checkpoint_path == "jobs/1/checkpoints/latest"
     assert isinstance(job.last_checkpoint_at, datetime)
+    assert job.status_changed_at == status_changed_at
+
+
+def test_assignment_and_running_transitions_set_lifecycle_timestamps() -> None:
+    service = JobTransitionService()
+    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz")
+    worker_id = job.id
+
+    service.assign_job(job, worker_id=worker_id)
+
+    assert job.status == JobStatus.assigned
+    assert job.assigned_worker_id == worker_id
+    assert job.assigned_at == job.status_changed_at
+
+    assigned_status_changed_at = job.status_changed_at
+    service.mark_job_running(job)
+
+    assert job.status == JobStatus.running
+    assert job.started_at == job.status_changed_at
+    assert job.status_changed_at >= assigned_status_changed_at
+
+
+def test_mark_running_is_idempotent_without_resetting_timestamps() -> None:
+    service = JobTransitionService()
+    started_at = datetime(2026, 1, 1, 12, 0, 0)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        status=JobStatus.running,
+        started_at=started_at,
+        status_changed_at=started_at,
+    )
+
+    service.mark_job_running(job)
+
+    assert job.started_at == started_at
+    assert job.status_changed_at == started_at
 
 
 def test_checkpoint_allowed_in_active_states_logs_checkpoint_recorded() -> None:

@@ -1,91 +1,69 @@
-# Move Payload Supervision Into RelayMD Python Worker
+# Implement Accurate Job Lifecycle Status Reporting
 
 ## Summary
-
-The stuck job happened because RelayMD only watches the top-level bundle command. For the current AToM bundle, that command is:
-
-`/scratch/gilbreth/pballane/folate-alpha-beta/FR_ATM-LSFE-00-wibowo2013/output/07-production-relaymd-bundles/APT_FOL/run.sh`
-
-That script launches `python rbfe_production.py APT_FOL.yaml`. An internal OpenMM multiprocessing child crashed, but the parent AToM process stayed alive, so `run.sh` kept waiting and RelayMD left the job assigned. Move generic supervision into `packages/relaymd-worker/src/relaymd/worker/job_execution.py` so every bundle gets process-group cleanup, timeout handling, progress detection, and failure reporting.
+Create a new branch from clean `main`, implement explicit job lifecycle timestamps, add the missing worker “start/running” transition, and update the frontend so `Time In Status` no longer resets on checkpoint uploads. Branch name: `fix/job-lifecycle-status-reporting`. Version bump: `0.1.45 -> 0.1.46` via the repo release workflow.
 
 ## Key Changes
+- Add lifecycle fields to the shared `Job` / `JobRead` model:
+  - `assigned_at: datetime | None`
+  - `started_at: datetime | None`
+  - `status_changed_at: datetime`
+  - Keep `updated_at` as generic “last row update”.
+- Add an automatic startup migration/backfill path for existing DBs:
+  - Add missing columns if absent.
+  - Backfill `status_changed_at` from `updated_at`.
+  - Backfill `assigned_at` from `updated_at` for existing `assigned`/`running` jobs when absent.
+  - Leave `started_at` null for historical jobs unless a real running transition occurs.
+- Update transitions:
+  - Job creation initializes `status_changed_at = created_at = updated_at`.
+  - Assignment sets `assigned_at`, `status_changed_at`, and `updated_at`.
+  - Checkpoint reporting updates only `latest_checkpoint_path`, `last_checkpoint_at`, and `updated_at`; it must not change `status_changed_at`.
+  - Terminal/requeue/cancel transitions update `status_changed_at` and `updated_at`.
 
-- Extend bundle config parsing in `packages/relaymd-worker/src/relaymd/worker/main.py`:
-  - Keep existing fields: `command`, `checkpoint_glob_pattern`, `checkpoint_poll_interval_seconds`.
-  - Add optional fields: `progress_glob_pattern`, `startup_progress_timeout_seconds`, `progress_timeout_seconds`, `max_runtime_seconds`, `fatal_log_path`, `fatal_log_patterns`.
-  - Support JSON/TOML in existing `relaymd-worker.json` / `.toml` files.
-- Update process supervision in `packages/relaymd-worker/src/relaymd/worker/job_execution.py`:
-  - Start bundle commands in a new process group/session.
-  - Send TERM/KILL to the whole process group, not only the top PID.
-  - Track top-level exit code as today.
-  - Add supervision failure reasons for max runtime, startup no-progress, stalled progress, and fatal log match.
-- Update `_run_assigned_job` in `packages/relaymd-worker/src/relaymd/worker/main.py`:
-  - Call supervision checks inside the existing polling loop.
-  - On supervision failure, terminate/kill the process group, perform final checkpoint handling, then call `gateway.fail_job`.
-  - Preserve existing SIGTERM checkpoint handoff behavior.
+## Worker Running Transition
+- Add worker API endpoint: `POST /jobs/{job_id}/start`, returning `204`.
+- It should mark `assigned -> running` through `JobTransitionService.mark_job_running()`.
+- Make `/start` idempotent for already-`running` jobs: return `204` without resetting timestamps.
+- Regenerate the API client with `./scripts/generate_api_client.sh`.
+- Add `start_job(job_id=...)` to the worker gateway and call it immediately after `execution.start()` in `_run_assigned_job()`, so `running` means the workload process was launched.
+- Treat `409` conflicts in the worker gateway the same way complete/fail/checkpoint currently do: log and continue, so cancellation races do not crash worker cleanup paths.
 
-## Bundle And Example Paths
-
-- Current AToM bundle wrapper:
-  - `/scratch/gilbreth/pballane/folate-alpha-beta/FR_ATM-LSFE-00-wibowo2013/output/07-production-relaymd-bundles/APT_FOL/run.sh`
-- Current AToM bundle worker config:
-  - `/scratch/gilbreth/pballane/folate-alpha-beta/FR_ATM-LSFE-00-wibowo2013/output/07-production-relaymd-bundles/APT_FOL/relaymd-worker.json`
-- AToM bundle output/log watched by supervision:
-  - `APT_FOL_production.log`
-  - `ckpt_is_valid`
-  - `progress`
-  - `r*/APT_FOL.out`
-  - `r*/APT_FOL_ckpt.xml`
-  - `relaymd-checkpoint.tar.gz`
-
-For AToM-generated bundles, keep `run.sh` as a thin domain adapter: resolve `ATS_DIR`, create `nodefile`, restore latest checkpoint, run production, and create `relaymd-checkpoint.tar.gz`. Do not put generic timeout/log/progress supervision in `run.sh`.
-
-The generated `relaymd-worker.json` for AToM should include supervision fields similar to:
-
-```json
-{
-  "command": ["bash", "run.sh"],
-  "checkpoint_glob_pattern": "relaymd-checkpoint.tar.gz",
-  "checkpoint_poll_interval_seconds": 60,
-  "progress_glob_pattern": [
-    "ckpt_is_valid",
-    "progress",
-    "r*/APT_FOL.out",
-    "r*/APT_FOL_ckpt.xml"
-  ],
-  "startup_progress_timeout_seconds": 900,
-  "progress_timeout_seconds": 1800,
-  "fatal_log_path": "APT_FOL_production.log",
-  "fatal_log_patterns": [
-    "Traceback",
-    "CUDA_ERROR",
-    "Segmentation fault",
-    "Aborted",
-    "Killed"
-  ]
-}
-```
+## Frontend Reporting
+- Update frontend `JobRead` type to include `assigned_at`, `started_at`, and `status_changed_at`.
+- Table columns:
+  - `Age`: `now - created_at`
+  - `Time In Status`: `now - status_changed_at`
+  - `Checkpoint`: `now - last_checkpoint_at`
+- Job detail panel:
+  - Keep `Created` and `Updated`.
+  - Add `Assigned`, `Started`, and `Status Changed`.
+  - Optionally show `Runtime` as `now - started_at` when `started_at` exists.
+- Preserve existing action behavior: queued/assigned/running remain cancellable; failed/cancelled remain re-queueable.
 
 ## Tests
+- Orchestrator tests:
+  - Worker flow: request leaves job `assigned`; `/jobs/{id}/start` marks it `running`; checkpoint does not change `status_changed_at`; complete marks terminal status and advances `status_changed_at`.
+  - `/start` on an already-running job is idempotent and does not reset `started_at`/`status_changed_at`.
+  - Existing DB migration/backfill adds lifecycle columns and preserves readable jobs.
+- Worker tests:
+  - `_run_assigned_job()` calls `gateway.start_job()` after `execution.start()` and before checkpoint/completion reporting.
+  - Existing failure/cancellation tests account for the new start call where execution actually begins.
+- Frontend tests:
+  - `buildJobRows()` uses `status_changed_at` for `time_in_status`.
+  - Checkpoint age remains based on `last_checkpoint_at`.
+  - App fixture data includes the new lifecycle fields.
+- Validation commands:
+  - `uv run pytest tests/orchestrator packages/relaymd-worker/tests`
+  - `uv run pytest tests/cli`
+  - `uv run ruff check .`
+  - `uv run pyright`
+  - `cd frontend && npm --cache ./.npm run build && npm --cache ./.npm test`
 
-- Add worker execution tests under `packages/relaymd-worker/tests/test_main_loop.py` or a new focused `test_job_execution.py`:
-  - Nonzero top-level process marks failed.
-  - Hung parent with fatal log pattern is killed and marked failed.
-  - Startup progress timeout kills process group and marks failed.
-  - Progress timeout resets when matching file mtime advances.
-  - TERM/KILL reaches child processes, not only the shell wrapper.
-  - Existing configs without supervision fields still work.
-- Add config parsing tests for JSON and TOML supervision fields.
-- Update docs:
-  - `docs/worker-internals.md`
-  - `docs/job-lifecycle.md`
-  - `docs/cli.md` `relaymd-worker.json` section
-  - optionally `docs/deployment.md` if AToM bundle generation defaults are documented there.
-
-## Assumptions
-
-- Supervision fields are optional and backward compatible.
-- Progress and fatal-log supervision are opt-in per bundle to avoid false positives for arbitrary workloads.
-- RelayMD worker remains domain-neutral; AToM-specific file names belong only in generated bundle config.
-- Orchestrator heartbeat logic should not infer payload health. A live worker can still be supervising a hung or failed payload, so failure detection belongs in the worker.
-
+## Branch, Release, and Graph
+- Start with:
+  - `git switch -c fix/job-lifecycle-status-reporting`
+- After implementation and tests, run:
+  - `make release-cli VERSION=0.1.46`
+- Because code files changed, run:
+  - `graphify update .`
+- Final branch should include source changes, generated API client updates, tests, graph update output if it modifies tracked graph artifacts, and the `v0.1.46` release commit/tag created by the release target.
