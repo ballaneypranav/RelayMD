@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob } from "./api";
 import { AppShell } from "./components/AppShell";
@@ -12,6 +12,22 @@ import { SettingsView } from "./views/SettingsView";
 import { WorkersView } from "./views/WorkersView";
 
 type ViewName = "jobs" | "workers" | "clusters" | "settings";
+const DEFAULT_VIEW: ViewName = "jobs";
+
+const PATH_TO_VIEW: Record<string, ViewName> = {
+  "/jobs": "jobs",
+  "/workers": "workers",
+  "/clusters": "clusters",
+  "/settings": "settings",
+};
+
+function viewToPath(view: ViewName): string {
+  return `/${view}`;
+}
+
+function parseViewFromPath(pathname: string): ViewName | null {
+  return PATH_TO_VIEW[pathname] ?? null;
+}
 
 function copyText(text: string): void {
   if (!text) {
@@ -37,6 +53,35 @@ function useDashboardData(config: FrontendConfig | null) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [offlineSince, setOfflineSince] = useState<number | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [lastRefreshError, setLastRefreshError] = useState<string>("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const inFlightRef = useRef(false);
+
+  const refreshData = useCallback(async () => {
+    if (!config || inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    setIsRefreshing(true);
+    try {
+      const payload = await fetchDashboardData(config.api_base_url);
+      setData(payload);
+      setError("");
+      setLastRefreshError("");
+      setOfflineSince(null);
+      setLastUpdatedAt(Date.now());
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : String(loadError);
+      setError(message);
+      setLastRefreshError(message);
+      setOfflineSince((previous) => previous ?? Date.now());
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+      inFlightRef.current = false;
+    }
+  }, [config]);
 
   useEffect(() => {
     if (!config) {
@@ -44,54 +89,53 @@ function useDashboardData(config: FrontendConfig | null) {
       return;
     }
 
-    let cancelled = false;
+    void refreshData();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      void refreshData();
+    }, config.refresh_interval_seconds * 1000);
 
-    const load = async () => {
-      try {
-        const payload = await fetchDashboardData(config.api_base_url);
-        if (cancelled) {
-          return;
-        }
-        setData(payload);
-        setError("");
-        setOfflineSince(null);
-      } catch (loadError) {
-        if (cancelled) {
-          return;
-        }
-        const message = loadError instanceof Error ? loadError.message : String(loadError);
-        setError(message);
-        setOfflineSince((previous) => previous ?? Date.now());
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshData();
       }
     };
-
-    void load();
-    const intervalId = window.setInterval(load, config.refresh_interval_seconds * 1000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [config]);
+  }, [config, refreshData]);
 
-  return { data, error, loading, offlineSince, setData, setError };
+  return {
+    data,
+    error,
+    loading,
+    offlineSince,
+    lastUpdatedAt,
+    lastRefreshError,
+    isRefreshing,
+    refreshData,
+    setData,
+    setError,
+  };
 }
 
 export function App() {
   const [config, setConfig] = useState<FrontendConfig | null>(null);
   const [configError, setConfigError] = useState("");
-  const [activeView, setActiveView] = useState<ViewName>("jobs");
+  const [activeView, setActiveView] = useState<ViewName>(() => parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [pendingCancelJob, setPendingCancelJob] = useState<JobRead | null>(null);
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
 
-  const { data, error, loading, offlineSince, setData, setError } = useDashboardData(config);
+  const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
+    useDashboardData(config);
 
   useEffect(() => {
     void fetchFrontendConfig()
@@ -100,6 +144,31 @@ export function App() {
         setConfigError(loadError instanceof Error ? loadError.message : String(loadError));
       });
   }, []);
+
+  useEffect(() => {
+    const currentView = parseViewFromPath(window.location.pathname);
+    if (!currentView) {
+      window.history.replaceState(null, "", viewToPath(DEFAULT_VIEW));
+      setActiveView(DEFAULT_VIEW);
+      return;
+    }
+    setActiveView(currentView);
+
+    const onPopState = () => {
+      const nextView = parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW;
+      setActiveView(nextView);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const navigateToView = (view: ViewName) => {
+    const targetPath = viewToPath(view);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, "", targetPath);
+    }
+    setActiveView(view);
+  };
 
   const now = useMemo(() => new Date(), [data, error]);
   const jobs = data?.jobs ?? [];
@@ -184,17 +253,25 @@ export function App() {
       <div>
         <p className="eyebrow">Operational Console</p>
         <h2>{navigation.find((item) => item.id === activeView)?.label}</h2>
+        <p className="header-copy">
+          {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Last updated -"}
+        </p>
       </div>
       <div className="console-header-actions">
+        <div className="meta-pill">RelayMD v{health?.version ?? "-"}</div>
+        <div className={error ? "meta-pill error" : "meta-pill success"}>{error ? "Error" : "Live"}</div>
+        <button className="secondary" onClick={() => void refreshData()} disabled={isRefreshing}>
+          {isRefreshing ? "Refreshing..." : "Refresh"}
+        </button>
         {health?.tailscale ? (
           health.tailscale.connected ? (
-            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+            <button className="connection-pill-button" onClick={() => navigateToView("settings")}>
               <StatusPill className="connection-pill" tone="completed">
                 CONNECTED
               </StatusPill>
             </button>
           ) : (
-            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+            <button className="connection-pill-button" onClick={() => navigateToView("settings")}>
               <StatusPill className="connection-pill" tone="failed">
                 Connection error
               </StatusPill>
@@ -220,6 +297,7 @@ export function App() {
             Orchestrator unreachable. Offline for {formatDuration((Date.now() - offlineSince) / 1000)}.
           </div>
         ) : null}
+        {lastRefreshError ? <div className="banner warning">Latest refresh failed: {lastRefreshError}</div> : null}
       </section>
 
       <section className="overview-groups" aria-label="System overview">
@@ -261,7 +339,7 @@ export function App() {
     <AppShell
       activeView={activeView}
       navigation={navigation}
-      onNavigate={setActiveView}
+      onNavigate={navigateToView}
       header={header}
       overview={overview}
     >

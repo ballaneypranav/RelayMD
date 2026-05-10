@@ -20,6 +20,7 @@ function mockFetch(routes: Record<string, Response>) {
 describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
   });
 
   it("loads dashboard data through the proxy without a browser-held api token", async () => {
@@ -82,10 +83,11 @@ describe("App", () => {
     );
     expect(screen.getByText("Execution queue")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CONNECTED" })).toBeInTheDocument();
+    expect(screen.getByText("RelayMD v0.1.4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
     expect(screen.getByText("Job states")).toBeInTheDocument();
     expect(screen.getByText("Worker states")).toBeInTheDocument();
-    expect(screen.queryByText(/Orchestrator:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Refresh:/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Last updated/i)).toBeInTheDocument();
   });
 
   it("shows offline state when dashboard data fails", async () => {
@@ -121,19 +123,62 @@ describe("App", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Workers/i }));
     });
+    expect(window.location.pathname).toBe("/workers");
     expect(screen.getByText("Fleet health")).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByText("Clusters"));
     });
+    expect(window.location.pathname).toBe("/clusters");
     expect(screen.getByRole("heading", { name: "Provisioning targets" })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByText("Settings"));
     });
+    expect(window.location.pathname).toBe("/settings");
     expect(
       screen.getByText(/The proxy injects the RelayMD API token upstream/),
     ).toBeInTheDocument();
+  });
+
+  it("hydrates active view from URL and keeps it on reload-like mount", async () => {
+    window.history.replaceState(null, "", "/workers");
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(
+        JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] }),
+      ),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("Fleet health")).toBeInTheDocument());
+    expect(window.location.pathname).toBe("/workers");
+  });
+
+  it("normalizes unknown routes to /jobs", async () => {
+    window.history.replaceState(null, "", "/nope");
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(
+        JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] }),
+      ),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(window.location.pathname).toBe("/jobs"));
+    expect(screen.getByText("Execution queue")).toBeInTheDocument();
   });
 
   it("opens connection details when the connected pill is clicked", async () => {
@@ -167,5 +212,21 @@ describe("App", () => {
     expect(
       screen.getByText(/The proxy injects the RelayMD API token upstream/),
     ).toBeInTheDocument();
+  });
+
+  it("keeps rendering with missing health version payload", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", warnings: [] })),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("RelayMD v-")).toBeInTheDocument());
   });
 });

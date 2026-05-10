@@ -202,6 +202,24 @@ dt,
   justify-content: flex-end;
 }
 
+.meta-pill {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.meta-pill.success {
+  border-color: rgba(31, 182, 122, 0.45);
+  color: #8ef1c8;
+}
+
+.meta-pill.error {
+  border-color: rgba(245, 109, 109, 0.5);
+  color: #ffc9c9;
+}
+
 .signal-strip {
   display: grid;
   gap: 0.7rem;
