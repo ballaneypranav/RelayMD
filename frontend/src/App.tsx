@@ -12,6 +12,22 @@ import { SettingsView } from "./views/SettingsView";
 import { WorkersView } from "./views/WorkersView";
 
 type ViewName = "jobs" | "workers" | "clusters" | "settings";
+const DEFAULT_VIEW: ViewName = "jobs";
+
+const PATH_TO_VIEW: Record<string, ViewName> = {
+  "/jobs": "jobs",
+  "/workers": "workers",
+  "/clusters": "clusters",
+  "/settings": "settings",
+};
+
+function viewToPath(view: ViewName): string {
+  return `/${view}`;
+}
+
+function parseViewFromPath(pathname: string): ViewName | null {
+  return PATH_TO_VIEW[pathname] ?? null;
+}
 
 function copyText(text: string): void {
   if (!text) {
@@ -84,7 +100,7 @@ function useDashboardData(config: FrontendConfig | null) {
 export function App() {
   const [config, setConfig] = useState<FrontendConfig | null>(null);
   const [configError, setConfigError] = useState("");
-  const [activeView, setActiveView] = useState<ViewName>("jobs");
+  const [activeView, setActiveView] = useState<ViewName>(() => parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [pendingCancelJob, setPendingCancelJob] = useState<JobRead | null>(null);
@@ -100,6 +116,31 @@ export function App() {
         setConfigError(loadError instanceof Error ? loadError.message : String(loadError));
       });
   }, []);
+
+  useEffect(() => {
+    const currentView = parseViewFromPath(window.location.pathname);
+    if (!currentView) {
+      window.history.replaceState(null, "", viewToPath(DEFAULT_VIEW));
+      setActiveView(DEFAULT_VIEW);
+      return;
+    }
+    setActiveView(currentView);
+
+    const onPopState = () => {
+      const nextView = parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW;
+      setActiveView(nextView);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const navigateToView = (view: ViewName) => {
+    const targetPath = viewToPath(view);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, "", targetPath);
+    }
+    setActiveView(view);
+  };
 
   const now = useMemo(() => new Date(), [data, error]);
   const jobs = data?.jobs ?? [];
@@ -188,13 +229,13 @@ export function App() {
       <div className="console-header-actions">
         {health?.tailscale ? (
           health.tailscale.connected ? (
-            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+            <button className="connection-pill-button" onClick={() => navigateToView("settings")}>
               <StatusPill className="connection-pill" tone="completed">
                 CONNECTED
               </StatusPill>
             </button>
           ) : (
-            <button className="connection-pill-button" onClick={() => setActiveView("settings")}>
+            <button className="connection-pill-button" onClick={() => navigateToView("settings")}>
               <StatusPill className="connection-pill" tone="failed">
                 Connection error
               </StatusPill>
@@ -261,7 +302,7 @@ export function App() {
     <AppShell
       activeView={activeView}
       navigation={navigation}
-      onNavigate={setActiveView}
+      onNavigate={navigateToView}
       header={header}
       overview={overview}
     >
