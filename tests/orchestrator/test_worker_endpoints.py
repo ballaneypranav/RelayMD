@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from freezegun import freeze_time
@@ -93,6 +94,100 @@ async def test_worker_flow_register_request_heartbeat_checkpoint_complete() -> N
 
 
 @pytest.mark.asyncio
+async def test_worker_start_lifecycle_and_checkpoint_timestamps() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        register_response = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={
+                "platform": "hpc",
+                "gpu_model": "A100",
+                "gpu_count": 2,
+                "vram_gb": 80,
+            },
+        )
+        worker_id = register_response.json()["worker_id"]
+        create_response = await client.post(
+            "/jobs",
+            headers=headers,
+            json={
+                "title": "train-lifecycle",
+                "input_bundle_path": "jobs/lifecycle/input/bundle.tar.gz",
+            },
+        )
+        job_id = UUID(create_response.json()["id"])
+
+        await asyncio.sleep(0.001)
+        request_response = await client.post(
+            "/jobs/request",
+            headers=headers,
+            params={"worker_id": worker_id},
+        )
+        assert request_response.status_code == 200
+        assert request_response.json()["status"] == "assigned"
+
+        async with get_sessionmaker()() as session:
+            assigned_job = await session.get(Job, job_id)
+            assert assigned_job is not None
+            assert assigned_job.status == JobStatus.assigned
+            assert assigned_job.assigned_at is not None
+            assert assigned_job.started_at is None
+            assert assigned_job.status_changed_at == assigned_job.assigned_at
+
+        await asyncio.sleep(0.001)
+        start_response = await client.post(f"/jobs/{job_id}/start", headers=headers)
+        assert start_response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            running_job = await session.get(Job, job_id)
+            assert running_job is not None
+            assert running_job.status == JobStatus.running
+            assert running_job.started_at is not None
+            assert running_job.status_changed_at == running_job.started_at
+            started_at = running_job.started_at
+            running_status_changed_at = running_job.status_changed_at
+
+        await asyncio.sleep(0.001)
+        start_again_response = await client.post(f"/jobs/{job_id}/start", headers=headers)
+        assert start_again_response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            still_running_job = await session.get(Job, job_id)
+            assert still_running_job is not None
+            assert still_running_job.started_at == started_at
+            assert still_running_job.status_changed_at == running_status_changed_at
+
+        await asyncio.sleep(0.001)
+        checkpoint_response = await client.post(
+            f"/jobs/{job_id}/checkpoint",
+            headers=headers,
+            json={"checkpoint_path": "jobs/lifecycle/checkpoints/latest"},
+        )
+        assert checkpoint_response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            checkpointed_job = await session.get(Job, job_id)
+            assert checkpointed_job is not None
+            assert checkpointed_job.last_checkpoint_at is not None
+            assert checkpointed_job.updated_at == checkpointed_job.last_checkpoint_at
+            assert checkpointed_job.status_changed_at == running_status_changed_at
+
+        await asyncio.sleep(0.001)
+        complete_response = await client.post(f"/jobs/{job_id}/complete", headers=headers)
+        assert complete_response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            completed_job = await session.get(Job, job_id)
+            assert completed_job is not None
+            assert completed_job.status == JobStatus.completed
+            assert completed_job.status_changed_at > running_status_changed_at
+            assert completed_job.updated_at == completed_job.status_changed_at
+
+
+@pytest.mark.asyncio
 async def test_stale_worker_reaper_requeues_jobs() -> None:
     settings = make_settings()
 
@@ -148,6 +243,7 @@ async def test_stale_worker_reaper_requeues_jobs() -> None:
         (f"/workers/{uuid4()}/heartbeat", None),
         (f"/workers/{uuid4()}/deregister", None),
         ("/jobs/request", None),
+        (f"/jobs/{uuid4()}/start", None),
         (f"/jobs/{uuid4()}/checkpoint", {"checkpoint_path": "jobs/x/checkpoints/latest"}),
         (f"/jobs/{uuid4()}/complete", None),
         (f"/jobs/{uuid4()}/fail", None),
