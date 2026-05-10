@@ -204,6 +204,9 @@ def _render_sbatch_script(
         apptainer_docker_password_shell_quoted=(
             _shell_single_quote(docker_password) if docker_password else None
         ),
+        sif_cache_dir_shell_quoted=(
+            _shell_single_quote(cluster.sif_cache_dir) if cluster.sif_cache_dir else None
+        ),
         worker_bind_paths_shell_quoted=(
             _shell_single_quote(worker_bind_paths) if worker_bind_paths else None
         ),

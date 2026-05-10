@@ -57,7 +57,11 @@ _APPTAINER_IMAGE="{{ apptainer_image | default(sif_path) }}"
 
 if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
   _IMAGE_KEY="$(printf '%s' "${_APPTAINER_IMAGE}" | sha256sum | cut -c1-16)"
-  _SIF_CACHE_DIR="${HOME}/.apptainer/relaymd-sif-cache"
+{% if sif_cache_dir_shell_quoted %}
+  _SIF_CACHE_DIR={{ sif_cache_dir_shell_quoted }}
+{% else %}
+  _SIF_CACHE_DIR="${RELAYMD_SIF_CACHE_DIR:-${HOME}/.apptainer/relaymd-sif-cache}"
+{% endif %}
   mkdir -p "${_SIF_CACHE_DIR}"
   _SIF_PATH="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.sif"
   _LOCK_FILE="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.lock"

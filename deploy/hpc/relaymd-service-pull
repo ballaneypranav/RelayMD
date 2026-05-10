@@ -23,6 +23,7 @@ AUTO_RESOLVED_CLI_URI=""
 AUTO_RESOLVED_WORKER_SIF_URI=""
 AUTO_RESOLVED_ORCH_SIF_URI=""
 ALLOW_CLI_FALLBACK=1
+REQUESTED_RELEASE="${1:-}"
 
 stat_uid() {
     local path="$1"
@@ -360,6 +361,66 @@ manifest_images_are_resolvable() {
     return 0
 }
 
+update_anvil_image_uri_in_config() {
+    local config_path="$1"
+    local worker_sif_uri="$2"
+    local sif_cache_dir="$3"
+    local tmp_path
+
+    if [[ -z "${worker_sif_uri}" || ! -f "${config_path}" ]]; then
+        return 0
+    fi
+
+    tmp_path="$(mktemp "${TMPDIR:-/tmp}/relaymd-config-update.XXXXXX.yaml")"
+    awk -v worker_sif_uri="${worker_sif_uri}" -v sif_cache_dir="${sif_cache_dir}" '
+        function flush_missing_fields() {
+            if (!in_anvil_template) {
+                return
+            }
+            if (!saw_image_uri) {
+                print "    image_uri: " worker_sif_uri
+            }
+            if (!saw_sif_cache_dir) {
+                print "    sif_cache_dir: " sif_cache_dir
+            }
+        }
+        BEGIN {
+            in_anvil_template = 0
+            saw_image_uri = 0
+            saw_sif_cache_dir = 0
+        }
+        {
+            if ($0 ~ /^  - name: /) {
+                flush_missing_fields()
+                in_anvil_template = ($0 ~ /^  - name: anvil-template[[:space:]]*$/)
+                saw_image_uri = 0
+                saw_sif_cache_dir = 0
+                print
+                next
+            }
+
+            if (in_anvil_template) {
+                if ($0 ~ /^    image_uri:[[:space:]]*/) {
+                    print "    image_uri: " worker_sif_uri
+                    saw_image_uri = 1
+                    next
+                }
+                if ($0 ~ /^    sif_cache_dir:[[:space:]]*/) {
+                    print "    sif_cache_dir: " sif_cache_dir
+                    saw_sif_cache_dir = 1
+                    next
+                }
+            }
+
+            print
+        }
+        END {
+            flush_missing_fields()
+        }
+    ' "${config_path}" > "${tmp_path}"
+    mv "${tmp_path}" "${config_path}"
+}
+
 if [[ $# -lt 1 || $# -gt 3 ]]; then
     usage >&2
     exit 1
@@ -580,6 +641,16 @@ fi
 mv "${CLI_TMP}" "${CLI_BIN}"
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
+
+if [[ "${REQUESTED_RELEASE}" == "latest" ]]; then
+    RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+    RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
+    RELAYMD_ANVIL_SIF_CACHE_DIR="${RELAYMD_ANVIL_SIF_CACHE_DIR:-/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache}"
+    update_anvil_image_uri_in_config \
+        "${RELAYMD_CONFIG}" \
+        "${AUTO_RESOLVED_WORKER_SIF_URI}" \
+        "${RELAYMD_ANVIL_SIF_CACHE_DIR}"
+fi
 
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
 echo "  orchestrator: ${ORCH_SIF}"

@@ -52,6 +52,7 @@ class ClusterConfig(BaseModel):
     jit_threshold_hours: float = Field(default=6.0, gt=0)
     sif_path: str | None = None
     image_uri: str | None = None
+    sif_cache_dir: str | None = None
     nodes: int | None = Field(default=None, ge=1)
     ntasks: int | None = Field(default=None, ge=1)
     qos: str | None = None
@@ -80,6 +81,8 @@ class ClusterConfig(BaseModel):
             self.qos = self.qos.strip() or None
         if self.gres is not None:
             self.gres = self.gres.strip() or None
+        if self.sif_cache_dir is not None:
+            self.sif_cache_dir = self.sif_cache_dir.strip() or None
 
         if self.memory and self.memory_per_gpu:
             raise ValueError("set at most one of 'memory' or 'memory_per_gpu'")

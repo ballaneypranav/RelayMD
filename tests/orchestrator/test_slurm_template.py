@@ -98,3 +98,22 @@ def test_job_template_renders_registry_backed_image() -> None:
     # flock serialisation block must be present.
     assert "flock -x 200" in rendered
     assert "apptainer pull" in rendered
+
+
+def test_job_template_uses_cluster_specific_sif_cache_dir() -> None:
+    rendered = _render_template(
+        {
+            "cluster_name": "anvil",
+            "partition": "gpu",
+            "account": "proj-999",
+            "gpu_type": "a100",
+            "gpu_count": 1,
+            "apptainer_image": "docker://ghcr.io/acme/relaymd-worker:sha-abc1234",
+            "sif_cache_dir_shell_quoted": (
+                "'/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache'"
+            ),
+            "infisical_token": "client-id:client-secret",
+        }
+    )
+
+    assert "_SIF_CACHE_DIR='/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache'" in rendered
