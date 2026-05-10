@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import uvicorn
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from relaymd.orchestrator import __version__
@@ -42,6 +42,7 @@ SPA_EXCLUDED_PREFIXES = (
     "docs",
     "redoc",
 )
+SPA_APP_PREFIX = "app"
 
 
 def _resolve_tailscale_binary(name: str) -> str:
@@ -397,21 +398,14 @@ def create_app(
         app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
 
     @app.get("/")
-    async def frontend_index() -> FileResponse:
-        index_path = _frontend_index_path()
-        if not index_path.is_file():
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Frontend build missing. Set RELAYMD_FRONTEND_DIST_DIR or "
-                    "bundle assets into /opt/relaymd/frontend/dist."
-                ),
-            )
-        return FileResponse(index_path)
+    async def frontend_index() -> RedirectResponse:
+        return RedirectResponse(url="/app/jobs", status_code=307)
 
     @app.get("/{full_path:path}")
     async def frontend_spa_fallback(full_path: str) -> FileResponse:
         if full_path.split("/")[0] in SPA_EXCLUDED_PREFIXES:
+            raise HTTPException(status_code=404, detail="Not found")
+        if full_path.split("/")[0] != SPA_APP_PREFIX:
             raise HTTPException(status_code=404, detail="Not found")
 
         candidate = _resolve_frontend_asset_path(frontend_dist_dir, full_path)

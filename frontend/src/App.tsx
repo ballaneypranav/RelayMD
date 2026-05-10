@@ -13,16 +13,17 @@ import { WorkersView } from "./views/WorkersView";
 
 type ViewName = "jobs" | "workers" | "clusters" | "settings";
 const DEFAULT_VIEW: ViewName = "jobs";
+const APP_BASE_PATH = "/app";
 
 const PATH_TO_VIEW: Record<string, ViewName> = {
-  "/jobs": "jobs",
-  "/workers": "workers",
-  "/clusters": "clusters",
-  "/settings": "settings",
+  "/app/jobs": "jobs",
+  "/app/workers": "workers",
+  "/app/clusters": "clusters",
+  "/app/settings": "settings",
 };
 
 function viewToPath(view: ViewName): string {
-  return `/${view}`;
+  return `${APP_BASE_PATH}/${view}`;
 }
 
 function parseViewFromPath(pathname: string): ViewName | null {
@@ -258,9 +259,9 @@ export function App() {
         </p>
       </div>
       <div className="console-header-actions">
-        <div className="meta-pill">RelayMD v{health?.version ?? "-"}</div>
-        <div className={error ? "meta-pill error" : "meta-pill success"}>{error ? "Error" : "Live"}</div>
-        <button className="secondary" onClick={() => void refreshData()} disabled={isRefreshing}>
+        <div className="meta-pill meta-pill-version">RelayMD v{health?.version ?? "-"}</div>
+        <div className={error ? "meta-pill meta-pill-error" : "meta-pill meta-pill-live"}>{error ? "Error" : "Live"}</div>
+        <button className="secondary header-action-button" onClick={() => void refreshData()} disabled={isRefreshing}>
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
         {health?.tailscale ? (

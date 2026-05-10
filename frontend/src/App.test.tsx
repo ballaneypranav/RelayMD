@@ -123,26 +123,26 @@ describe("App", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Workers/i }));
     });
-    expect(window.location.pathname).toBe("/workers");
+    expect(window.location.pathname).toBe("/app/workers");
     expect(screen.getByText("Fleet health")).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByText("Clusters"));
     });
-    expect(window.location.pathname).toBe("/clusters");
+    expect(window.location.pathname).toBe("/app/clusters");
     expect(screen.getByRole("heading", { name: "Provisioning targets" })).toBeInTheDocument();
 
     await act(async () => {
       fireEvent.click(screen.getByText("Settings"));
     });
-    expect(window.location.pathname).toBe("/settings");
+    expect(window.location.pathname).toBe("/app/settings");
     expect(
       screen.getByText(/The proxy injects the RelayMD API token upstream/),
     ).toBeInTheDocument();
   });
 
   it("hydrates active view from URL and keeps it on reload-like mount", async () => {
-    window.history.replaceState(null, "", "/workers");
+    window.history.replaceState(null, "", "/app/workers");
     mockFetch({
       "GET /config/frontend": new Response(
         JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
@@ -158,11 +158,11 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getByText("Fleet health")).toBeInTheDocument());
-    expect(window.location.pathname).toBe("/workers");
+    expect(window.location.pathname).toBe("/app/workers");
   });
 
-  it("normalizes unknown routes to /jobs", async () => {
-    window.history.replaceState(null, "", "/nope");
+  it("normalizes unknown routes to /app/jobs", async () => {
+    window.history.replaceState(null, "", "/app/nope");
     mockFetch({
       "GET /config/frontend": new Response(
         JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
@@ -177,7 +177,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(window.location.pathname).toBe("/jobs"));
+    await waitFor(() => expect(window.location.pathname).toBe("/app/jobs"));
     expect(screen.getByText("Execution queue")).toBeInTheDocument();
   });
 
