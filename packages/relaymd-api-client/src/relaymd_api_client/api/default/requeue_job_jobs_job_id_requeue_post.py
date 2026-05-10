@@ -19,7 +19,7 @@ def _get_kwargs(
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset):
+    if not isinstance(x_api_token, Unset) and x_api_token is not None:
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
@@ -35,7 +35,7 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | JobConflict | JobRead | None:
+) -> HTTPValidationError | JobConflict | JobRead | dict[str, Any] | None:
     if response.status_code == 200:
         response_200 = JobRead.from_dict(response.json())
 
@@ -45,6 +45,11 @@ def _parse_response(
         response_409 = JobConflict.from_dict(response.json())
 
         return response_409
+
+    if response.status_code == 404:
+        response_404 = response.json()
+
+        return response_404
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -59,7 +64,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
+) -> Response[HTTPValidationError | JobConflict | JobRead | dict[str, Any]]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -85,7 +90,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | JobConflict | JobRead]
+        Response[HTTPValidationError | JobConflict | JobRead | dict[str, Any]]
     """
 
     kwargs = _get_kwargs(
@@ -105,7 +110,7 @@ def sync(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | JobConflict | JobRead | None:
+) -> HTTPValidationError | JobConflict | JobRead | dict[str, Any] | None:
     """Requeue Job
 
     Args:
@@ -117,7 +122,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | JobConflict | JobRead
+        HTTPValidationError | JobConflict | JobRead | dict[str, Any]
     """
 
     return sync_detailed(
@@ -144,7 +149,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | JobConflict | JobRead]
+        Response[HTTPValidationError | JobConflict | JobRead | dict[str, Any]]
     """
 
     kwargs = _get_kwargs(
@@ -162,7 +167,7 @@ async def asyncio(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | JobConflict | JobRead | None:
+) -> HTTPValidationError | JobConflict | JobRead | dict[str, Any] | None:
     """Requeue Job
 
     Args:
@@ -174,7 +179,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | JobConflict | JobRead
+        HTTPValidationError | JobConflict | JobRead | dict[str, Any]
     """
 
     return (

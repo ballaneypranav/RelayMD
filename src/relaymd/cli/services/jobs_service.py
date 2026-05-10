@@ -53,6 +53,8 @@ class JobsService:
                 force=force,
                 x_api_token=self._context.settings.api_token,
             )
+        if isinstance(response, dict):
+            raise RuntimeError(response)
         if isinstance(response, HTTPValidationError | JobConflict):
             raise RuntimeError(response.to_dict())
         return self.get_job(job_id=job_id)
@@ -64,6 +66,8 @@ class JobsService:
                 client=client,
                 x_api_token=self._context.settings.api_token,
             )
+        if isinstance(response, dict):
+            raise RuntimeError(response)
         if isinstance(response, HTTPValidationError | JobConflict):
             raise RuntimeError(response.to_dict())
         if response is None or not isinstance(response, JobRead):
@@ -79,8 +83,8 @@ class JobsService:
                 older_than_days=older_than_days,
                 x_api_token=self._context.settings.api_token,
             )
-        if isinstance(response, HTTPValidationError):
-            raise RuntimeError(response.to_dict())
+        if isinstance(response, dict):
+            raise RuntimeError(response)
         if response is None:
             raise RuntimeError("Empty response from prune endpoint")
         return int(response["deleted"])

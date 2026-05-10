@@ -64,6 +64,25 @@ def sync_detailed(
     return _build_response(client=client, response=response)
 
 
+def sync(
+    *,
+    client: AuthenticatedClient | Client,
+) -> Any | None:
+    """Frontend Index
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Any
+    """
+
+    return sync_detailed(
+        client=client,
+    ).parsed
+
+
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
@@ -83,3 +102,24 @@ async def asyncio_detailed(
     response = await client.get_async_httpx_client().request(**kwargs)
 
     return _build_response(client=client, response=response)
+
+
+async def asyncio(
+    *,
+    client: AuthenticatedClient | Client,
+) -> Any | None:
+    """Frontend Index
+
+    Raises:
+        errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
+        httpx.TimeoutException: If the request takes longer than Client.timeout.
+
+    Returns:
+        Any
+    """
+
+    return (
+        await asyncio_detailed(
+            client=client,
+        )
+    ).parsed

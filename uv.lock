@@ -1264,6 +1264,7 @@ dependencies = [
     { name = "attrs" },
     { name = "httpx" },
     { name = "pydantic" },
+    { name = "python-dateutil" },
 ]
 
 [package.metadata]
@@ -1271,6 +1272,7 @@ requires-dist = [
     { name = "attrs", specifier = ">=21.3.0" },
     { name = "httpx", specifier = ">=0.24.1" },
     { name = "pydantic", specifier = ">=2.0" },
+    { name = "python-dateutil", specifier = ">=2.8.2" },
 ]
 
 [[package]]
