@@ -510,16 +510,6 @@ if [[ -z "${WORKER_IMAGE_URI}" ]]; then
     exit 1
 fi
 
-if [[ "${REQUESTED_RELEASE}" == "latest" ]]; then
-    RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
-    RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
-    RELAYMD_ANVIL_SIF_CACHE_DIR="${RELAYMD_ANVIL_SIF_CACHE_DIR:-/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache}"
-    update_anvil_image_uri_in_config \
-        "${RELAYMD_CONFIG}" \
-        "${AUTO_RESOLVED_WORKER_SIF_URI}" \
-        "${RELAYMD_ANVIL_SIF_CACHE_DIR}"
-fi
-
 maybe_configure_apptainer_ghcr_auth "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"
 
 # Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
@@ -651,6 +641,16 @@ fi
 mv "${CLI_TMP}" "${CLI_BIN}"
 
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
+
+if [[ "${REQUESTED_RELEASE}" == "latest" ]]; then
+    RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
+    RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
+    RELAYMD_ANVIL_SIF_CACHE_DIR="${RELAYMD_ANVIL_SIF_CACHE_DIR:-/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache}"
+    update_anvil_image_uri_in_config \
+        "${RELAYMD_CONFIG}" \
+        "${AUTO_RESOLVED_WORKER_SIF_URI}" \
+        "${RELAYMD_ANVIL_SIF_CACHE_DIR}"
+fi
 
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
 echo "  orchestrator: ${ORCH_SIF}"
