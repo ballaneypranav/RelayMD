@@ -12,6 +12,9 @@ def utcnow_naive() -> datetime:
 
 class Job(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    assigned_at: datetime | None = None
+    started_at: datetime | None = None
+    status_changed_at: datetime = Field(default_factory=utcnow_naive)
     title: str
     status: JobStatus = JobStatus.queued
     input_bundle_path: str
@@ -34,6 +37,9 @@ class JobRead(SQLModel):
     title: str
     status: JobStatus
     input_bundle_path: str
+    assigned_at: datetime | None
+    started_at: datetime | None
+    status_changed_at: datetime
     latest_checkpoint_path: str | None
     last_checkpoint_at: datetime | None
     assigned_worker_id: uuid.UUID | None
