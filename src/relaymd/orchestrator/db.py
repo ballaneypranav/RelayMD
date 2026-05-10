@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
@@ -58,6 +60,44 @@ async def create_db_and_tables() -> None:
     engine = get_engine()
     async with engine.begin() as connection:
         await connection.run_sync(SQLModel.metadata.create_all)
+    async with engine.begin() as connection:
+        await connection.run_sync(_ensure_job_lifecycle_columns)
+
+
+def _ensure_job_lifecycle_columns(connection: Connection) -> None:
+    if connection.dialect.name == "sqlite":
+        table_exists = connection.exec_driver_sql(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'job'"
+        ).first()
+        if table_exists is None:
+            return
+        existing_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(job)").all()
+        }
+    else:
+        inspector = inspect(connection)
+        if "job" not in inspector.get_table_names():
+            return
+        existing_columns = {column["name"] for column in inspector.get_columns("job")}
+
+    missing_columns = {
+        "assigned_at": "DATETIME",
+        "started_at": "DATETIME",
+        "status_changed_at": "DATETIME",
+    }.items()
+    for column_name, column_type in missing_columns:
+        if column_name not in existing_columns:
+            connection.execute(text(f"ALTER TABLE job ADD COLUMN {column_name} {column_type}"))
+
+    connection.execute(
+        text("UPDATE job SET status_changed_at = updated_at WHERE status_changed_at IS NULL")
+    )
+    connection.execute(
+        text(
+            "UPDATE job SET assigned_at = updated_at "
+            "WHERE assigned_at IS NULL AND status IN ('assigned', 'running')"
+        )
+    )
 
 
 async def dispose_engine() -> None:
