@@ -78,7 +78,7 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
+) -> Response[HTTPValidationError | JobConflict | JobRead | dict[str, Any]]:
     """Requeue Job
 
     Args:
@@ -137,7 +137,7 @@ async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
+) -> Response[HTTPValidationError | JobConflict | JobRead | dict[str, Any]]:
     """Requeue Job
 
     Args:
