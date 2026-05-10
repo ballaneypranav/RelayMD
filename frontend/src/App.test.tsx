@@ -83,10 +83,11 @@ describe("App", () => {
     );
     expect(screen.getByText("Execution queue")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "CONNECTED" })).toBeInTheDocument();
+    expect(screen.getByText("RelayMD v0.1.4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
     expect(screen.getByText("Job states")).toBeInTheDocument();
     expect(screen.getByText("Worker states")).toBeInTheDocument();
-    expect(screen.queryByText(/Orchestrator:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Refresh:/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Last updated/i)).toBeInTheDocument();
   });
 
   it("shows offline state when dashboard data fails", async () => {
@@ -211,5 +212,21 @@ describe("App", () => {
     expect(
       screen.getByText(/The proxy injects the RelayMD API token upstream/),
     ).toBeInTheDocument();
+  });
+
+  it("keeps rendering with missing health version payload", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", warnings: [] })),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("RelayMD v-")).toBeInTheDocument());
   });
 });

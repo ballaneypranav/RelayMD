@@ -47,7 +47,7 @@ export interface ClusterConfig {
 
 export interface HealthStatus {
   status: string;
-  version: string;
+  version?: string;
   warnings: string[];
   tailscale?: {
     connected: boolean;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob } from "./api";
 import { AppShell } from "./components/AppShell";
@@ -53,6 +53,35 @@ function useDashboardData(config: FrontendConfig | null) {
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [offlineSince, setOfflineSince] = useState<number | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null);
+  const [lastRefreshError, setLastRefreshError] = useState<string>("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const inFlightRef = useRef(false);
+
+  const refreshData = useCallback(async () => {
+    if (!config || inFlightRef.current) {
+      return;
+    }
+    inFlightRef.current = true;
+    setIsRefreshing(true);
+    try {
+      const payload = await fetchDashboardData(config.api_base_url);
+      setData(payload);
+      setError("");
+      setLastRefreshError("");
+      setOfflineSince(null);
+      setLastUpdatedAt(Date.now());
+    } catch (loadError) {
+      const message = loadError instanceof Error ? loadError.message : String(loadError);
+      setError(message);
+      setLastRefreshError(message);
+      setOfflineSince((previous) => previous ?? Date.now());
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+      inFlightRef.current = false;
+    }
+  }, [config]);
 
   useEffect(() => {
     if (!config) {
@@ -60,41 +89,39 @@ function useDashboardData(config: FrontendConfig | null) {
       return;
     }
 
-    let cancelled = false;
+    void refreshData();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      void refreshData();
+    }, config.refresh_interval_seconds * 1000);
 
-    const load = async () => {
-      try {
-        const payload = await fetchDashboardData(config.api_base_url);
-        if (cancelled) {
-          return;
-        }
-        setData(payload);
-        setError("");
-        setOfflineSince(null);
-      } catch (loadError) {
-        if (cancelled) {
-          return;
-        }
-        const message = loadError instanceof Error ? loadError.message : String(loadError);
-        setError(message);
-        setOfflineSince((previous) => previous ?? Date.now());
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshData();
       }
     };
-
-    void load();
-    const intervalId = window.setInterval(load, config.refresh_interval_seconds * 1000);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [config]);
+  }, [config, refreshData]);
 
-  return { data, error, loading, offlineSince, setData, setError };
+  return {
+    data,
+    error,
+    loading,
+    offlineSince,
+    lastUpdatedAt,
+    lastRefreshError,
+    isRefreshing,
+    refreshData,
+    setData,
+    setError,
+  };
 }
 
 export function App() {
@@ -107,7 +134,8 @@ export function App() {
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
 
-  const { data, error, loading, offlineSince, setData, setError } = useDashboardData(config);
+  const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
+    useDashboardData(config);
 
   useEffect(() => {
     void fetchFrontendConfig()
@@ -225,8 +253,16 @@ export function App() {
       <div>
         <p className="eyebrow">Operational Console</p>
         <h2>{navigation.find((item) => item.id === activeView)?.label}</h2>
+        <p className="header-copy">
+          {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Last updated -"}
+        </p>
       </div>
       <div className="console-header-actions">
+        <div className="meta-pill">RelayMD v{health?.version ?? "-"}</div>
+        <div className={error ? "meta-pill error" : "meta-pill success"}>{error ? "Error" : "Live"}</div>
+        <button className="secondary" onClick={() => void refreshData()} disabled={isRefreshing}>
+          {isRefreshing ? "Refreshing..." : "Refresh"}
+        </button>
         {health?.tailscale ? (
           health.tailscale.connected ? (
             <button className="connection-pill-button" onClick={() => navigateToView("settings")}>
@@ -261,6 +297,7 @@ export function App() {
             Orchestrator unreachable. Offline for {formatDuration((Date.now() - offlineSince) / 1000)}.
           </div>
         ) : null}
+        {lastRefreshError ? <div className="banner warning">Latest refresh failed: {lastRefreshError}</div> : null}
       </section>
 
       <section className="overview-groups" aria-label="System overview">
