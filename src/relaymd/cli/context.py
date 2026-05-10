@@ -10,6 +10,8 @@ from relaymd.storage import StorageClient
 
 if TYPE_CHECKING:
     from relaymd_api_client.client import Client as RelaymdApiClient
+else:
+    RelaymdApiClient = None
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,9 @@ class CliContext:
     settings: CliSettings
 
     def api_client(self) -> RelaymdApiClient:
-        from relaymd_api_client.client import Client as RelaymdApiClient
+        global RelaymdApiClient
+        if RelaymdApiClient is None:
+            from relaymd_api_client.client import Client as RelaymdApiClient
 
         return RelaymdApiClient(
             base_url=self.settings.orchestrator_url.rstrip("/"),
