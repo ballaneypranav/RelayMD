@@ -76,6 +76,10 @@ slurm_cluster_configs:
     # Prefer a SHA tag over :latest to pin to a specific build.
     # The SHA tag is printed in the GitHub Actions job summary after each CI run.
     # image_uri: ghcr.io/<org>/relaymd-worker:sha-abc1234
+    # For pre-built Apptainer artifacts from CI, use the oras URI directly:
+    # image_uri: oras://ghcr.io/<org>/relaymd-worker:sif-sha-abc1234
+    # Optional: move worker pull-cache off $HOME for quota-constrained clusters.
+    # sif_cache_dir: /anvil/projects/<project>/apps/relaymd/apptainer/cache
     # For private docker:// pulls, set APPTAINER_DOCKER_USERNAME and
     # APPTAINER_DOCKER_PASSWORD in relaymd-service.env (not in this YAML).
     # Per-job worker image selection is not supported in phase 1.

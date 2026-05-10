@@ -224,8 +224,10 @@ def test_cluster_config_supports_registry_image_uri() -> None:
         ssh_host="test-host",
         ssh_username="test-user",
         image_uri="ghcr.io/acme/relaymd-worker:latest",
+        sif_cache_dir=" /anvil/projects/x-bio230051/apps/relaymd/apptainer/cache ",
     )
     assert cluster.apptainer_image == "docker://ghcr.io/acme/relaymd-worker:latest"
+    assert cluster.sif_cache_dir == "/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache"
 
 
 def test_cluster_config_supports_gres_override() -> None:

@@ -29,6 +29,7 @@ Optional keys:
 - at most one of:
   - `memory` (renders `#SBATCH --mem=<value>`)
   - `memory_per_gpu` (renders `#SBATCH --mem-per-gpu=<value>`)
+- `sif_cache_dir` (directory for cached pulled SIFs when using `image_uri`; defaults to `$RELAYMD_SIF_CACHE_DIR` or `~/.apptainer/relaymd-sif-cache`)
 
 ## Template Rendering
 
