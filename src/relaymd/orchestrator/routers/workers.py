@@ -43,8 +43,16 @@ async def heartbeat_worker(
     worker = await WorkerLifecycleService(session).heartbeat(
         worker_id,
         job_id=payload.job_id if payload is not None else None,
-        progress=payload.progress if payload is not None else None,
-        progress_codes=payload.progress_codes if payload is not None else None,
+        progress=(
+            payload.progress
+            if payload is not None and "progress" in payload.model_fields_set
+            else None
+        ),
+        progress_codes=(
+            payload.progress_codes
+            if payload is not None and "progress_codes" in payload.model_fields_set
+            else None
+        ),
     )
     if worker is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")

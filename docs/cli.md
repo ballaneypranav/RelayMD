@@ -96,6 +96,8 @@ relaymd jobs cancel <job-id>
 relaymd jobs cancel <job-id> --force
 relaymd jobs requeue <job-id>
 relaymd jobs checkpoint download <job-id>
+relaymd jobs checkpoint download-file <job-id> <manifest-relative-path>
+relaymd jobs checkpoint download-all <job-id>
 ```
 
 When checkpoint download is delegated from a non-service login node, the
@@ -110,6 +112,8 @@ relaymd jobs show <job-id> --json
 relaymd jobs cancel <job-id> --json
 relaymd jobs requeue <job-id> --json
 relaymd jobs checkpoint download <job-id> --json
+relaymd jobs checkpoint download-file <job-id> state/checkpoint.chk --json
+relaymd jobs checkpoint download-all <job-id> --json
 ```
 
 Strict transition rules apply:
@@ -171,8 +175,8 @@ Example JSON:
 {
   "command": "python run.py",
   "checkpoint_watch_paths": ["*.cpt"],
+  "progress_file_path": "progress.txt",
   "checkpoint_poll_interval_seconds": 60,
-  "progress_glob_pattern": ["progress", "run.log"],
   "startup_progress_timeout_seconds": 900,
   "progress_timeout_seconds": 1800,
   "max_runtime_seconds": 86400,

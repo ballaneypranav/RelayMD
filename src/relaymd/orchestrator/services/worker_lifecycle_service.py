@@ -102,10 +102,16 @@ class WorkerLifecycleService:
         worker.last_heartbeat = _utcnow_naive()
         self._session.add(worker)
         if job_id is not None:
-            job = await self._session.get(Job, job_id)
+            job = (
+                await self._session.exec(
+                    select(Job).where(Job.id == job_id, Job.assigned_worker_id == worker_id)
+                )
+            ).first()
             if job is not None:
-                job.progress = progress
-                job.progress_codes_json = json.dumps(progress_codes or [])
+                if progress is not None:
+                    job.progress = progress
+                if progress_codes is not None:
+                    job.progress_codes_json = json.dumps(progress_codes)
                 job.updated_at = _utcnow_naive()
                 self._session.add(job)
         await self._session.commit()
