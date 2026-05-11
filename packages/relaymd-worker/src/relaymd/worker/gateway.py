@@ -52,7 +52,14 @@ class OrchestratorGateway(Protocol):
 
     def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable: ...
 
-    def report_checkpoint(self, *, job_id: UUID, checkpoint_path: str) -> None: ...
+    def report_checkpoint(
+        self,
+        *,
+        job_id: UUID,
+        checkpoint_path: str,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+    ) -> None: ...
 
     def start_job(self, *, job_id: UUID) -> None: ...
 
@@ -266,14 +273,26 @@ class ApiOrchestratorGateway:
             raise RuntimeError("Failed to parse job assignment response")
         return response
 
-    def report_checkpoint(self, *, job_id: UUID, checkpoint_path: str) -> None:
+    def report_checkpoint(
+        self,
+        *,
+        job_id: UUID,
+        checkpoint_path: str,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+    ) -> None:
+        body = ApiCheckpointReport(checkpoint_path=checkpoint_path)
+        if progress is not None:
+            body["progress"] = progress
+        if progress_codes is not None:
+            body["progress_codes"] = progress_codes
         self._call_with_conflict_handling(
             job_id=job_id,
             log_event="checkpoint_conflict_ignored",
             api_call=lambda: report_checkpoint_jobs_job_id_checkpoint_post.sync(
                 job_id=job_id,
                 client=self.client,
-                body=ApiCheckpointReport(checkpoint_path=checkpoint_path),
+                body=body,
                 x_api_token=self._api_token,
             ),
         )

@@ -16,6 +16,10 @@ export interface JobRead {
   status_changed_at: string;
   latest_checkpoint_path: string | null;
   last_checkpoint_at: string | null;
+  progress: number | null;
+  progress_codes: string[];
+  checkpoint_cycle_status: string | null;
+  checkpoint_cycle_failures: Array<{ code: string; detail: string }>;
   assigned_worker_id: string | null;
   created_at: string;
   updated_at: string;

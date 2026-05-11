@@ -84,6 +84,10 @@ def _ensure_job_lifecycle_columns(connection: Connection) -> None:
         "assigned_at": "DATETIME",
         "started_at": "DATETIME",
         "status_changed_at": "DATETIME",
+        "progress": "FLOAT",
+        "progress_codes_json": "TEXT",
+        "checkpoint_cycle_status": "TEXT",
+        "checkpoint_cycle_failures_json": "TEXT",
     }.items()
     for column_name, column_type in missing_columns:
         if column_name not in existing_columns:

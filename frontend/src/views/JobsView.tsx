@@ -11,6 +11,8 @@ interface JobRow {
   time_in_status: string;
   assigned_worker_id: string;
   time_since_checkpoint: string;
+  progress: string;
+  checkpoint_health: string;
 }
 
 interface JobsViewProps {
@@ -100,6 +102,8 @@ export function JobsView({
                   <th>Time In Status</th>
                   <th>Worker</th>
                   <th>Checkpoint</th>
+                  <th>Progress</th>
+                  <th>Checkpoint Health</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -133,6 +137,8 @@ export function JobsView({
                       <td>{row.time_in_status}</td>
                       <td>{row.assigned_worker_id}</td>
                       <td>{row.time_since_checkpoint}</td>
+                      <td>{row.progress}</td>
+                      <td>{row.checkpoint_health === "warn" ? "Warning" : "OK"}</td>
                       <td>
                         <div className="inline-actions">
                           {backingJob &&
@@ -216,8 +222,28 @@ export function JobsView({
                 <dd>{selectedJob.input_bundle_path}</dd>
               </div>
               <div>
+                <dt>Progress</dt>
+                <dd>{Math.round(((selectedJob.progress ?? 0) * 100) * 10) / 10}%</dd>
+              </div>
+              <div>
+                <dt>Progress Codes</dt>
+                <dd>{selectedJob.progress_codes.length > 0 ? selectedJob.progress_codes.join(", ") : "-"}</dd>
+              </div>
+              <div>
                 <dt>Latest Checkpoint</dt>
                 <dd>{selectedJob.latest_checkpoint_path || "-"}</dd>
+              </div>
+              <div>
+                <dt>Checkpoint Cycle Status</dt>
+                <dd>{selectedJob.checkpoint_cycle_status || "-"}</dd>
+              </div>
+              <div>
+                <dt>Checkpoint Failures</dt>
+                <dd>
+                  {selectedJob.checkpoint_cycle_failures.length > 0
+                    ? selectedJob.checkpoint_cycle_failures.map((failure) => `${failure.code}: ${failure.detail}`).join("; ")
+                    : "-"}
+                </dd>
               </div>
               <div>
                 <dt>Checkpoint Age</dt>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -86,13 +87,27 @@ class WorkerLifecycleService:
         )
         return worker
 
-    async def heartbeat(self, worker_id: UUID) -> Worker | None:
+    async def heartbeat(
+        self,
+        worker_id: UUID,
+        *,
+        job_id: UUID | None = None,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+    ) -> Worker | None:
         worker = await self._session.get(Worker, worker_id)
         if worker is None:
             return None
 
         worker.last_heartbeat = _utcnow_naive()
         self._session.add(worker)
+        if job_id is not None:
+            job = await self._session.get(Job, job_id)
+            if job is not None:
+                job.progress = progress
+                job.progress_codes_json = json.dumps(progress_codes or [])
+                job.updated_at = _utcnow_naive()
+                self._session.add(job)
         await self._session.commit()
         return worker
 

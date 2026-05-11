@@ -37,12 +37,17 @@ LOG = get_logger(__name__)
 PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
 CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1
 CHECKPOINT_WATCH_FILE_CAP = 250
+PROGRESS_MISSING = "progress_missing"
+PROGRESS_EMPTY = "progress_empty"
+PROGRESS_INVALID_FORMAT = "progress_invalid_format"
+PROGRESS_OUT_OF_RANGE_CLAMPED = "progress_out_of_range_clamped"
 
 
 @dataclass
 class BundleExecutionConfig:
     command: list[str]
     checkpoint_watch_paths: list[str]
+    progress_file_path: str
     checkpoint_poll_interval_seconds: int | None = None
     progress_glob_patterns: list[str] | None = None
     startup_progress_timeout_seconds: int | None = None
@@ -141,6 +146,7 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
         if not command_raw:
             continue
         watch_paths = _required_string_list(parsed, "checkpoint_watch_paths")
+        progress_file_path = _required_string(parsed, "progress_file_path")
 
         if isinstance(command_raw, str):
             command = shlex.split(command_raw)
@@ -171,6 +177,7 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
         return BundleExecutionConfig(
             command=command,
             checkpoint_watch_paths=watch_paths,
+            progress_file_path=progress_file_path,
             checkpoint_poll_interval_seconds=bundle_interval,
             progress_glob_patterns=progress_glob_patterns,
             startup_progress_timeout_seconds=startup_progress_timeout_seconds,
@@ -217,6 +224,13 @@ def _optional_string_list(parsed: dict[str, Any], key: str) -> list[str] | None:
 def _required_string_list(parsed: dict[str, Any], key: str) -> list[str]:
     value = parsed.get(key)
     if isinstance(value, list) and value and all(isinstance(item, str) and item for item in value):
+        return value
+    raise RuntimeError(f"Invalid {key} in bundle config")
+
+
+def _required_string(parsed: dict[str, Any], key: str) -> str:
+    value = parsed.get(key)
+    if isinstance(value, str) and value:
         return value
     raise RuntimeError(f"Invalid {key} in bundle config")
 
@@ -429,6 +443,32 @@ def _resolve_watch_files(
                     {"code": "path_validation_failed", "detail": f"unreadable path: {path}"}
                 )
     return [unique[key] for key in sorted(unique)], failures
+
+
+def _read_progress(*, bundle_root: Path, progress_file_path: str) -> tuple[float, list[str]]:
+    progress_path = bundle_root / progress_file_path
+    if progress_path.is_absolute() or ".." in Path(progress_file_path).parts:
+        return 0.0, [PROGRESS_INVALID_FORMAT]
+    if not progress_path.exists():
+        return 0.0, [PROGRESS_MISSING]
+
+    text = progress_path.read_text(encoding="utf-8", errors="replace").strip()
+    if not text:
+        return 0.0, [PROGRESS_EMPTY]
+
+    parts = text.split()
+    if len(parts) != 1:
+        return 0.0, [PROGRESS_INVALID_FORMAT]
+    try:
+        progress = float(parts[0])
+    except ValueError:
+        return 0.0, [PROGRESS_INVALID_FORMAT]
+
+    codes: list[str] = []
+    if progress < 0.0 or progress > 1.0:
+        progress = max(0.0, min(1.0, progress))
+        codes.append(PROGRESS_OUT_OF_RANGE_CLAMPED)
+    return progress, codes
 
 
 def _sync_checkpoint_manifest_cycle(
@@ -704,7 +744,19 @@ def _run_assigned_job(
             )
             checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
             next_checkpoint_poll_time = time.monotonic()
+            latest_progress = 0.0
+            latest_progress_codes = [PROGRESS_MISSING]
             while True:
+                latest_progress, latest_progress_codes = _read_progress(
+                    bundle_root=bundle_root,
+                    progress_file_path=execution_config.progress_file_path,
+                )
+                if context.heartbeat_thread is not None:
+                    context.heartbeat_thread.set_job_progress(
+                        job_id=assignment.job_id,
+                        progress=latest_progress,
+                        progress_codes=latest_progress_codes,
+                    )
                 if context.shutdown_event.is_set():
                     job_log.info("shutdown_requested_terminating_job")
                     execution.request_terminate()
@@ -721,6 +773,8 @@ def _run_assigned_job(
                         context.gateway.report_checkpoint(
                             job_id=assignment.job_id,
                             checkpoint_path=checkpoint_manifest_key,
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
                         )
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return
@@ -740,6 +794,8 @@ def _run_assigned_job(
                         context.gateway.report_checkpoint(
                             job_id=assignment.job_id,
                             checkpoint_path=checkpoint_manifest_key,
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
                         )
                     if checkpoint_poll_interval_seconds > 0:
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
@@ -784,6 +840,8 @@ def _run_assigned_job(
                             context.gateway.report_checkpoint(
                                 job_id=assignment.job_id,
                                 checkpoint_path=checkpoint_manifest_key,
+                                progress=latest_progress,
+                                progress_codes=latest_progress_codes,
                             )
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
@@ -815,6 +873,8 @@ def _run_assigned_job(
                 context.gateway.report_checkpoint(
                     job_id=assignment.job_id,
                     checkpoint_path=checkpoint_manifest_key,
+                    progress=latest_progress,
+                    progress_codes=latest_progress_codes,
                 )
 
             result = execution.result()
@@ -823,6 +883,12 @@ def _run_assigned_job(
             elif result.status == "failed":
                 context.gateway.fail_job(job_id=assignment.job_id)
         finally:
+            if context.heartbeat_thread is not None:
+                context.heartbeat_thread.set_job_progress(
+                    job_id=None,
+                    progress=None,
+                    progress_codes=[],
+                )
             if execution.is_running():
                 job_log.warning("job_execution_cleanup_terminating_process")
                 execution.request_terminate()
@@ -925,6 +991,7 @@ def run_worker(config: WorkerConfig) -> None:
                 sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
                 logger=worker_log,
                 openmm_platforms=openmm_platforms,
+                heartbeat_thread=heartbeat_thread,
             )
 
             idle_start_time: float | None = None

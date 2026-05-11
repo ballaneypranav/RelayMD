@@ -20,6 +20,10 @@ class Job(SQLModel, table=True):
     input_bundle_path: str
     latest_checkpoint_path: str | None = None
     last_checkpoint_at: datetime | None = None
+    progress: float | None = None
+    progress_codes_json: str | None = None
+    checkpoint_cycle_status: str | None = None
+    checkpoint_cycle_failures_json: str | None = None
     assigned_worker_id: uuid.UUID | None = None
     slurm_job_id: str | None = None
     created_at: datetime = Field(default_factory=utcnow_naive)
@@ -42,6 +46,10 @@ class JobRead(SQLModel):
     status_changed_at: datetime
     latest_checkpoint_path: str | None
     last_checkpoint_at: datetime | None
+    progress: float | None = None
+    progress_codes: list[str] = []
+    checkpoint_cycle_status: str | None = None
+    checkpoint_cycle_failures: list[dict[str, str]] = []
     assigned_worker_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
@@ -49,3 +57,11 @@ class JobRead(SQLModel):
 
 class CheckpointReport(SQLModel):
     checkpoint_path: str
+    progress: float | None = None
+    progress_codes: list[str] = []
+
+
+class WorkerHeartbeat(SQLModel):
+    job_id: uuid.UUID | None = None
+    progress: float | None = None
+    progress_codes: list[str] = []

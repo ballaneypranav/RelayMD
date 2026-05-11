@@ -32,7 +32,11 @@ from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJo
 
 
 def _write_bundle_tar(local_path: Path) -> None:
-    bundle_config = b'{"command": ["md-engine", "--run"], "checkpoint_watch_paths": ["*.chk"]}'
+    bundle_config = (
+        b'{"command": ["md-engine", "--run"], '
+        b'"checkpoint_watch_paths": ["*.chk"], '
+        b'"progress_file_path": "progress.txt"}'
+    )
     checkpoint_bytes = b"checkpoint-data"
 
     with tarfile.open(local_path, "w:gz") as archive:
@@ -78,8 +82,12 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
 
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_watch_paths": ["*.chk"], '
-        '"checkpoint_poll_interval_seconds": 60}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": 60}\n'
+        ),
         encoding="utf-8",
     )
     config = _load_bundle_execution_config(tmp_path)
@@ -89,7 +97,9 @@ def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_pa
 def test_load_bundle_execution_config_reads_supervision_fields_json(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
         (
-            '{"command": ["bash", "run.sh"], "checkpoint_watch_paths": ["*.chk"], '
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
             '"progress_glob_pattern": ["progress", "r*/job.out"], '
             '"startup_progress_timeout_seconds": 60, '
             '"progress_timeout_seconds": 120, '
@@ -112,8 +122,12 @@ def test_load_bundle_execution_config_reads_supervision_fields_json(tmp_path: Pa
 
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_toml(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.toml").write_text(
-        'command = ["bash", "run.sh"]\ncheckpoint_watch_paths = ["*.chk"]\n'
-        "checkpoint_poll_interval_seconds = 90\n",
+        (
+            'command = ["bash", "run.sh"]\n'
+            'checkpoint_watch_paths = ["*.chk"]\n'
+            'progress_file_path = "progress.txt"\n'
+            "checkpoint_poll_interval_seconds = 90\n"
+        ),
         encoding="utf-8",
     )
     config = _load_bundle_execution_config(tmp_path)
@@ -126,6 +140,7 @@ def test_load_bundle_execution_config_reads_supervision_fields_toml(tmp_path: Pa
             [
                 'command = ["bash", "run.sh"]',
                 'checkpoint_watch_paths = ["*.chk"]',
+                'progress_file_path = "progress.txt"',
                 'progress_glob_pattern = "progress"',
                 "startup_progress_timeout_seconds = 60",
                 "progress_timeout_seconds = 120",
@@ -151,8 +166,12 @@ def test_load_bundle_execution_config_rejects_non_positive_checkpoint_poll_inter
     tmp_path: Path,
 ) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_watch_paths": ["*.chk"], '
-        '"checkpoint_poll_interval_seconds": 0}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": 0}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
@@ -163,8 +182,12 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_watch_paths": ["*.chk"], '
-        '"checkpoint_poll_interval_seconds": true}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": true}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
@@ -173,8 +196,12 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
 
 def test_load_bundle_execution_config_rejects_invalid_supervision_field(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_watch_paths": ["*.chk"], '
-        '"progress_timeout_seconds": false}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"progress_timeout_seconds": false}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid progress_timeout_seconds"):
@@ -612,6 +639,7 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
@@ -647,15 +675,15 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
     assert gateway.method_calls[0] == call.start_job(job_id=assignment.job_id)
     assert call.complete_job(job_id=assignment.job_id) in gateway.method_calls
     report_calls = [
-        method_call
-        for method_call in gateway.method_calls
-        if method_call
-        == call.report_checkpoint(
-            job_id=assignment.job_id,
-            checkpoint_path=f"jobs/{assignment.job_id}/checkpoints/manifest.json",
-        )
+        method_call for method_call in gateway.method_calls if method_call[0] == "report_checkpoint"
     ]
     assert report_calls
+    assert all(
+        method_call.kwargs["job_id"] == assignment.job_id
+        and method_call.kwargs["checkpoint_path"]
+        == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+        for method_call in report_calls
+    )
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
@@ -735,6 +763,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
@@ -845,6 +874,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
             fatal_log_path="payload.log",
             fatal_log_patterns=["Traceback"],
         ),
@@ -890,11 +920,9 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
     ]
     assert len(report_calls) == 2
     assert all(
-        method_call
-        == call.report_checkpoint(
-            job_id=assignment.job_id,
-            checkpoint_path=f"jobs/{assignment.job_id}/checkpoints/manifest.json",
-        )
+        method_call.kwargs["job_id"] == assignment.job_id
+        and method_call.kwargs["checkpoint_path"]
+        == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
         for method_call in report_calls
     )
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
@@ -955,6 +983,7 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            progress_file_path="progress.txt",
         ),
     )
 
@@ -1059,6 +1088,7 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            progress_file_path="progress.txt",
         ),
     )
 
@@ -1158,6 +1188,7 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
@@ -1463,7 +1494,12 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
 
 def test_required_openmm_platform_returns_none_when_no_yaml(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["run.sh"], "checkpoint_watch_paths": ["*.chk"]}', encoding="utf-8"
+        (
+            '{"command": ["run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt"}'
+        ),
+        encoding="utf-8",
     )
     assert _required_openmm_platform(tmp_path) is None
 
@@ -1491,7 +1527,11 @@ def test_required_openmm_platform_normalises_value_to_upper(tmp_path: Path) -> N
 
 
 def _write_bundle_tar_with_yaml(local_path: Path, openmm_platform: str) -> None:
-    bundle_config = b'{"command": ["md-engine", "--run"], "checkpoint_watch_paths": ["*.chk"]}'
+    bundle_config = (
+        b'{"command": ["md-engine", "--run"], '
+        b'"checkpoint_watch_paths": ["*.chk"], '
+        b'"progress_file_path": "progress.txt"}'
+    )
     job_yaml = f"JOBNAME: test\nOPENMM_PLATFORM: {openmm_platform}\n".encode()
 
     with tarfile.open(local_path, "w:gz") as archive:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -20,6 +21,48 @@ from ._responses import job_transition_conflict_response
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
 logger = structlog.get_logger(__name__)
+
+
+def _job_to_read(job: Job) -> JobRead:
+    progress_codes: list[str] = []
+    checkpoint_cycle_failures: list[dict[str, str]] = []
+    if job.progress_codes_json:
+        try:
+            parsed_codes = json.loads(job.progress_codes_json)
+            if isinstance(parsed_codes, list):
+                progress_codes = [str(item) for item in parsed_codes]
+        except Exception:
+            progress_codes = []
+    if job.checkpoint_cycle_failures_json:
+        try:
+            parsed_failures = json.loads(job.checkpoint_cycle_failures_json)
+            if isinstance(parsed_failures, list):
+                checkpoint_cycle_failures = [
+                    {"code": str(item.get("code", "")), "detail": str(item.get("detail", ""))}
+                    for item in parsed_failures
+                    if isinstance(item, dict)
+                ]
+        except Exception:
+            checkpoint_cycle_failures = []
+
+    return JobRead(
+        id=job.id,
+        title=job.title,
+        status=job.status,
+        input_bundle_path=job.input_bundle_path,
+        assigned_at=job.assigned_at,
+        started_at=job.started_at,
+        status_changed_at=job.status_changed_at,
+        latest_checkpoint_path=job.latest_checkpoint_path,
+        last_checkpoint_at=job.last_checkpoint_at,
+        progress=job.progress,
+        progress_codes=progress_codes,
+        checkpoint_cycle_status=job.checkpoint_cycle_status,
+        checkpoint_cycle_failures=checkpoint_cycle_failures,
+        assigned_worker_id=job.assigned_worker_id,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+    )
 
 
 @router.post(
@@ -70,7 +113,7 @@ async def create_job(
         title=job.title,
         input_bundle_path=job.input_bundle_path,
     )
-    return JobRead.model_validate(job)
+    return _job_to_read(job)
 
 
 _TERMINAL_STATUSES = frozenset({JobStatus.completed, JobStatus.failed, JobStatus.cancelled})
@@ -113,7 +156,7 @@ async def list_jobs(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[JobRead]:
     jobs = (await session.exec(select(Job).order_by(col(Job.created_at).desc()))).all()
-    return [JobRead.model_validate(job) for job in jobs]
+    return [_job_to_read(job) for job in jobs]
 
 
 @router.get("/{job_id}", response_model=JobRead)
@@ -124,7 +167,7 @@ async def get_job(
     job = await session.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-    return JobRead.model_validate(job)
+    return _job_to_read(job)
 
 
 @router.delete(
@@ -194,4 +237,4 @@ async def requeue_job(
     session.add(requeued_job)
     await session.commit()
     await session.refresh(requeued_job)
-    return JobRead.model_validate(requeued_job)
+    return _job_to_read(requeued_job)
