@@ -1,7 +1,7 @@
 from .api import JobAssigned, JobConflict, JobCreateConflict, JobRequestResponse, NoJobAvailable
 from .cluster_provisioning_state import ClusterProvisioningState
 from .enums import JobStatus, Platform, WorkerStatus
-from .job import CheckpointReport, Job, JobCreate, JobRead
+from .job import CheckpointReport, Job, JobCreate, JobRead, WorkerHeartbeat
 from .worker import Worker, WorkerRead, WorkerRegister
 
 __version__ = "0.1.0"
@@ -21,6 +21,7 @@ __all__ = [
     "NoJobAvailable",
     "Platform",
     "Worker",
+    "WorkerHeartbeat",
     "WorkerRead",
     "WorkerRegister",
     "WorkerStatus",

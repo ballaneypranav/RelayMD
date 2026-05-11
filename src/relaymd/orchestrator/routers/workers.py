@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import JobConflict, Worker, WorkerRead, WorkerRegister
+from relaymd.models import JobConflict, Worker, WorkerHeartbeat, WorkerRead, WorkerRegister
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, WorkerLifecycleService
@@ -38,8 +38,14 @@ async def register_worker(
 async def heartbeat_worker(
     worker_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    payload: WorkerHeartbeat | None = None,
 ) -> Response:
-    worker = await WorkerLifecycleService(session).heartbeat(worker_id)
+    worker = await WorkerLifecycleService(session).heartbeat(
+        worker_id,
+        job_id=payload.job_id if payload is not None else None,
+        progress=payload.progress if payload is not None else None,
+        progress_codes=payload.progress_codes if payload is not None else None,
+    )
     if worker is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Worker not found")
     return Response(status_code=status.HTTP_204_NO_CONTENT)

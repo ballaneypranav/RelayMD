@@ -58,6 +58,8 @@ export interface JobRow {
   time_in_status: string;
   assigned_worker_id: string;
   time_since_checkpoint: string;
+  progress: string;
+  checkpoint_health: string;
 }
 
 export interface WorkerRow {
@@ -91,6 +93,8 @@ export function buildJobRows(rawJobs: JobRead[], now: Date): JobRow[] {
       time_since_checkpoint: checkpointAt
         ? formatDuration((now.getTime() - checkpointAt.getTime()) / 1000)
         : "-",
+      progress: `${Math.round(((job.progress ?? 0) * 100) * 10) / 10}%`,
+      checkpoint_health: job.checkpoint_cycle_failures.length > 0 ? "warn" : "ok",
     };
   });
 }

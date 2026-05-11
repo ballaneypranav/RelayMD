@@ -14,6 +14,7 @@ from ...types import UNSET, Response, Unset
 def _get_kwargs(
     worker_id: UUID,
     *,
+    body: Any | None = None,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -28,6 +29,9 @@ def _get_kwargs(
     }
 
     _kwargs["headers"] = headers
+    if body is not None:
+        _kwargs["json"] = body
+        headers["Content-Type"] = "application/json"
     return _kwargs
 
 
@@ -64,6 +68,7 @@ def sync_detailed(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: Any | None = None,
     x_api_token: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Heartbeat Worker
@@ -82,6 +87,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         worker_id=worker_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -96,6 +102,7 @@ def sync(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: Any | None = None,
     x_api_token: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Heartbeat Worker
@@ -115,6 +122,7 @@ def sync(
     return sync_detailed(
         worker_id=worker_id,
         client=client,
+        body=body,
         x_api_token=x_api_token,
     ).parsed
 
@@ -123,6 +131,7 @@ async def asyncio_detailed(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: Any | None = None,
     x_api_token: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Heartbeat Worker
@@ -141,6 +150,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         worker_id=worker_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -153,6 +163,7 @@ async def asyncio(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: Any | None = None,
     x_api_token: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Heartbeat Worker
@@ -173,6 +184,7 @@ async def asyncio(
         await asyncio_detailed(
             worker_id=worker_id,
             client=client,
+            body=body,
             x_api_token=x_api_token,
         )
     ).parsed

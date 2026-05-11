@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import signal
 import tarfile
@@ -23,8 +24,6 @@ from relaymd.worker.main import (
     _load_bundle_execution_config,
     _required_openmm_platform,
     _run_assigned_job,
-    _upload_checkpoint,
-    _wait_for_final_checkpoint,
     detect_openmm_platforms,
     run_worker,
 )
@@ -33,7 +32,11 @@ from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJo
 
 
 def _write_bundle_tar(local_path: Path) -> None:
-    bundle_config = b'{"command": ["md-engine", "--run"], "checkpoint_glob_pattern": "*.chk"}'
+    bundle_config = (
+        b'{"command": ["md-engine", "--run"], '
+        b'"checkpoint_watch_paths": ["*.chk"], '
+        b'"progress_file_path": "progress.txt"}'
+    )
     checkpoint_bytes = b"checkpoint-data"
 
     with tarfile.open(local_path, "w:gz") as archive:
@@ -79,8 +82,12 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
 
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
-        '"checkpoint_poll_interval_seconds": 60}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": 60}\n'
+        ),
         encoding="utf-8",
     )
     config = _load_bundle_execution_config(tmp_path)
@@ -90,7 +97,9 @@ def test_load_bundle_execution_config_reads_checkpoint_poll_interval_json(tmp_pa
 def test_load_bundle_execution_config_reads_supervision_fields_json(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
         (
-            '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
             '"progress_glob_pattern": ["progress", "r*/job.out"], '
             '"startup_progress_timeout_seconds": 60, '
             '"progress_timeout_seconds": 120, '
@@ -113,8 +122,12 @@ def test_load_bundle_execution_config_reads_supervision_fields_json(tmp_path: Pa
 
 def test_load_bundle_execution_config_reads_checkpoint_poll_interval_toml(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.toml").write_text(
-        'command = ["bash", "run.sh"]\ncheckpoint_glob_pattern = "*.chk"\n'
-        "checkpoint_poll_interval_seconds = 90\n",
+        (
+            'command = ["bash", "run.sh"]\n'
+            'checkpoint_watch_paths = ["*.chk"]\n'
+            'progress_file_path = "progress.txt"\n'
+            "checkpoint_poll_interval_seconds = 90\n"
+        ),
         encoding="utf-8",
     )
     config = _load_bundle_execution_config(tmp_path)
@@ -126,7 +139,8 @@ def test_load_bundle_execution_config_reads_supervision_fields_toml(tmp_path: Pa
         "\n".join(
             [
                 'command = ["bash", "run.sh"]',
-                'checkpoint_glob_pattern = "*.chk"',
+                'checkpoint_watch_paths = ["*.chk"]',
+                'progress_file_path = "progress.txt"',
                 'progress_glob_pattern = "progress"',
                 "startup_progress_timeout_seconds = 60",
                 "progress_timeout_seconds = 120",
@@ -152,8 +166,12 @@ def test_load_bundle_execution_config_rejects_non_positive_checkpoint_poll_inter
     tmp_path: Path,
 ) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
-        '"checkpoint_poll_interval_seconds": 0}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": 0}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
@@ -164,8 +182,12 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
-        '"checkpoint_poll_interval_seconds": true}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"checkpoint_poll_interval_seconds": true}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid checkpoint_poll_interval_seconds"):
@@ -174,8 +196,12 @@ def test_load_bundle_execution_config_rejects_boolean_checkpoint_poll_interval(
 
 def test_load_bundle_execution_config_rejects_invalid_supervision_field(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["bash", "run.sh"], "checkpoint_glob_pattern": "*.chk", '
-        '"progress_timeout_seconds": false}\n',
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt", '
+            '"progress_timeout_seconds": false}\n'
+        ),
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="Invalid progress_timeout_seconds"):
@@ -412,15 +438,17 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     storage.download_file.assert_any_call("jobs/job-1/checkpoints/latest", ANY)
     storage.upload_file.assert_called_with(
         ANY,
-        "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/latest",
+        "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/manifest.json",
     )
 
-    assert api_calls == [
+    assert api_calls[0:3] == [
         "/workers/register",
         "/jobs/request",
         "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/start",
-        "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint",
-        "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/complete",
+    ]
+    assert "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoint" in api_calls
+    assert "/jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/complete" in api_calls
+    assert api_calls[-2:] == [
         "/jobs/request",
         "/workers/0a05f971-0f5b-46cb-bd86-d13133f998aa/deregister",
     ]
@@ -610,7 +638,8 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="*.chk",
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
@@ -643,10 +672,18 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
 
     assert shutdown_event.wait.call_count == 1
     assert shutdown_event.wait.call_args.kwargs == {"timeout": 2.0}
-    assert gateway.method_calls[:2] == [
-        call.start_job(job_id=assignment.job_id),
-        call.complete_job(job_id=assignment.job_id),
+    assert gateway.method_calls[0] == call.start_job(job_id=assignment.job_id)
+    assert call.complete_job(job_id=assignment.job_id) in gateway.method_calls
+    report_calls = [
+        method_call for method_call in gateway.method_calls if method_call[0] == "report_checkpoint"
     ]
+    assert report_calls
+    assert all(
+        method_call.kwargs["job_id"] == assignment.job_id
+        and method_call.kwargs["checkpoint_path"]
+        == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+        for method_call in report_calls
+    )
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_not_called()
@@ -725,7 +762,8 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="*.chk",
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
@@ -757,7 +795,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     _run_assigned_job(context=context, assignment=assignment)
 
     execution = execution_holder["execution"]
-    assert execution.iter_calls == 1
+    assert execution.iter_calls == 0
     assert shutdown_event.wait.call_count == 3
     assert all(call.kwargs == {"timeout": 2.0} for call in shutdown_event.wait.call_args_list)
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
@@ -835,7 +873,8 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="*.chk",
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
             fatal_log_path="payload.log",
             fatal_log_patterns=["Traceback"],
         ),
@@ -873,94 +912,22 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
     execution = execution_holder["execution"]
     assert execution.request_terminate_calls == 1
     assert execution.kill_calls == 1
-    storage.upload_file.assert_called_once()
-    assert cast(Path, uploaded["path"]).name == "payload.log"
-    assert uploaded["content"] == "Traceback: child failed\n"
-    assert uploaded["key"] == f"jobs/{assignment.job_id}/checkpoints/latest"
-    gateway.report_checkpoint.assert_called_once_with(
-        job_id=assignment.job_id,
-        checkpoint_path=f"jobs/{assignment.job_id}/checkpoints/latest",
+    assert storage.upload_file.call_count == 2
+    assert cast(Path, uploaded["path"]).name == "relaymd-checkpoint-manifest.json"
+    assert uploaded["key"] == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+    report_calls = [
+        method_call for method_call in gateway.method_calls if method_call[0] == "report_checkpoint"
+    ]
+    assert len(report_calls) == 2
+    assert all(
+        method_call.kwargs["job_id"] == assignment.job_id
+        and method_call.kwargs["checkpoint_path"]
+        == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+        for method_call in report_calls
     )
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
     gateway.complete_job.assert_not_called()
-
-
-def test_upload_checkpoint_emits_success_events(tmp_path: Path) -> None:
-    checkpoint = tmp_path / "checkpoint.chk"
-    checkpoint.write_text("checkpoint-data", encoding="utf-8")
-    storage = Mock()
-    gateway = Mock()
-    logger = Mock()
-    context = cast(WorkerContext, SimpleNamespace(storage=storage, gateway=gateway))
-    job_id = uuid4()
-
-    uploaded_mtime = _upload_checkpoint(
-        context,
-        logger=logger,
-        checkpoint=checkpoint,
-        checkpoint_b2_key="jobs/x/checkpoints/latest",
-        job_id=job_id,
-    )
-
-    storage.upload_file.assert_called_once_with(checkpoint, "jobs/x/checkpoints/latest")
-    gateway.report_checkpoint.assert_called_once_with(
-        job_id=job_id,
-        checkpoint_path="jobs/x/checkpoints/latest",
-    )
-    assert uploaded_mtime == checkpoint.stat().st_mtime
-    assert [call.args[0] for call in logger.info.call_args_list] == [
-        "checkpoint_upload_started",
-        "checkpoint_upload_succeeded",
-        "checkpoint_report_succeeded",
-    ]
-
-
-def test_upload_checkpoint_emits_failure_event(tmp_path: Path) -> None:
-    checkpoint = tmp_path / "checkpoint.chk"
-    checkpoint.write_text("checkpoint-data", encoding="utf-8")
-    storage = Mock()
-    storage.upload_file.side_effect = RuntimeError("boom")
-    gateway = Mock()
-    logger = Mock()
-    context = cast(WorkerContext, SimpleNamespace(storage=storage, gateway=gateway))
-
-    with pytest.raises(RuntimeError, match="boom"):
-        _upload_checkpoint(
-            context,
-            logger=logger,
-            checkpoint=checkpoint,
-            checkpoint_b2_key="jobs/x/checkpoints/latest",
-            job_id=uuid4(),
-        )
-
-    logger.exception.assert_called_once()
-    assert logger.exception.call_args.args[0] == "checkpoint_upload_failed"
-    gateway.report_checkpoint.assert_not_called()
-
-
-def test_wait_for_final_checkpoint_respects_min_mtime(tmp_path: Path) -> None:
-    checkpoint = tmp_path / "relaymd-checkpoint.tar.gz"
-    checkpoint.write_text("old", encoding="utf-8")
-    os.utime(checkpoint, (100.0, 100.0))
-
-    no_newer = _wait_for_final_checkpoint(
-        tmp_path,
-        "relaymd-checkpoint.tar.gz",
-        timeout_seconds=0,
-        poll_interval_seconds=1,
-        min_checkpoint_mtime=100.0,
-    )
-    assert no_newer is None
-
-    newer_allowed = _wait_for_final_checkpoint(
-        tmp_path,
-        "relaymd-checkpoint.tar.gz",
-        timeout_seconds=0,
-        poll_interval_seconds=1,
-        min_checkpoint_mtime=99.0,
-    )
-    assert newer_allowed == checkpoint
 
 
 def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None:
@@ -1010,29 +977,29 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
         def kill(self) -> None:
             raise AssertionError("kill should not be called")
 
-    uploaded_mtimes: list[float] = []
-
-    def _fake_upload_checkpoint(*args, **kwargs) -> float:
-        checkpoint_mtime = kwargs["checkpoint"].stat().st_mtime
-        uploaded_mtimes.append(checkpoint_mtime)
-        return checkpoint_mtime
-
     monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
-    monkeypatch.setattr("relaymd.worker.main._upload_checkpoint", _fake_upload_checkpoint)
     monkeypatch.setattr(
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="relaymd-checkpoint.tar.gz",
+            checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            progress_file_path="progress.txt",
         ),
     )
 
     storage = Mock()
+    uploaded_manifest_text: str | None = None
 
     def _download_file(_remote: str, local: Path) -> None:
         local.write_bytes(b"bundle-data")
 
+    def _upload_file(local: Path, remote: str) -> None:
+        nonlocal uploaded_manifest_text
+        if remote == f"jobs/{assignment.job_id}/checkpoints/manifest.json":
+            uploaded_manifest_text = local.read_text(encoding="utf-8")
+
     storage.download_file.side_effect = _download_file
+    storage.upload_file.side_effect = _upload_file
     gateway = Mock()
     shutdown_event = Mock()
     shutdown_event.is_set.return_value = True
@@ -1053,7 +1020,16 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
 
     _run_assigned_job(context=context, assignment=assignment)
 
-    assert uploaded_mtimes == [200.0]
+    manifest_upload_calls = [
+        call_args
+        for call_args in storage.upload_file.call_args_list
+        if call_args.args[1] == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+    ]
+    assert len(manifest_upload_calls) == 1
+    assert uploaded_manifest_text is not None
+    manifest = json.loads(uploaded_manifest_text)
+    checkpoint_entry = manifest["files"]["relaymd-checkpoint.tar.gz"]
+    assert checkpoint_entry["mtime_ns"] == int(200.0 * 1_000_000_000)
     gateway.complete_job.assert_not_called()
     gateway.fail_job.assert_not_called()
 
@@ -1111,12 +1087,10 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="relaymd-checkpoint.tar.gz",
+            checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            progress_file_path="progress.txt",
         ),
     )
-
-    upload_checkpoint = Mock()
-    monkeypatch.setattr("relaymd.worker.main._upload_checkpoint", upload_checkpoint)
 
     storage = Mock()
 
@@ -1144,7 +1118,11 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
 
     _run_assigned_job(context=context, assignment=assignment)
 
-    upload_checkpoint.assert_not_called()
+    storage.upload_file.assert_called()
+    storage.upload_file.assert_any_call(
+        ANY,
+        f"jobs/{assignment.job_id}/checkpoints/manifest.json",
+    )
     gateway.complete_job.assert_not_called()
     gateway.fail_job.assert_not_called()
 
@@ -1171,7 +1149,7 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
             return None
 
         def iter_new_checkpoints(self):
-            yield tmp_path / "checkpoint.chk"
+            return iter(())
 
         def poll_exit_code(self) -> int | None:
             return None
@@ -1209,11 +1187,12 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
         "relaymd.worker.main._load_bundle_execution_config",
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
-            checkpoint_glob_pattern="*.chk",
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
         ),
     )
     monkeypatch.setattr(
-        "relaymd.worker.main._upload_checkpoint",
+        "relaymd.worker.main._sync_checkpoint_manifest_cycle",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("upload failed")),
     )
 
@@ -1515,7 +1494,12 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
 
 def test_required_openmm_platform_returns_none_when_no_yaml(tmp_path: Path) -> None:
     (tmp_path / "relaymd-worker.json").write_text(
-        '{"command": ["run.sh"], "checkpoint_glob_pattern": "*.chk"}', encoding="utf-8"
+        (
+            '{"command": ["run.sh"], '
+            '"checkpoint_watch_paths": ["*.chk"], '
+            '"progress_file_path": "progress.txt"}'
+        ),
+        encoding="utf-8",
     )
     assert _required_openmm_platform(tmp_path) is None
 
@@ -1543,7 +1527,11 @@ def test_required_openmm_platform_normalises_value_to_upper(tmp_path: Path) -> N
 
 
 def _write_bundle_tar_with_yaml(local_path: Path, openmm_platform: str) -> None:
-    bundle_config = b'{"command": ["md-engine", "--run"], "checkpoint_glob_pattern": "*.chk"}'
+    bundle_config = (
+        b'{"command": ["md-engine", "--run"], '
+        b'"checkpoint_watch_paths": ["*.chk"], '
+        b'"progress_file_path": "progress.txt"}'
+    )
     job_yaml = f"JOBNAME: test\nOPENMM_PLATFORM: {openmm_platform}\n".encode()
 
     with tarfile.open(local_path, "w:gz") as archive:

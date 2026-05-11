@@ -105,7 +105,7 @@ The storage layer is implemented as a shared Python module (`relaymd-storage`) w
 
 ```
 jobs/{job_id}/input/bundle.tar.gz   # Immutable input bundle; uploaded once by the CLI
-jobs/{job_id}/checkpoints/latest    # Latest checkpoint; overwritten on every checkpoint cycle
+jobs/{job_id}/checkpoints/manifest.json    # Latest checkpoint; overwritten on every checkpoint cycle
 ```
 
 Input bundles are never overwritten. The orchestrator stores only the key path to the latest checkpoint, not the checkpoint data itself.

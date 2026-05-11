@@ -18,7 +18,7 @@ This run validated that a job cancelled mid-run resumed on a second worker from 
 - Dummy bundle:
   - `run.sh` writes `checkpoint.chk` every 60 seconds for 8 total iterations
   - if `../latest` exists, `run.sh` reads `iteration=<n>` and resumes from `n + 1`
-  - `relaymd-worker.json` sets `checkpoint_glob_pattern` to `*.chk`
+  - `relaymd-worker.json` sets `checkpoint_watch_paths` to `*.chk`
 - Local test config:
   - `worker_checkpoint_poll_interval_seconds: 60`
 

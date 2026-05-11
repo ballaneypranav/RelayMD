@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -50,6 +51,10 @@ class HeartbeatThread(threading.Thread):
         self._interval_seconds = interval_seconds
         self._timeout_seconds = timeout_seconds
         self._stop_event = stop_event or threading.Event()
+        self._state_lock = threading.Lock()
+        self._job_id: str | None = None
+        self._progress: float | None = None
+        self._progress_codes: list[str] = []
 
     @staticmethod
     def _should_use_tailscale_userspace_proxy() -> bool:
@@ -95,10 +100,27 @@ class HeartbeatThread(threading.Thread):
         reraise=True,
     )
     def _send(self, client: RelaymdApiClient) -> None:
+        payload: dict[str, Any] = {}
+        with self._state_lock:
+            if self._job_id is not None:
+                payload["job_id"] = self._job_id
+            if self._progress is not None:
+                payload["progress"] = self._progress
+            payload["progress_codes"] = list(self._progress_codes)
+
         response = heartbeat_worker_workers_worker_id_heartbeat_post.sync(
             worker_id=self._worker_id,
             client=client,
             x_api_token=self._api_token,
+            body=payload if payload else None,
         )
         if isinstance(response, ApiHTTPValidationError):
             raise RuntimeError(response.to_dict())
+
+    def set_job_progress(
+        self, *, job_id: UUID | None, progress: float | None, progress_codes: list[str] | None
+    ) -> None:
+        with self._state_lock:
+            self._job_id = str(job_id) if job_id is not None else None
+            self._progress = progress
+            self._progress_codes = list(progress_codes or [])

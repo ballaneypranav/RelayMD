@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import structlog
@@ -113,7 +114,14 @@ class JobTransitionService:
     def requeue_in_place(self, job: Job) -> Job:
         return self._transition(job, JobStatus.queued, clear_assigned_worker=True)
 
-    def report_checkpoint(self, job: Job, *, checkpoint_path: str) -> Job:
+    def report_checkpoint(
+        self,
+        job: Job,
+        *,
+        checkpoint_path: str,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+    ) -> Job:
         if job.status not in ACTIVE_CHECKPOINT_JOB_STATUSES:
             raise JobTransitionConflictError(
                 message=(
@@ -127,6 +135,8 @@ class JobTransitionService:
         now = utcnow_naive()
         job.latest_checkpoint_path = checkpoint_path
         job.last_checkpoint_at = now
+        job.progress = progress
+        job.progress_codes_json = json.dumps(progress_codes or [])
         job.updated_at = now
         logger.info(
             "checkpoint_recorded",

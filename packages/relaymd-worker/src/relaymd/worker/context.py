@@ -6,6 +6,7 @@ from typing import Any
 
 from relaymd.storage import StorageClient
 from relaymd.worker.gateway import OrchestratorGateway
+from relaymd.worker.heartbeat import HeartbeatThread
 
 
 @dataclass
@@ -19,3 +20,4 @@ class WorkerContext:
     sigterm_process_wait_seconds: int
     logger: Any
     openmm_platforms: list[str] = field(default_factory=list)
+    heartbeat_thread: HeartbeatThread | None = None

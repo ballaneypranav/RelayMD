@@ -170,7 +170,7 @@ Example JSON:
 ```json
 {
   "command": "python run.py",
-  "checkpoint_glob_pattern": "*.cpt",
+  "checkpoint_watch_paths": ["*.cpt"],
   "checkpoint_poll_interval_seconds": 60,
   "progress_glob_pattern": ["progress", "run.log"],
   "startup_progress_timeout_seconds": 900,

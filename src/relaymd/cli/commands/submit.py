@@ -55,12 +55,13 @@ def ensure_worker_config(
             raise SubmitCommandError(
                 code="missing_checkpoint_glob",
                 message=(
-                    "--command requires --checkpoint-glob so checkpoint uploads can be discovered."
+                    "--command requires --checkpoint-glob so checkpoint watch "
+                    "paths can be configured."
                 ),
             )
         worker_payload: dict[str, Any] = {
             "command": command,
-            "checkpoint_glob_pattern": checkpoint_glob,
+            "checkpoint_watch_paths": [checkpoint_glob],
         }
         if checkpoint_poll_interval_seconds is not None:
             if checkpoint_poll_interval_seconds < 1:
@@ -96,7 +97,8 @@ def validate_worker_config_inputs(
             raise SubmitCommandError(
                 code="missing_checkpoint_glob",
                 message=(
-                    "--command requires --checkpoint-glob so checkpoint uploads can be discovered."
+                    "--command requires --checkpoint-glob so checkpoint watch "
+                    "paths can be configured."
                 ),
             )
         if checkpoint_poll_interval_seconds is not None and checkpoint_poll_interval_seconds < 1:

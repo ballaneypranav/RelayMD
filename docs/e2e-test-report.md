@@ -26,7 +26,7 @@ Local input bundle path: `<path>`
 ```json
 {
   "command": "<AToM-OpenMM command here>",
-  "checkpoint_glob_pattern": "<pattern under test>"
+  "checkpoint_watch_paths": ["<pattern under test>"]
 }
 ```
 
@@ -125,7 +125,7 @@ Checkpoint key verification:
 aws s3api head-object \
   --endpoint-url "$B2_ENDPOINT_URL" \
   --bucket "$B2_BUCKET_NAME" \
-  --key "jobs/$JOB_ID/checkpoints/latest"
+  --key "jobs//checkpoints/manifest.json"
 ```
 
 ## Handoff Validation

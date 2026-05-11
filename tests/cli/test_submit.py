@@ -104,7 +104,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
     assert not worker_json.exists()
     assert uploaded["worker_config"] == {
         "command": "python run.py",
-        "checkpoint_glob_pattern": "*.cpt",
+        "checkpoint_watch_paths": ["*.cpt"],
         "checkpoint_poll_interval_seconds": 60,
     }
     assert "relaymd-worker.json" in uploaded["tar_names"]
