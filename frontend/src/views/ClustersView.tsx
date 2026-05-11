@@ -2,9 +2,21 @@ import type { ClusterConfig } from "../types";
 
 interface ClustersViewProps {
   clusters: ClusterConfig[];
+  clusterEdits: Record<string, boolean>;
+  unsavedCount: number;
+  saveInFlight: boolean;
+  onToggle: (clusterName: string, enabled: boolean) => void;
+  onSave: () => void;
 }
 
-export function ClustersView({ clusters }: ClustersViewProps) {
+export function ClustersView({
+  clusters,
+  clusterEdits,
+  unsavedCount,
+  saveInFlight,
+  onToggle,
+  onSave,
+}: ClustersViewProps) {
   return (
     <section className="panel">
       <div className="panel-header">
@@ -12,6 +24,12 @@ export function ClustersView({ clusters }: ClustersViewProps) {
           <p className="eyebrow">Clusters</p>
           <h2>Provisioning targets</h2>
           <p className="panel-copy">Review scheduling strategy, pending limits, and wall-clock constraints.</p>
+        </div>
+        <div className="toolbar">
+          <span className="muted">{unsavedCount} unsaved changes</span>
+          <button onClick={onSave} disabled={saveInFlight || unsavedCount === 0}>
+            {saveInFlight ? "Saving..." : "Save changes"}
+          </button>
         </div>
       </div>
 
@@ -32,6 +50,19 @@ export function ClustersView({ clusters }: ClustersViewProps) {
                 <span className="cluster-badge">{cluster.strategy}</span>
               </div>
               <dl className="detail-list compact">
+                <div>
+                  <dt>Provisioning</dt>
+                  <dd>
+                    <label className="toggle-label">
+                      <input
+                        type="checkbox"
+                        checked={clusterEdits[cluster.name] ?? cluster.enabled}
+                        onChange={(event) => onToggle(cluster.name, event.target.checked)}
+                      />
+                      <span>{(clusterEdits[cluster.name] ?? cluster.enabled) ? "Enabled" : "Disabled"}</span>
+                    </label>
+                  </dd>
+                </div>
                 <div>
                   <dt>Partition</dt>
                   <dd>{cluster.partition}</dd>

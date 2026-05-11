@@ -26,6 +26,7 @@ from relaymd.orchestrator.routers.config import router as config_router
 from relaymd.orchestrator.routers.jobs_operator import router as jobs_operator_router
 from relaymd.orchestrator.routers.jobs_worker import router as jobs_worker_router
 from relaymd.orchestrator.routers.workers import router as workers_router
+from relaymd.orchestrator.services.slurm_provisioning_service import get_runtime_scheduler_warnings
 
 LOG = get_logger(__name__)
 FRONTEND_DIST_DIR_ENV_VAR = "RELAYMD_FRONTEND_DIST_DIR"
@@ -372,6 +373,7 @@ def create_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         warnings = list(app.state.warnings)
+        warnings.extend(get_runtime_scheduler_warnings(app.state.settings))
         ts_warning = await _check_tailscale_warning(app.state.settings.tailscale_socket)
         if ts_warning is not None:
             warnings.append(ts_warning)

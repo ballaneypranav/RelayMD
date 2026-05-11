@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, Worker
+from relaymd.models import ClusterProvisioningState, Job, Worker
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -35,7 +35,7 @@ def init_engine(database_url: str) -> None:
     _sessionmaker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Ensure SQLModel metadata includes all mapped tables used by the orchestrator.
-    _ = (Job, Worker)
+    _ = (Job, Worker, ClusterProvisioningState)
 
 
 def get_engine() -> AsyncEngine:

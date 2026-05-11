@@ -57,3 +57,18 @@ export async function requeueJob(apiBaseUrl: string, jobId: string): Promise<str
   const payload = (await response.json()) as JobRead;
   return payload.id;
 }
+
+export async function updateClusterProvisioningEnabledMap(
+  apiBaseUrl: string,
+  enabled: Record<string, boolean>,
+): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/config/slurm-clusters/enabled`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  if (response.status === 204) {
+    return;
+  }
+  throw new Error((await response.text()) || `Cluster update failed (${response.status})`);
+}

@@ -14,9 +14,17 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
+from relaymd.orchestrator.services.cluster_provisioning_state_service import (
+    ClusterProvisioningStateService,
+)
 from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
 logger = structlog.get_logger(__name__)
+_ALL_CLUSTERS_DISABLED_WARNING = (
+    "Queued jobs are waiting, but all SLURM clusters are disabled for provisioning."
+)
+_ALL_CLUSTERS_DISABLED_WARNING_RATE_LIMIT = timedelta(minutes=5)
+_last_all_clusters_disabled_warning_at: datetime | None = None
 
 SubmitSlurmJobFn = Callable[..., Awaitable[str]]
 
@@ -486,13 +494,28 @@ async def submit_pending_slurm_jobs(
     sessionmaker = get_sessionmaker()
     submissions = 0
     async with sessionmaker() as session:
+        cluster_state_service = ClusterProvisioningStateService(session)
+        enabled_map = await cluster_state_service.get_enabled_map(settings.slurm_cluster_configs)
+        enabled_clusters = [
+            cluster
+            for cluster in settings.slurm_cluster_configs
+            if enabled_map.get(cluster.name, True)
+        ]
+
+        if not enabled_clusters:
+            queued_job = (
+                await session.exec(select(Job).where(Job.status == JobStatus.queued))
+            ).first()
+            if queued_job is not None:
+                _emit_all_clusters_disabled_warning()
+
         service = SlurmProvisioningService(
             session,
             settings=settings,
             stale_cutoff=stale_cutoff,
             submit_job=submit_job,
         )
-        for cluster in settings.slurm_cluster_configs:
+        for cluster in enabled_clusters:
             try:
                 submitted = await service.submit_cluster_if_needed(cluster=cluster)
             except SlurmSubmissionError as exc:
@@ -533,3 +556,31 @@ async def submit_pending_slurm_jobs(
                 submissions += 1
 
     return submissions
+
+
+def _emit_all_clusters_disabled_warning() -> None:
+    global _last_all_clusters_disabled_warning_at
+    now = datetime.now(UTC)
+    if (
+        _last_all_clusters_disabled_warning_at is not None
+        and now - _last_all_clusters_disabled_warning_at < _ALL_CLUSTERS_DISABLED_WARNING_RATE_LIMIT
+    ):
+        return
+    _last_all_clusters_disabled_warning_at = now
+    logger.warning(
+        "all_slurm_clusters_disabled_with_queued_jobs",
+        warning=_ALL_CLUSTERS_DISABLED_WARNING,
+    )
+
+
+def get_runtime_scheduler_warnings(settings: OrchestratorSettings) -> list[str]:
+    if not settings.slurm_cluster_configs:
+        return []
+    if _last_all_clusters_disabled_warning_at is None:
+        return []
+    if (
+        datetime.now(UTC) - _last_all_clusters_disabled_warning_at
+        > _ALL_CLUSTERS_DISABLED_WARNING_RATE_LIMIT
+    ):
+        return []
+    return [_ALL_CLUSTERS_DISABLED_WARNING]

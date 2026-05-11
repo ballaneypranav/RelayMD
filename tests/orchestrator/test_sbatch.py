@@ -20,6 +20,7 @@ from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
 from relaymd.orchestrator.services.slurm_provisioning_service import (
     _normalize_slurm_state,
     _parse_squeue_output,
+    get_runtime_scheduler_warnings,
 )
 from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
 
@@ -1487,3 +1488,102 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
     assert submitted_count == 1
     assert len(workers) == 1
     assert workers[0].provider_id == "anvil:good"
+
+
+@pytest.mark.asyncio
+async def test_submit_pending_jobs_skips_disabled_clusters(monkeypatch) -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="gilbreth",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="gilbreth-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+            ),
+            ClusterConfig(
+                name="anvil",
+                partition="gpu",
+                account="lab-account",
+                ssh_host="anvil-host",
+                ssh_username="test-user",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/shared/relaymd.sif",
+            ),
+        ],
+    )
+    submitted_clusters: list[str] = []
+
+    async def fake_submit(cluster: ClusterConfig, _settings: OrchestratorSettings, **kwargs) -> str:
+        _ = kwargs
+        submitted_clusters.append(cluster.name)
+        return "12345"
+
+    monkeypatch.setattr("relaymd.orchestrator.scheduler.submit_slurm_job", fake_submit)
+
+    async with app_client(settings) as (_app, client):
+        headers = {"X-API-Token": "test-token"}
+        response = await client.put(
+            "/config/slurm-clusters/enabled",
+            headers=headers,
+            json={"enabled": {"gilbreth": False, "anvil": True}},
+        )
+        assert response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            session.add(
+                Job(
+                    title="queued-job",
+                    input_bundle_path="jobs/1/input/bundle.tar.gz",
+                    status=JobStatus.queued,
+                )
+            )
+            await session.commit()
+
+        submitted_count = await submit_pending_slurm_jobs(settings)
+
+    assert submitted_count == 1
+    assert submitted_clusters == ["anvil"]
+
+
+@pytest.mark.asyncio
+async def test_submit_pending_jobs_sets_all_disabled_warning_when_queued_jobs(monkeypatch) -> None:
+    settings = _settings_with_cluster()
+    monkeypatch.setattr(
+        "relaymd.orchestrator.services.slurm_provisioning_service._last_all_clusters_disabled_warning_at",
+        None,
+    )
+    async with app_client(settings) as (_app, client):
+        headers = {"X-API-Token": "test-token"}
+        response = await client.put(
+            "/config/slurm-clusters/enabled",
+            headers=headers,
+            json={"enabled": {"gilbreth": False}},
+        )
+        assert response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            session.add(
+                Job(
+                    title="queued-job",
+                    input_bundle_path="jobs/1/input/bundle.tar.gz",
+                    status=JobStatus.queued,
+                )
+            )
+            await session.commit()
+
+        submitted_count = await submit_pending_slurm_jobs(settings)
+        warnings = get_runtime_scheduler_warnings(settings)
+
+    assert submitted_count == 0
+    assert warnings == [
+        "Queued jobs are waiting, but all SLURM clusters are disabled for provisioning."
+    ]

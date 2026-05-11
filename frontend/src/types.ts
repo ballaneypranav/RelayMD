@@ -43,6 +43,7 @@ export interface ClusterConfig {
   strategy: string;
   max_pending_jobs: number;
   wall_time: string;
+  enabled: boolean;
 }
 
 export interface HealthStatus {
