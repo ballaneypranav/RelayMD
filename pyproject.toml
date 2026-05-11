@@ -66,6 +66,7 @@ dev = [
 
 [tool.pytest_env]
 AXIOM_TOKEN = "test-token"
+RELAYMD_DISABLE_AXIOM_UPLOAD = "1"
 
 [tool.ruff]
 line-length = 100

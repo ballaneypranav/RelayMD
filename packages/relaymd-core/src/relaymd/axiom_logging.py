@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import os
 import queue
 import threading
 import time
@@ -94,6 +95,11 @@ _AXIOM_THREAD_LOCK = threading.Lock()
 _AXIOM_CLEANUP_REGISTERED = False
 
 
+def _axiom_upload_disabled() -> bool:
+    value = os.getenv("RELAYMD_DISABLE_AXIOM_UPLOAD", "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_axiom_thread(axiom_token: str, dataset: str) -> AxiomSenderThread:
     global _AXIOM_THREAD, _AXIOM_CLEANUP_REGISTERED
     with _AXIOM_THREAD_LOCK:
@@ -128,6 +134,10 @@ class AxiomProcessor:
         method_name: str,
         event_dict: structlog.types.EventDict,
     ) -> structlog.types.EventDict:
+        _ = (logger, method_name)
+        if _axiom_upload_disabled():
+            return event_dict
+
         # Copy the event_dict so modifications down the pipeline don't mutate our view
         dict_copy = dict(event_dict)
         # Ensure timestamp field matches what axiom parses natively
