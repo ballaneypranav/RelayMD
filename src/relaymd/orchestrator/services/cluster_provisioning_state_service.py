@@ -25,7 +25,9 @@ class ClusterProvisioningStateService:
             )
         ).all()
         by_name = {row.cluster_name: row for row in rows}
-        return {name: by_name[name].enabled if name in by_name else True for name in configured_names}
+        return {
+            name: by_name[name].enabled if name in by_name else True for name in configured_names
+        }
 
     async def replace_enabled_map(self, enabled_map: dict[str, bool]) -> None:
         if not enabled_map:
