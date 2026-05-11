@@ -1447,9 +1447,23 @@ Per-job bundle config can override this default using <code>checkpoint_poll_inte
   termination, checkpoint polling, and optional payload supervision</p>
 <hr />
 <h2 id="checkpoint-strategy">Checkpoint Strategy</h2>
-<p>Filesystem polling defaults to every 5 minutes (<code>300s</code>) unless overridden by the bundle. The worker polls the simulation working directory for a file matching the <code>checkpoint_glob_pattern</code> from <code>relaymd-worker.json</code>. When a newer one is found, it uploads to B2 and reports immediately.</p>
-<p>On wall-time margin (<code>slurm_sigterm_margin_seconds</code>, default 300s via <code>#SBATCH --signal=TERM@300</code>), the worker sends SIGTERM to the subprocess process group and snapshots a pre-shutdown checkpoint mtime baseline. It then waits up to <code>sigterm_checkpoint_wait_seconds</code> (default 60s) for a checkpoint that is strictly newer than that baseline. This prevents stale re-uploads during handoff races. If no newer checkpoint appears, the worker exits without uploading an older one.</p>
-<p>The exact glob pattern for AToM-OpenMM checkpoints is to be confirmed during end-to-end testing.</p>
+<p>Filesystem polling defaults to every 5 minutes (<code>300s</code>) unless overridden by the bundle. The worker requires <code>checkpoint_watch_paths</code> in <code>relaymd-worker.json</code> and runs a manifest cycle every checkpoint tick:
+- Expands watch globs under the bundle root, validates paths, de-duplicates, and sorts deterministically.
+- Rejects cycles with more than 250 matched files (<code>watch_file_cap_exceeded</code>).
+- Uses <code>size_bytes + mtime_ns</code> as a fast unchanged prefilter.
+- For changed files, performs hash-copy-hash validation before upload to stable keys under <code>jobs/&lt;job_id&gt;/checkpoints/files/&lt;relative_path&gt;</code>.
+- Uploads <code>jobs/&lt;job_id&gt;/checkpoints/manifest.json</code> at cycle end and reports checkpoint to the orchestrator only when manifest upload succeeds.</p>
+<p>Failure codes include:
+- <code>watch_file_cap_exceeded</code>
+- <code>potential_write_in_progress</code>
+- <code>file_disappeared</code>
+- <code>upload_failed</code>
+- <code>manifest_upload_failed</code>
+- <code>path_validation_failed</code>
+- <code>staging_copy_failed</code>
+- <code>source_hash_failed</code>
+- <code>staged_hash_failed</code></p>
+<p>Large checkpoint files are supported but increase cycle cost because changed files are fully hashed.</p>
 <hr />
 <h2 id="payload-supervision">Payload Supervision</h2>
 <p>Bundle configs can opt into worker-side supervision:</p>
@@ -1472,7 +1486,7 @@ workers do not guess payload-specific health rules.</p>
 <p>The input bundle is a <code>.tar.gz</code> archive containing all simulation input files plus a mandatory config file:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>relaymd-worker.json   (or .toml)
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  └── command: &quot;python run_atom.py --config simulation.json&quot;
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  └── checkpoint_glob_pattern: &quot;*.chk&quot;
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>  └── checkpoint_watch_paths: [&quot;*.chk&quot;]
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>  └── checkpoint_poll_interval_seconds: 60   # optional, per-job override
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>  └── progress_glob_pattern: [&quot;progress&quot;, &quot;r*/job.out&quot;]   # optional
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  └── startup_progress_timeout_seconds: 900   # optional

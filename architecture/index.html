@@ -1412,7 +1412,7 @@
 <p>Object storage is Backblaze B2, chosen for its low cost and its peering relationship with Cloudflare. All writes go directly to B2 via the S3-compatible API. All reads are proxied through a Cloudflare Worker, which eliminates egress fees on downloads — significant over hundreds of checkpoint cycles across many jobs.</p>
 <p>The storage layer is implemented as a shared Python module (<code>relaymd-storage</code>) with a dual-endpoint <code>StorageClient</code>. It is imported by the orchestrator, the worker, and the CLI. The bucket key layout is fixed by convention:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>jobs/{job_id}/input/bundle.tar.gz   # Immutable input bundle; uploaded once by the CLI
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>jobs/{job_id}/checkpoints/latest    # Latest checkpoint; overwritten on every checkpoint cycle
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>jobs/{job_id}/checkpoints/manifest.json    # Latest checkpoint; overwritten on every checkpoint cycle
 </span></code></pre></div>
 <p>Input bundles are never overwritten. The orchestrator stores only the key path to the latest checkpoint, not the checkpoint data itself.</p>
 <h3 id="networking">Networking</h3>

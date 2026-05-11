@@ -1226,7 +1226,7 @@
 <li>Dummy bundle:</li>
 <li><code>run.sh</code> writes <code>checkpoint.chk</code> every 60 seconds for 8 total iterations</li>
 <li>if <code>../latest</code> exists, <code>run.sh</code> reads <code>iteration=&lt;n&gt;</code> and resumes from <code>n + 1</code></li>
-<li><code>relaymd-worker.json</code> sets <code>checkpoint_glob_pattern</code> to <code>*.chk</code></li>
+<li><code>relaymd-worker.json</code> sets <code>checkpoint_watch_paths</code> to <code>*.chk</code></li>
 <li>Local test config:</li>
 <li><code>worker_checkpoint_poll_interval_seconds: 60</code></li>
 </ul>
