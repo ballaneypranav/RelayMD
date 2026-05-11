@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -71,6 +72,26 @@ def _make_job_read() -> JobRead:
             "latest_checkpoint_path": None,
             "last_checkpoint_at": None,
             "assigned_worker_id": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+    )
+
+
+def _make_checkpoint_job_read() -> JobRead:
+    now = datetime.now(UTC).isoformat()
+    return JobRead.from_dict(
+        {
+            "id": str(uuid4()),
+            "title": "job-checkpoint",
+            "status": "running",
+            "input_bundle_path": "jobs/a/input/bundle.tar.gz",
+            "assigned_at": now,
+            "started_at": now,
+            "status_changed_at": now,
+            "latest_checkpoint_path": "jobs/abc/checkpoints/manifest.json",
+            "last_checkpoint_at": now,
+            "assigned_worker_id": str(uuid4()),
             "created_at": now,
             "updated_at": now,
         }
@@ -327,3 +348,68 @@ def test_workers_service_list_workers_validates_shape(monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="Unexpected response model"):
         service.list_workers()
+
+
+def test_jobs_service_download_checkpoint_file_success(tmp_path: Path, monkeypatch) -> None:
+    context = _FakeContext()
+    service = JobsService(_as_cli_context(context))
+    job = _make_checkpoint_job_read()
+    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
+
+    manifest = {
+        "files": {
+            "state/checkpoint.chk": {
+                "remote_key": "jobs/abc/checkpoints/files/state/checkpoint.chk"
+            }
+        }
+    }
+
+    def _download(key: str, path: Path) -> None:
+        if key.endswith("manifest.json"):
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+        else:
+            path.write_bytes(b"checkpoint-bytes")
+
+    context.storage.download_file.side_effect = _download
+
+    payload = service.download_checkpoint_file(
+        job_id=job.id,
+        relative_path="state/checkpoint.chk",
+        output=tmp_path,
+    )
+
+    assert payload["remote_key"] == "jobs/abc/checkpoints/files/state/checkpoint.chk"
+    assert Path(str(payload["local_path"])).read_bytes() == b"checkpoint-bytes"
+
+
+def test_jobs_service_download_all_checkpoint_files_partial_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    context = _FakeContext()
+    service = JobsService(_as_cli_context(context))
+    job = _make_checkpoint_job_read()
+    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
+
+    manifest = {
+        "files": {
+            "a.chk": {"remote_key": "jobs/abc/checkpoints/files/a.chk"},
+            "b.chk": {"remote_key": "jobs/abc/checkpoints/files/b.chk"},
+        }
+    }
+
+    def _download(key: str, path: Path) -> None:
+        if key.endswith("manifest.json"):
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            return
+        if key.endswith("/a.chk"):
+            path.write_bytes(b"a")
+            return
+        raise RuntimeError("download exploded")
+
+    context.storage.download_file.side_effect = _download
+    payload = service.download_all_checkpoint_files(job_id=job.id, output_dir=tmp_path)
+
+    assert payload["status"] == "partial_failure"
+    assert payload["downloaded_files"] == 1
+    assert payload["failed_files"] == 1
+    assert payload["total_files"] == 2
