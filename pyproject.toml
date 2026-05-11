@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "relaymd"
-version = "0.1.52"
+version = "0.1.53"
 requires-python = ">=3.11"
 dependencies = [
     "relaymd-core",
@@ -78,7 +78,7 @@ extend-exclude = ["packages/relaymd-api-client/src/relaymd_api_client"]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
-addopts = "-n 16 --import-mode=importlib --cov=relaymd --cov=packages/relaymd-core/src/relaymd --cov-report=term-missing --cov-report=xml"
+addopts = "--import-mode=importlib --cov=relaymd --cov=packages/relaymd-core/src/relaymd --cov-report=term-missing --cov-report=xml"
 pythonpath = [
     "src",
     "packages/relaymd-core/src",
