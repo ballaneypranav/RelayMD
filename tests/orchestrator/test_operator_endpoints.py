@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -16,11 +17,18 @@ from relaymd.orchestrator.main import create_app
 
 @asynccontextmanager
 async def app_client(settings: OrchestratorSettings):
-    app = create_app(settings, start_background_tasks=False)
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield app, client
+    async def _skip_tailscale_startup(_settings: OrchestratorSettings):
+        return None
+
+    with patch(
+        "relaymd.orchestrator.main._ensure_tailscale_running",
+        new=_skip_tailscale_startup,
+    ):
+        app = create_app(settings, start_background_tasks=False)
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                yield app, client
 
 
 def make_settings() -> OrchestratorSettings:
