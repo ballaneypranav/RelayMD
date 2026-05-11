@@ -86,7 +86,7 @@ The input bundle for an AToM job contains all simulation input files plus a `rel
 ```json
 {
   "command": "python run_atom.py --config simulation.json",
-  "checkpoint_glob_pattern": "*.chk",
+  "checkpoint_watch_paths": ["*.chk"],
   "checkpoint_poll_interval_seconds": 60,
   "progress_glob_pattern": ["progress", "r*/job.out"],
   "startup_progress_timeout_seconds": 900,

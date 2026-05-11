@@ -9,7 +9,7 @@ The B2 bucket relies on the following structural layout:
 - `jobs/{job_id}/input/` 
   This path holds the immutable input bundle uploaded exactly once by the user prior to job creation. The contents within this path are never overwritten.
 
-- `jobs/{job_id}/checkpoints/latest` 
+- `jobs/{job_id}/checkpoints/manifest.json` 
   This path houses a single checkpoint file. It is uniquely designed to be continually overwritten by the latest worker checkpoint in real-time. The orchestrator tracks state by storing solely this key path in its database.
   Checkpoint reports are accepted only while the job is in `assigned` or `running` state.
 

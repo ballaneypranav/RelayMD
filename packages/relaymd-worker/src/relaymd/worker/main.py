@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shlex
+import shutil
 import signal
 import tarfile
 import tempfile
@@ -11,6 +13,7 @@ import threading
 import time
 import tomllib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType, ModuleType
 from typing import Any
@@ -32,12 +35,14 @@ from relaymd.worker.logging import get_logger
 
 LOG = get_logger(__name__)
 PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
+CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1
+CHECKPOINT_WATCH_FILE_CAP = 250
 
 
 @dataclass
 class BundleExecutionConfig:
     command: list[str]
-    checkpoint_glob_pattern: str
+    checkpoint_watch_paths: list[str]
     checkpoint_poll_interval_seconds: int | None = None
     progress_glob_patterns: list[str] | None = None
     startup_progress_timeout_seconds: int | None = None
@@ -111,22 +116,6 @@ def _required_openmm_platform(bundle_root: Path) -> str | None:
     return None
 
 
-def _find_latest_checkpoint(workdir: Path, pattern: str) -> Path | None:
-    candidates = [path for path in workdir.glob(pattern) if path.is_file()]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda path: path.stat().st_mtime)
-
-
-def _checkpoint_mtime(checkpoint: Path | None) -> float | None:
-    if checkpoint is None:
-        return None
-    try:
-        return checkpoint.stat().st_mtime
-    except OSError:
-        return None
-
-
 def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
     candidate_paths = [
         bundle_root / "relaymd-worker.json",
@@ -149,9 +138,9 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
             continue
 
         command_raw = parsed.get("command")
-        checkpoint_pattern = parsed.get("checkpoint_glob_pattern")
-        if not command_raw or not checkpoint_pattern:
+        if not command_raw:
             continue
+        watch_paths = _required_string_list(parsed, "checkpoint_watch_paths")
 
         if isinstance(command_raw, str):
             command = shlex.split(command_raw)
@@ -181,7 +170,7 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
 
         return BundleExecutionConfig(
             command=command,
-            checkpoint_glob_pattern=str(checkpoint_pattern),
+            checkpoint_watch_paths=watch_paths,
             checkpoint_poll_interval_seconds=bundle_interval,
             progress_glob_patterns=progress_glob_patterns,
             startup_progress_timeout_seconds=startup_progress_timeout_seconds,
@@ -223,6 +212,66 @@ def _optional_string_list(parsed: dict[str, Any], key: str) -> list[str] | None:
     if isinstance(value, list) and value and all(isinstance(item, str) and item for item in value):
         return value
     raise RuntimeError(f"Invalid {key} in bundle config")
+
+
+def _required_string_list(parsed: dict[str, Any], key: str) -> list[str]:
+    value = parsed.get(key)
+    if isinstance(value, list) and value and all(isinstance(item, str) and item for item in value):
+        return value
+    raise RuntimeError(f"Invalid {key} in bundle config")
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _compute_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _local_manifest_path(workdir: Path) -> Path:
+    return workdir / "relaymd-checkpoint-manifest.json"
+
+
+def _empty_manifest(job_id: str) -> dict[str, Any]:
+    now = _utc_now_iso()
+    return {
+        "schema_version": CHECKPOINT_MANIFEST_SCHEMA_VERSION,
+        "job_id": job_id,
+        "updated_at": now,
+        "cycle_summary": {
+            "cycle_started_at": now,
+            "cycle_finished_at": now,
+            "matched_files": 0,
+            "processed_files": 0,
+            "uploaded_files": 0,
+            "unchanged_files": 0,
+            "deleted_files": 0,
+            "failed_files": 0,
+            "status": "empty",
+        },
+        "files": {},
+        "failures": [],
+    }
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+    tmp_path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _checkpoint_manifest_key(job_id: UUID) -> str:
+    return f"jobs/{job_id}/checkpoints/manifest.json"
+
+
+def _checkpoint_file_key(job_id: UUID, relative_path: str) -> str:
+    return f"jobs/{job_id}/checkpoints/files/{relative_path}"
 
 
 def _parse_bundle_config(path: Path) -> dict[str, Any] | None:
@@ -316,74 +365,261 @@ def _build_storage_client(
     )
 
 
-def _wait_for_final_checkpoint(
-    workdir: Path,
-    checkpoint_glob_pattern: str,
-    timeout_seconds: int,
-    poll_interval_seconds: int,
-    min_checkpoint_mtime: float | None = None,
-) -> Path | None:
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        checkpoint = _find_latest_checkpoint(workdir, checkpoint_glob_pattern)
-        checkpoint_mtime = _checkpoint_mtime(checkpoint)
-        if (
-            checkpoint is not None
-            and checkpoint_mtime is not None
-            and (min_checkpoint_mtime is None or checkpoint_mtime > min_checkpoint_mtime)
-        ):
-            return checkpoint
-        if time.monotonic() >= deadline:
-            return None
-        time.sleep(poll_interval_seconds)
-
-
-def _upload_checkpoint(
-    context: WorkerContext,
-    *,
-    logger,
-    checkpoint: Path,
-    checkpoint_b2_key: str,
-    job_id: UUID,
-) -> float:
-    checkpoint_stat = checkpoint.stat()
-    logger.info(
-        "checkpoint_upload_started",
-        checkpoint_path=str(checkpoint),
-        checkpoint_b2_key=checkpoint_b2_key,
-        checkpoint_size_bytes=checkpoint_stat.st_size,
-        checkpoint_mtime=checkpoint_stat.st_mtime,
-    )
+def _load_persisted_manifest(
+    *, context: WorkerContext, logger, job_id: UUID, workdir: Path
+) -> dict[str, Any]:
+    manifest_key = _checkpoint_manifest_key(job_id)
+    manifest_path = _local_manifest_path(workdir)
+    empty = _empty_manifest(str(job_id))
     try:
-        context.storage.upload_file(checkpoint, checkpoint_b2_key)
-        logger.info(
-            "checkpoint_upload_succeeded",
-            checkpoint_path=str(checkpoint),
-            checkpoint_b2_key=checkpoint_b2_key,
-            checkpoint_size_bytes=checkpoint_stat.st_size,
-            checkpoint_mtime=checkpoint_stat.st_mtime,
-        )
-        context.gateway.report_checkpoint(
-            job_id=job_id,
-            checkpoint_path=checkpoint_b2_key,
-        )
-        logger.info(
-            "checkpoint_report_succeeded",
-            checkpoint_path=str(checkpoint),
-            checkpoint_b2_key=checkpoint_b2_key,
-            checkpoint_size_bytes=checkpoint_stat.st_size,
-            checkpoint_mtime=checkpoint_stat.st_mtime,
-        )
-        return checkpoint_stat.st_mtime
+        context.storage.download_file(manifest_key, manifest_path)
+        parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(parsed, dict):
+            return parsed
     except Exception:
-        logger.exception(
-            "checkpoint_upload_failed",
-            checkpoint_path=str(checkpoint),
-            checkpoint_b2_key=checkpoint_b2_key,
-            checkpoint_size_bytes=checkpoint_stat.st_size,
-            checkpoint_mtime=checkpoint_stat.st_mtime,
+        logger.warning("checkpoint_manifest_remote_unavailable_fallback")
+
+    if manifest_path.is_file():
+        try:
+            parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            logger.warning("checkpoint_manifest_local_invalid_fallback")
+    return empty
+
+
+def _resolve_watch_files(
+    *, bundle_root: Path, watch_paths: list[str]
+) -> tuple[list[Path], list[dict[str, str]]]:
+    failures: list[dict[str, str]] = []
+    unique: dict[str, Path] = {}
+    root_resolved = bundle_root.resolve()
+    for pattern in watch_paths:
+        raw = Path(pattern)
+        if raw.is_absolute() or ".." in raw.parts:
+            failures.append(
+                {"code": "path_validation_failed", "detail": f"invalid watch path: {pattern}"}
+            )
+            continue
+        for path in bundle_root.glob(pattern):
+            try:
+                resolved = path.resolve()
+                if root_resolved not in resolved.parents and resolved != root_resolved:
+                    failures.append(
+                        {"code": "path_validation_failed", "detail": f"path traversal: {path}"}
+                    )
+                    continue
+                if path.is_symlink():
+                    failures.append(
+                        {"code": "path_validation_failed", "detail": f"symlink not allowed: {path}"}
+                    )
+                    continue
+                stat_result = path.stat()
+                if not path.is_file() or not resolved.is_file():
+                    failures.append(
+                        {"code": "path_validation_failed", "detail": f"not a regular file: {path}"}
+                    )
+                    continue
+                _ = stat_result
+                relative = str(path.relative_to(bundle_root)).replace(os.sep, "/")
+                unique[relative] = path
+            except OSError:
+                failures.append(
+                    {"code": "path_validation_failed", "detail": f"unreadable path: {path}"}
+                )
+    return [unique[key] for key in sorted(unique)], failures
+
+
+def _sync_checkpoint_manifest_cycle(
+    *,
+    context: WorkerContext,
+    logger,
+    job_id: UUID,
+    bundle_root: Path,
+    workdir: Path,
+    watch_paths: list[str],
+    manifest: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    logger.info("checkpoint_cycle_started")
+    cycle_started_at = _utc_now_iso()
+    files_state = manifest.get("files", {})
+    if not isinstance(files_state, dict):
+        files_state = {}
+    failures: list[dict[str, str]] = []
+    matched_files, resolve_failures = _resolve_watch_files(
+        bundle_root=bundle_root, watch_paths=watch_paths
+    )
+    failures.extend(resolve_failures)
+
+    processed_files = 0
+    uploaded_files = 0
+    unchanged_files = 0
+    deleted_files = 0
+    failed_files = len(resolve_failures)
+    previous_rel_paths = set(files_state.keys())
+    current_rel_paths = {
+        str(path.relative_to(bundle_root)).replace(os.sep, "/") for path in matched_files
+    }
+    for deleted_rel in sorted(previous_rel_paths - current_rel_paths):
+        files_state.pop(deleted_rel, None)
+        deleted_files += 1
+        logger.info("checkpoint_file_deleted", relative_path=deleted_rel)
+
+    if len(matched_files) > CHECKPOINT_WATCH_FILE_CAP:
+        failures.append(
+            {"code": "watch_file_cap_exceeded", "detail": f"matched_files={len(matched_files)}"}
         )
-        raise
+        failed_files += 1
+        matched_files = []
+
+    for file_path in matched_files:
+        processed_files += 1
+        relative_path = str(file_path.relative_to(bundle_root)).replace(os.sep, "/")
+        file_state = files_state.get(relative_path, {})
+        try:
+            stat_result = file_path.stat()
+        except FileNotFoundError:
+            failures.append({"code": "file_disappeared", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="file_disappeared", relative_path=relative_path
+            )
+            continue
+
+        if (
+            isinstance(file_state, dict)
+            and file_state.get("size_bytes") == stat_result.st_size
+            and file_state.get("mtime_ns") == stat_result.st_mtime_ns
+        ):
+            unchanged_files += 1
+            continue
+
+        stage_path = workdir / "checkpoint-staging" / relative_path
+        stage_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            source_hash_before = _compute_sha256(file_path)
+        except Exception:
+            failures.append({"code": "source_hash_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="source_hash_failed", relative_path=relative_path
+            )
+            continue
+        try:
+            shutil.copy2(file_path, stage_path)
+        except Exception:
+            failures.append({"code": "staging_copy_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="staging_copy_failed", relative_path=relative_path
+            )
+            continue
+        try:
+            source_hash_after = _compute_sha256(file_path)
+        except Exception:
+            failures.append({"code": "source_hash_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="source_hash_failed", relative_path=relative_path
+            )
+            continue
+        try:
+            staged_hash = _compute_sha256(stage_path)
+        except Exception:
+            failures.append({"code": "staged_hash_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="staged_hash_failed", relative_path=relative_path
+            )
+            continue
+        if source_hash_before != source_hash_after:
+            failures.append({"code": "potential_write_in_progress", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed",
+                code="potential_write_in_progress",
+                relative_path=relative_path,
+            )
+            continue
+        if source_hash_before != staged_hash:
+            failures.append({"code": "staged_hash_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="staged_hash_failed", relative_path=relative_path
+            )
+            continue
+
+        remote_key = _checkpoint_file_key(job_id, relative_path)
+        try:
+            context.storage.upload_file(stage_path, remote_key)
+        except Exception:
+            failures.append({"code": "upload_failed", "detail": relative_path})
+            failed_files += 1
+            logger.warning(
+                "checkpoint_file_failed", code="upload_failed", relative_path=relative_path
+            )
+            continue
+        now = _utc_now_iso()
+        files_state[relative_path] = {
+            "sha256": staged_hash,
+            "size_bytes": stat_result.st_size,
+            "mtime_ns": stat_result.st_mtime_ns,
+            "remote_key": remote_key,
+            "last_seen_at": now,
+            "last_upload_at": now,
+            "last_failure_at": None,
+            "last_failure_code": None,
+        }
+        uploaded_files += 1
+        logger.info("checkpoint_file_uploaded", relative_path=relative_path, remote_key=remote_key)
+
+    status = "success"
+    if failures and uploaded_files > 0:
+        status = "partial_failure"
+    elif failures:
+        status = "failed"
+
+    cycle_finished_at = _utc_now_iso()
+    manifest["schema_version"] = CHECKPOINT_MANIFEST_SCHEMA_VERSION
+    manifest["job_id"] = str(job_id)
+    manifest["updated_at"] = cycle_finished_at
+    manifest["files"] = files_state
+    manifest["cycle_summary"] = {
+        "cycle_started_at": cycle_started_at,
+        "cycle_finished_at": cycle_finished_at,
+        "matched_files": len(matched_files),
+        "processed_files": processed_files,
+        "uploaded_files": uploaded_files,
+        "unchanged_files": unchanged_files,
+        "deleted_files": deleted_files,
+        "failed_files": failed_files,
+        "status": status,
+    }
+    manifest["failures"] = failures
+
+    manifest_path = _local_manifest_path(workdir)
+    _atomic_write_json(manifest_path, manifest)
+    manifest_key = _checkpoint_manifest_key(job_id)
+    try:
+        context.storage.upload_file(manifest_path, manifest_key)
+    except Exception:
+        logger.exception("checkpoint_cycle_failed", checkpoint_manifest_key=manifest_key)
+        manifest["failures"] = failures + [
+            {"code": "manifest_upload_failed", "detail": manifest_key}
+        ]
+        manifest["cycle_summary"]["status"] = "failed"
+        manifest["cycle_summary"]["failed_files"] = manifest["cycle_summary"]["failed_files"] + 1
+        _atomic_write_json(manifest_path, manifest)
+        return manifest, False
+
+    if status == "success":
+        logger.info("checkpoint_cycle_completed", checkpoint_manifest_key=manifest_key)
+    elif status == "partial_failure":
+        logger.warning("checkpoint_cycle_partial_failure", checkpoint_manifest_key=manifest_key)
+    else:
+        logger.warning("checkpoint_cycle_failed", checkpoint_manifest_key=manifest_key)
+    return manifest, True
 
 
 def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConfig) -> Path | None:
@@ -402,7 +638,7 @@ def _run_assigned_job(
     assignment: ApiJobAssigned,
 ) -> None:
     job_log = context.logger.bind(job_id=str(assignment.job_id))
-    checkpoint_b2_key = f"jobs/{assignment.job_id}/checkpoints/latest"
+    checkpoint_manifest_key = _checkpoint_manifest_key(assignment.job_id)
 
     with tempfile.TemporaryDirectory(prefix=f"relaymd-{assignment.job_id}-") as tmpdir:
         workdir = Path(tmpdir)
@@ -419,6 +655,12 @@ def _run_assigned_job(
             )
 
         execution_config = _load_bundle_execution_config(bundle_root)
+        checkpoint_manifest = _load_persisted_manifest(
+            context=context,
+            logger=job_log,
+            job_id=assignment.job_id,
+            workdir=workdir,
+        )
 
         required_platform = _required_openmm_platform(bundle_root)
         if required_platform is not None and required_platform not in context.openmm_platforms:
@@ -433,8 +675,8 @@ def _run_assigned_job(
         execution = JobExecution(
             command=execution_config.command,
             workdir=bundle_root,
-            checkpoint_glob_pattern=execution_config.checkpoint_glob_pattern,
-            checkpoint_b2_key=checkpoint_b2_key,
+            checkpoint_glob_pattern="__unused__",
+            checkpoint_b2_key="__unused__",
             progress_glob_patterns=execution_config.progress_glob_patterns,
             startup_progress_timeout_seconds=(execution_config.startup_progress_timeout_seconds),
             progress_timeout_seconds=execution_config.progress_timeout_seconds,
@@ -446,7 +688,6 @@ def _run_assigned_job(
             execution.start()
             context.gateway.start_job(job_id=assignment.job_id)
 
-            last_uploaded_mtime: float | None = None
             effective_checkpoint_poll_interval_seconds = (
                 execution_config.checkpoint_poll_interval_seconds
                 if execution_config.checkpoint_poll_interval_seconds is not None
@@ -466,62 +707,39 @@ def _run_assigned_job(
             while True:
                 if context.shutdown_event.is_set():
                     job_log.info("shutdown_requested_terminating_job")
-                    baseline_mtime = last_uploaded_mtime
-                    latest_checkpoint_before_shutdown = execution.latest_checkpoint()
-                    latest_mtime_before_shutdown = _checkpoint_mtime(
-                        latest_checkpoint_before_shutdown
-                    )
-                    if latest_mtime_before_shutdown is not None and (
-                        baseline_mtime is None or latest_mtime_before_shutdown > baseline_mtime
-                    ):
-                        baseline_mtime = latest_mtime_before_shutdown
-
                     execution.request_terminate()
-                    final_checkpoint = _wait_for_final_checkpoint(
-                        bundle_root,
-                        execution_config.checkpoint_glob_pattern,
-                        timeout_seconds=context.sigterm_checkpoint_wait_seconds,
-                        poll_interval_seconds=context.sigterm_checkpoint_poll_seconds,
-                        min_checkpoint_mtime=baseline_mtime,
+                    checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                        context=context,
+                        logger=job_log,
+                        job_id=assignment.job_id,
+                        bundle_root=bundle_root,
+                        workdir=workdir,
+                        watch_paths=execution_config.checkpoint_watch_paths,
+                        manifest=checkpoint_manifest,
                     )
-                    if (
-                        final_checkpoint is None
-                        and last_uploaded_mtime is None
-                        and assignment.latest_checkpoint_path is None
-                        and latest_checkpoint_before_shutdown is not None
-                    ):
-                        final_checkpoint = latest_checkpoint_before_shutdown
-
-                    if final_checkpoint is not None:
-                        final_mtime = _checkpoint_mtime(final_checkpoint)
-                        if last_uploaded_mtime is None or (
-                            final_mtime is not None and final_mtime > last_uploaded_mtime
-                        ):
-                            last_uploaded_mtime = _upload_checkpoint(
-                                context,
-                                logger=job_log,
-                                checkpoint=final_checkpoint,
-                                checkpoint_b2_key=checkpoint_b2_key,
-                                job_id=assignment.job_id,
-                            )
-                    elif baseline_mtime is not None:
-                        job_log.info(
-                            "shutdown_no_newer_checkpoint_found",
-                            checkpoint_b2_key=checkpoint_b2_key,
-                            baseline_mtime=baseline_mtime,
+                    if manifest_uploaded:
+                        context.gateway.report_checkpoint(
+                            job_id=assignment.job_id,
+                            checkpoint_path=checkpoint_manifest_key,
                         )
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return
 
                 now = time.monotonic()
                 if now >= next_checkpoint_poll_time:
-                    for checkpoint in execution.iter_new_checkpoints():
-                        last_uploaded_mtime = _upload_checkpoint(
-                            context,
-                            logger=job_log,
-                            checkpoint=checkpoint,
-                            checkpoint_b2_key=checkpoint_b2_key,
+                    checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                        context=context,
+                        logger=job_log,
+                        job_id=assignment.job_id,
+                        bundle_root=bundle_root,
+                        workdir=workdir,
+                        watch_paths=execution_config.checkpoint_watch_paths,
+                        manifest=checkpoint_manifest,
+                    )
+                    if manifest_uploaded:
+                        context.gateway.report_checkpoint(
                             job_id=assignment.job_id,
+                            checkpoint_path=checkpoint_manifest_key,
                         )
                     if checkpoint_poll_interval_seconds > 0:
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
@@ -551,18 +769,21 @@ def _run_assigned_job(
                             execution.kill()
                             execution.wait(timeout_seconds=5)
 
-                        final_checkpoint = (
-                            _fatal_log_artifact(bundle_root, execution_config)
-                            if supervision_failure.reason == "fatal_log_match"
-                            else execution.latest_checkpoint()
+                        if supervision_failure.reason == "fatal_log_match":
+                            _ = _fatal_log_artifact(bundle_root, execution_config)
+                        checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                            context=context,
+                            logger=job_log,
+                            job_id=assignment.job_id,
+                            bundle_root=bundle_root,
+                            workdir=workdir,
+                            watch_paths=execution_config.checkpoint_watch_paths,
+                            manifest=checkpoint_manifest,
                         )
-                        if final_checkpoint is not None:
-                            _upload_checkpoint(
-                                context,
-                                logger=job_log,
-                                checkpoint=final_checkpoint,
-                                checkpoint_b2_key=checkpoint_b2_key,
+                        if manifest_uploaded:
+                            context.gateway.report_checkpoint(
                                 job_id=assignment.job_id,
+                                checkpoint_path=checkpoint_manifest_key,
                             )
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
@@ -581,17 +802,20 @@ def _run_assigned_job(
                     )
                 context.shutdown_event.wait(timeout=wait_timeout)
 
-            final_checkpoint = execution.latest_checkpoint()
-            if final_checkpoint is not None:
-                final_mtime = final_checkpoint.stat().st_mtime
-                if last_uploaded_mtime is None or final_mtime > last_uploaded_mtime:
-                    _upload_checkpoint(
-                        context,
-                        logger=job_log,
-                        checkpoint=final_checkpoint,
-                        checkpoint_b2_key=checkpoint_b2_key,
-                        job_id=assignment.job_id,
-                    )
+            checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                context=context,
+                logger=job_log,
+                job_id=assignment.job_id,
+                bundle_root=bundle_root,
+                workdir=workdir,
+                watch_paths=execution_config.checkpoint_watch_paths,
+                manifest=checkpoint_manifest,
+            )
+            if manifest_uploaded:
+                context.gateway.report_checkpoint(
+                    job_id=assignment.job_id,
+                    checkpoint_path=checkpoint_manifest_key,
+                )
 
             result = execution.result()
             if result.status == "completed":

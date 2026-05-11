@@ -92,11 +92,25 @@ Worker control flow is implemented as one procedural loop with explicit seams:
 
 ## Checkpoint Strategy
 
-Filesystem polling defaults to every 5 minutes (`300s`) unless overridden by the bundle. The worker polls the simulation working directory for a file matching the `checkpoint_glob_pattern` from `relaymd-worker.json`. When a newer one is found, it uploads to B2 and reports immediately.
+Filesystem polling defaults to every 5 minutes (`300s`) unless overridden by the bundle. The worker requires `checkpoint_watch_paths` in `relaymd-worker.json` and runs a manifest cycle every checkpoint tick:
+- Expands watch globs under the bundle root, validates paths, de-duplicates, and sorts deterministically.
+- Rejects cycles with more than 250 matched files (`watch_file_cap_exceeded`).
+- Uses `size_bytes + mtime_ns` as a fast unchanged prefilter.
+- For changed files, performs hash-copy-hash validation before upload to stable keys under `jobs/<job_id>/checkpoints/files/<relative_path>`.
+- Uploads `jobs/<job_id>/checkpoints/manifest.json` at cycle end and reports checkpoint to the orchestrator only when manifest upload succeeds.
 
-On wall-time margin (`slurm_sigterm_margin_seconds`, default 300s via `#SBATCH --signal=TERM@300`), the worker sends SIGTERM to the subprocess process group and snapshots a pre-shutdown checkpoint mtime baseline. It then waits up to `sigterm_checkpoint_wait_seconds` (default 60s) for a checkpoint that is strictly newer than that baseline. This prevents stale re-uploads during handoff races. If no newer checkpoint appears, the worker exits without uploading an older one.
+Failure codes include:
+- `watch_file_cap_exceeded`
+- `potential_write_in_progress`
+- `file_disappeared`
+- `upload_failed`
+- `manifest_upload_failed`
+- `path_validation_failed`
+- `staging_copy_failed`
+- `source_hash_failed`
+- `staged_hash_failed`
 
-The exact glob pattern for AToM-OpenMM checkpoints is to be confirmed during end-to-end testing.
+Large checkpoint files are supported but increase cycle cost because changed files are fully hashed.
 
 ---
 
@@ -127,7 +141,7 @@ The input bundle is a `.tar.gz` archive containing all simulation input files pl
 ```
 relaymd-worker.json   (or .toml)
   └── command: "python run_atom.py --config simulation.json"
-  └── checkpoint_glob_pattern: "*.chk"
+  └── checkpoint_watch_paths: ["*.chk"]
   └── checkpoint_poll_interval_seconds: 60   # optional, per-job override
   └── progress_glob_pattern: ["progress", "r*/job.out"]   # optional
   └── startup_progress_timeout_seconds: 900   # optional

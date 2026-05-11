@@ -22,7 +22,7 @@ or stale state transitions.
 
 - orchestrator DB row identity
 - bundle object path `jobs/{job_id}/input/bundle.tar.gz`
-- checkpoint object path `jobs/{job_id}/checkpoints/latest`
+- checkpoint object path `jobs/{job_id}/checkpoints/manifest.json`
 
 Bootstrap workspace (recommended):
 
