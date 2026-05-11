@@ -229,4 +229,80 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByText("RelayMD v-")).toBeInTheDocument());
   });
+
+  it("tracks unsaved cluster toggle changes and saves them", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(
+        JSON.stringify({
+          clusters: [
+            {
+              name: "gilbreth",
+              partition: "gpu",
+              strategy: "reactive",
+              max_pending_jobs: 1,
+              wall_time: "4:00:00",
+              enabled: true,
+            },
+          ],
+        }),
+      ),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", warnings: [] })),
+      "PUT /config/slurm-clusters/enabled": new Response(null, { status: 204 }),
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Clusters/i })).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Clusters/i }));
+    });
+
+    const checkbox = await screen.findByRole("checkbox");
+    fireEvent.click(checkbox);
+    expect(screen.getByText("1 unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByText("Cluster provisioning settings updated")).toBeInTheDocument());
+  });
+
+  it("keeps local cluster edits when save fails", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(
+        JSON.stringify({
+          clusters: [
+            {
+              name: "gilbreth",
+              partition: "gpu",
+              strategy: "reactive",
+              max_pending_jobs: 1,
+              wall_time: "4:00:00",
+              enabled: true,
+            },
+          ],
+        }),
+      ),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", warnings: [] })),
+      "PUT /config/slurm-clusters/enabled": new Response("save failed", { status: 500 }),
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Clusters/i })).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Clusters/i }));
+    });
+
+    const checkbox = await screen.findByRole("checkbox");
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByText(/save failed/i)).toBeInTheDocument());
+    expect(screen.getByText("1 unsaved changes")).toBeInTheDocument();
+  });
 });

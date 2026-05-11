@@ -575,6 +575,16 @@ dt,
   margin-bottom: 0.5rem;
 }
 
+.toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toggle-label input[type="checkbox"] {
+  width: auto;
+}
+
 pre {
   white-space: pre-wrap;
 }

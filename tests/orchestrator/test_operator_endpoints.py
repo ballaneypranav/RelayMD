@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 from uuid import UUID
 
 import pytest
@@ -9,18 +10,25 @@ from httpx import ASGITransport, AsyncClient
 from relaymd.models import Job, JobStatus
 
 from relaymd import __version__
-from relaymd.orchestrator.config import OrchestratorSettings
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 
 
 @asynccontextmanager
 async def app_client(settings: OrchestratorSettings):
-    app = create_app(settings, start_background_tasks=False)
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield app, client
+    async def _skip_tailscale_startup(_settings: OrchestratorSettings):
+        return None
+
+    with patch(
+        "relaymd.orchestrator.main._ensure_tailscale_running",
+        new=_skip_tailscale_startup,
+    ):
+        app = create_app(settings, start_background_tasks=False)
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                yield app, client
 
 
 def make_settings() -> OrchestratorSettings:
@@ -29,6 +37,37 @@ def make_settings() -> OrchestratorSettings:
         database_url="sqlite+aiosqlite:///:memory:",
         api_token="test-token",
         slurm_cluster_configs=[],
+    )
+
+
+def make_slurm_settings() -> OrchestratorSettings:
+    return OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+        infisical_token="client-id:client-secret",
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="gilbreth",
+                partition="gpu",
+                account="lab",
+                ssh_host="host-a",
+                ssh_username="user-a",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/tmp/a.sif",
+            ),
+            ClusterConfig(
+                name="anvil",
+                partition="gpu",
+                account="lab",
+                ssh_host="host-b",
+                ssh_username="user-b",
+                gpu_type="a100",
+                gpu_count=1,
+                sif_path="/tmp/b.sif",
+            ),
+        ],
     )
 
 
@@ -302,3 +341,52 @@ async def test_prune_jobs_requires_api_token() -> None:
     async with app_client(make_settings()) as (_app, client):
         response = await client.delete("/jobs")
         assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_slurm_clusters_includes_enabled_default_true() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_slurm_settings()) as (_app, client):
+        response = await client.get("/config/slurm-clusters", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["clusters"][0]["name"] == "gilbreth"
+    assert payload["clusters"][0]["enabled"] is True
+    assert payload["clusters"][1]["name"] == "anvil"
+    assert payload["clusters"][1]["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_put_slurm_cluster_enabled_map_updates_atomically() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_slurm_settings()) as (_app, client):
+        put_response = await client.put(
+            "/config/slurm-clusters/enabled",
+            headers=headers,
+            json={"enabled": {"gilbreth": False, "anvil": True}},
+        )
+        assert put_response.status_code == 204
+
+        get_response = await client.get("/config/slurm-clusters", headers=headers)
+    assert get_response.status_code == 200
+    by_name = {cluster["name"]: cluster for cluster in get_response.json()["clusters"]}
+    assert by_name["gilbreth"]["enabled"] is False
+    assert by_name["anvil"]["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_put_slurm_cluster_enabled_map_rejects_missing_or_unknown_names() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_slurm_settings()) as (_app, client):
+        bad_put = await client.put(
+            "/config/slurm-clusters/enabled",
+            headers=headers,
+            json={"enabled": {"gilbreth": False, "unknown": True}},
+        )
+        assert bad_put.status_code == 400
+
+        get_response = await client.get("/config/slurm-clusters", headers=headers)
+    assert get_response.status_code == 200
+    by_name = {cluster["name"]: cluster for cluster in get_response.json()["clusters"]}
+    assert by_name["gilbreth"]["enabled"] is True
+    assert by_name["anvil"]["enabled"] is True

@@ -243,6 +243,7 @@ def _write_sbatch_script_to_disk(
     cluster: ClusterConfig,
     settings: OrchestratorSettings,
     rendered_script: str,
+    worker_id: UUID,
 ) -> str | None:
     if not settings.log_directory or not settings.log_directory.strip():
         return None
@@ -250,7 +251,7 @@ def _write_sbatch_script_to_disk(
     base_dir = Path(settings.log_directory).expanduser() / "slurm"
     base_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-    filename = f"{cluster.name}-{timestamp}-{uuid4().hex[:8]}.sbatch"
+    filename = f"{cluster.name}-{timestamp}-{worker_id.hex[:8]}.sbatch"
     script_path = base_dir / filename
     script_path.write_text(_redact_sbatch_script_for_disk(rendered_script), encoding="utf-8")
     return str(script_path)
@@ -275,6 +276,7 @@ async def submit_slurm_job(
     *,
     worker_id: UUID | None = None,
 ) -> str:
+    worker_id = worker_id or uuid4()
     rendered = _render_sbatch_script(
         cluster,
         settings=settings,
@@ -287,6 +289,7 @@ async def submit_slurm_job(
         cluster=cluster,
         settings=settings,
         rendered_script=rendered,
+        worker_id=worker_id,
     )
 
     command = [

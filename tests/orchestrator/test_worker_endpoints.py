@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
 from freezegun import freeze_time
@@ -240,13 +240,16 @@ async def test_stale_worker_reaper_requeues_jobs() -> None:
             "/workers/register",
             {"platform": "hpc", "gpu_model": "A100", "gpu_count": 1, "vram_gb": 80},
         ),
-        (f"/workers/{uuid4()}/heartbeat", None),
-        (f"/workers/{uuid4()}/deregister", None),
+        ("/workers/11111111-1111-1111-1111-111111111111/heartbeat", None),
+        ("/workers/22222222-2222-2222-2222-222222222222/deregister", None),
         ("/jobs/request", None),
-        (f"/jobs/{uuid4()}/start", None),
-        (f"/jobs/{uuid4()}/checkpoint", {"checkpoint_path": "jobs/x/checkpoints/latest"}),
-        (f"/jobs/{uuid4()}/complete", None),
-        (f"/jobs/{uuid4()}/fail", None),
+        ("/jobs/33333333-3333-3333-3333-333333333333/start", None),
+        (
+            "/jobs/44444444-4444-4444-4444-444444444444/checkpoint",
+            {"checkpoint_path": "jobs/x/checkpoints/latest"},
+        ),
+        ("/jobs/55555555-5555-5555-5555-555555555555/complete", None),
+        ("/jobs/66666666-6666-6666-6666-666666666666/fail", None),
     ],
 )
 async def test_worker_endpoints_require_api_token(

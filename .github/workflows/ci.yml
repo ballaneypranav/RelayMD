@@ -78,6 +78,8 @@ jobs:
       pull-requests: write
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
+    env:
+      RELAYMD_DISABLE_AXIOM_UPLOAD: "1"
     steps:
       - uses: actions/checkout@v6
         with:
@@ -88,7 +90,7 @@ jobs:
           enable-cache: true
           cache-local-path: /tmp/uv-cache
       - run: ./scripts/sync_workspace.sh
-      - run: uv run pytest
+      - run: uv run pytest --cov-report=xml
       - name: Upload coverage report
         if: '!cancelled()'
         uses: actions/upload-artifact@v6

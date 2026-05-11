@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob } from "./api";
+import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob, updateClusterProvisioningEnabledMap } from "./api";
 import { AppShell } from "./components/AppShell";
 import { MetricStrip } from "./components/MetricStrip";
 import { StatusPill } from "./components/StatusPill";
@@ -134,6 +134,8 @@ export function App() {
   const [pendingCancelJob, setPendingCancelJob] = useState<JobRead | null>(null);
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
+  const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
+  const [saveClusterEditsInFlight, setSaveClusterEditsInFlight] = useState(false);
 
   const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
     useDashboardData(config);
@@ -176,6 +178,10 @@ export function App() {
   const workers = data?.workers ?? [];
   const clusters = data?.clusters ?? [];
   const health = data?.health;
+  const clusterEditCount = useMemo(
+    () => clusters.filter((cluster) => (clusterEdits[cluster.name] ?? cluster.enabled) !== cluster.enabled).length,
+    [clusterEdits, clusters],
+  );
 
   const jobRows = useMemo(() => buildJobRows(jobs, now), [jobs, now]);
   const workerRows = useMemo(() => buildWorkerRows(workers, now, jobs), [workers, now, jobs]);
@@ -235,6 +241,33 @@ export function App() {
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
       setActionMessage("");
+    }
+  };
+
+  const handleClusterToggle = (clusterName: string, enabled: boolean) => {
+    setClusterEdits((current) => ({ ...current, [clusterName]: enabled }));
+  };
+
+  const handleSaveClusterEdits = async () => {
+    if (!config || clusterEditCount === 0) {
+      return;
+    }
+    setSaveClusterEditsInFlight(true);
+    try {
+      const enabledMap = Object.fromEntries(
+        clusters.map((cluster) => [cluster.name, clusterEdits[cluster.name] ?? cluster.enabled]),
+      );
+      await updateClusterProvisioningEnabledMap(config.api_base_url, enabledMap);
+      const payload = await fetchDashboardData(config.api_base_url);
+      setData(payload);
+      setClusterEdits({});
+      setActionMessage("Cluster provisioning settings updated");
+      setActionError("");
+    } catch (actionFailure) {
+      setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
+      setActionMessage("");
+    } finally {
+      setSaveClusterEditsInFlight(false);
     }
   };
 
@@ -396,7 +429,16 @@ export function App() {
         />
       ) : null}
 
-      {activeView === "clusters" ? <ClustersView clusters={clusters} /> : null}
+      {activeView === "clusters" ? (
+        <ClustersView
+          clusters={clusters}
+          clusterEdits={clusterEdits}
+          unsavedCount={clusterEditCount}
+          saveInFlight={saveClusterEditsInFlight}
+          onToggle={handleClusterToggle}
+          onSave={() => void handleSaveClusterEdits()}
+        />
+      ) : null}
 
       {activeView === "settings" ? (
         <SettingsView

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from relaymd.models import Job, Worker
+from relaymd.models import ClusterProvisioningState, Job, Worker
 from sqlalchemy import Column, DateTime, MetaData, String, Table, inspect, text
 from sqlmodel import SQLModel, create_engine
 
@@ -17,6 +17,7 @@ def test_job_and_worker_tables_exist() -> None:
     table_names = set(inspector.get_table_names())
     assert Job.__tablename__ in table_names
     assert Worker.__tablename__ in table_names
+    assert ClusterProvisioningState.__tablename__ in table_names
 
     worker_columns = {column["name"] for column in inspector.get_columns(str(Worker.__tablename__))}
     assert "provider_state" in worker_columns
