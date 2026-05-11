@@ -90,7 +90,7 @@ jobs:
           enable-cache: true
           cache-local-path: /tmp/uv-cache
       - run: ./scripts/sync_workspace.sh
-      - run: uv run pytest --cov-report=xml
+      - run: uv run pytest -n 0 --cov-report=xml
       - name: Upload coverage report
         if: '!cancelled()'
         uses: actions/upload-artifact@v6
