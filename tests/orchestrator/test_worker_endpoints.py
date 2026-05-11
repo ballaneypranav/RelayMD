@@ -94,6 +94,53 @@ async def test_worker_flow_register_request_heartbeat_checkpoint_complete() -> N
 
 
 @pytest.mark.asyncio
+async def test_heartbeat_progress_updates_only_assigned_worker_job() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        worker_one_response = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={"platform": "hpc", "gpu_model": "A100", "gpu_count": 2, "vram_gb": 80},
+        )
+        worker_one_id = worker_one_response.json()["worker_id"]
+        worker_two_response = await client.post(
+            "/workers/register",
+            headers=headers,
+            json={"platform": "hpc", "gpu_model": "A100", "gpu_count": 2, "vram_gb": 80},
+        )
+        worker_two_id = worker_two_response.json()["worker_id"]
+
+        async with get_sessionmaker()() as session:
+            job = Job(
+                title="train-1",
+                input_bundle_path="jobs/1/input/bundle.tar.gz",
+                status=JobStatus.running,
+                assigned_worker_id=UUID(worker_one_id),
+                progress=0.25,
+                progress_codes_json='["progress_missing"]',
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            job_id = job.id
+
+        heartbeat_response = await client.post(
+            f"/workers/{worker_two_id}/heartbeat",
+            headers=headers,
+            json={"job_id": str(job_id), "progress": 0.9, "progress_codes": ["progress_empty"]},
+        )
+        assert heartbeat_response.status_code == 204
+
+        async with get_sessionmaker()() as session:
+            db_job = await session.get(Job, job_id)
+            assert db_job is not None
+            assert db_job.progress == 0.25
+            assert db_job.progress_codes_json == '["progress_missing"]'
+
+
+@pytest.mark.asyncio
 async def test_worker_start_lifecycle_and_checkpoint_timestamps() -> None:
     settings = make_settings()
     headers = {"X-API-Token": "test-token"}

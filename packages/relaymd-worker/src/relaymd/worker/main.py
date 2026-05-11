@@ -447,7 +447,7 @@ def _resolve_watch_files(
 
 def _read_progress(*, bundle_root: Path, progress_file_path: str) -> tuple[float, list[str]]:
     progress_path = bundle_root / progress_file_path
-    if progress_path.is_absolute() or ".." in Path(progress_file_path).parts:
+    if Path(progress_file_path).is_absolute() or ".." in Path(progress_file_path).parts:
         return 0.0, [PROGRESS_INVALID_FORMAT]
     if not progress_path.exists():
         return 0.0, [PROGRESS_MISSING]

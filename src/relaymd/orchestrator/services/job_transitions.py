@@ -135,8 +135,10 @@ class JobTransitionService:
         now = utcnow_naive()
         job.latest_checkpoint_path = checkpoint_path
         job.last_checkpoint_at = now
-        job.progress = progress
-        job.progress_codes_json = json.dumps(progress_codes or [])
+        if progress is not None:
+            job.progress = progress
+        if progress_codes is not None:
+            job.progress_codes_json = json.dumps(progress_codes)
         job.updated_at = now
         logger.info(
             "checkpoint_recorded",

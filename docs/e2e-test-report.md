@@ -125,7 +125,7 @@ Checkpoint key verification:
 aws s3api head-object \
   --endpoint-url "$B2_ENDPOINT_URL" \
   --bucket "$B2_BUCKET_NAME" \
-  --key "jobs//checkpoints/manifest.json"
+  --key "jobs/$JOB_ID/checkpoints/manifest.json"
 ```
 
 ## Handoff Validation

@@ -111,8 +111,10 @@ async def report_checkpoint(
         transitions.report_checkpoint(
             job,
             checkpoint_path=payload.checkpoint_path,
-            progress=payload.progress,
-            progress_codes=payload.progress_codes,
+            progress=payload.progress if "progress" in payload.model_fields_set else None,
+            progress_codes=(
+                payload.progress_codes if "progress_codes" in payload.model_fields_set else None
+            ),
         )
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)

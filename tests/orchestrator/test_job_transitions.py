@@ -113,6 +113,22 @@ def test_checkpoint_allowed_in_active_states_logs_checkpoint_recorded() -> None:
     assert info_mock.call_args.args[0] == "checkpoint_recorded"
 
 
+def test_checkpoint_omitted_progress_fields_do_not_clear_existing_values() -> None:
+    service = JobTransitionService()
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        status=JobStatus.running,
+        progress=0.55,
+        progress_codes_json='["progress_missing"]',
+    )
+
+    service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
+
+    assert job.progress == 0.55
+    assert job.progress_codes_json == '["progress_missing"]'
+
+
 @pytest.mark.parametrize(
     "status",
     [JobStatus.queued, JobStatus.completed, JobStatus.failed, JobStatus.cancelled],

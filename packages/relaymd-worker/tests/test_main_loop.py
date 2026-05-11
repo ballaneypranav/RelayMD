@@ -18,10 +18,13 @@ from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.config import WorkerRuntimeSettings
 from relaymd.worker.context import WorkerContext
 from relaymd.worker.main import (
+    PROGRESS_INVALID_FORMAT,
+    PROGRESS_MISSING,
     BundleExecutionConfig,
     _build_storage_client,
     _extract_input_bundle,
     _load_bundle_execution_config,
+    _read_progress,
     _required_openmm_platform,
     _run_assigned_job,
     detect_openmm_platforms,
@@ -132,6 +135,26 @@ def test_load_bundle_execution_config_reads_checkpoint_poll_interval_toml(tmp_pa
     )
     config = _load_bundle_execution_config(tmp_path)
     assert config.checkpoint_poll_interval_seconds == 90
+
+
+def test_read_progress_reads_relative_path_and_rejects_absolute(tmp_path: Path) -> None:
+    (tmp_path / "progress.txt").write_text("0.75\n", encoding="utf-8")
+    progress, codes = _read_progress(bundle_root=tmp_path, progress_file_path="progress.txt")
+    assert progress == 0.75
+    assert codes == []
+
+    absolute_path = str((tmp_path / "progress.txt").resolve())
+    invalid_progress, invalid_codes = _read_progress(
+        bundle_root=tmp_path, progress_file_path=absolute_path
+    )
+    assert invalid_progress == 0.0
+    assert invalid_codes == [PROGRESS_INVALID_FORMAT]
+
+    missing_progress, missing_codes = _read_progress(
+        bundle_root=tmp_path, progress_file_path="missing.txt"
+    )
+    assert missing_progress == 0.0
+    assert missing_codes == [PROGRESS_MISSING]
 
 
 def test_load_bundle_execution_config_reads_supervision_fields_toml(tmp_path: Path) -> None:
