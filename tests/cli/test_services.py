@@ -413,3 +413,40 @@ def test_jobs_service_download_all_checkpoint_files_partial_failure(
     assert payload["downloaded_files"] == 1
     assert payload["failed_files"] == 1
     assert payload["total_files"] == 2
+
+
+def test_jobs_service_download_all_checkpoint_files_rejects_traversal_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    context = _FakeContext()
+    service = JobsService(_as_cli_context(context))
+    job = _make_checkpoint_job_read()
+    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
+
+    manifest = {
+        "files": {
+            "../escape.chk": {"remote_key": "jobs/abc/checkpoints/files/escape.chk"},
+            "good.chk": {"remote_key": "jobs/abc/checkpoints/files/good.chk"},
+        }
+    }
+
+    def _download(key: str, path: Path) -> None:
+        if key.endswith("manifest.json"):
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            return
+        path.write_bytes(b"ok")
+
+    context.storage.download_file.side_effect = _download
+    payload = service.download_all_checkpoint_files(job_id=job.id, output_dir=tmp_path)
+
+    assert payload["status"] == "partial_failure"
+    assert payload["downloaded_files"] == 1
+    assert payload["failed_files"] == 1
+    assert payload["total_files"] == 2
+    results = payload["results"]
+    assert isinstance(results, list)
+    assert any(
+        isinstance(result, dict) and result.get("relative_path") == "../escape.chk"
+        for result in results
+    )
+    assert not (tmp_path.parent / "escape.chk").exists()

@@ -167,12 +167,27 @@ class JobsService:
         total_bytes = 0
 
         for relative_path in sorted(files.keys()):
+            try:
+                validated_relative_path = _validate_relative_path(relative_path)
+            except RuntimeError as exc:
+                failed_files += 1
+                results.append(
+                    {
+                        "relative_path": relative_path,
+                        "remote_key": "",
+                        "local_path": "",
+                        "bytes": 0,
+                        "error": str(exc),
+                    }
+                )
+                continue
+
             entry = files[relative_path]
             if not isinstance(entry, dict):
                 failed_files += 1
                 results.append(
                     {
-                        "relative_path": relative_path,
+                        "relative_path": validated_relative_path,
                         "remote_key": "",
                         "local_path": "",
                         "bytes": 0,
@@ -185,7 +200,7 @@ class JobsService:
                 failed_files += 1
                 results.append(
                     {
-                        "relative_path": relative_path,
+                        "relative_path": validated_relative_path,
                         "remote_key": "",
                         "local_path": "",
                         "bytes": 0,
@@ -194,7 +209,7 @@ class JobsService:
                 )
                 continue
 
-            local_path = base_output_dir / "files" / relative_path
+            local_path = base_output_dir / "files" / validated_relative_path
             try:
                 local_path.parent.mkdir(parents=True, exist_ok=True)
                 self._context.storage_client().download_file(remote_key, local_path)
@@ -203,7 +218,7 @@ class JobsService:
                 failed_files += 1
                 results.append(
                     {
-                        "relative_path": relative_path,
+                        "relative_path": validated_relative_path,
                         "remote_key": remote_key,
                         "local_path": str(local_path),
                         "bytes": 0,
@@ -216,7 +231,7 @@ class JobsService:
             total_bytes += file_size
             results.append(
                 {
-                    "relative_path": relative_path,
+                    "relative_path": validated_relative_path,
                     "remote_key": remote_key,
                     "local_path": str(local_path),
                     "bytes": file_size,
