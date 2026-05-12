@@ -12,7 +12,15 @@ from sqlalchemy import delete
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobConflict, JobCreate, JobCreateConflict, JobRead, JobStatus
+from relaymd.models import (
+    Job,
+    JobConflict,
+    JobCreate,
+    JobCreateConflict,
+    JobHistoryRead,
+    JobRead,
+    JobStatus,
+)
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
@@ -22,7 +30,6 @@ from relaymd.orchestrator.services.job_history_service import (
     derive_history_events,
     load_job_history_events,
 )
-from relaymd.models import JobHistoryRead
 
 from ._responses import job_transition_conflict_response
 

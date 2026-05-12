@@ -132,7 +132,9 @@ def _ensure_job_event_indexes(connection: Connection) -> None:
         text("CREATE INDEX IF NOT EXISTS ix_jobevent_occurred_at ON jobevent (occurred_at)")
     )
     connection.execute(
-        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)")
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)"
+        )
     )
 
 

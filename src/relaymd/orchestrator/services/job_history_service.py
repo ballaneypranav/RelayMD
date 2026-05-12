@@ -9,7 +9,14 @@ from sqlalchemy import func
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobEvent, JobHistoryEventRead, JobStatus, JobWorkerSegmentRead, JobWorkerTotalRead
+from relaymd.models import (
+    Job,
+    JobEvent,
+    JobHistoryEventRead,
+    JobStatus,
+    JobWorkerSegmentRead,
+    JobWorkerTotalRead,
+)
 
 JobEventType = Literal[
     "created",
@@ -55,7 +62,9 @@ async def append_job_event(
     return event
 
 
-async def load_job_history_events(session: AsyncSession, *, job_id: UUID) -> list[JobHistoryEventRead]:
+async def load_job_history_events(
+    session: AsyncSession, *, job_id: UUID
+) -> list[JobHistoryEventRead]:
     rows = (
         await session.exec(
             select(JobEvent)
@@ -150,7 +159,9 @@ def derive_history_events(job: Job) -> list[JobHistoryEventRead]:
     return sorted(events, key=lambda item: (item.occurred_at, item.event_seq))
 
 
-def build_worker_runtime(events: list[JobHistoryEventRead], *, now: datetime) -> tuple[list[JobWorkerSegmentRead], list[JobWorkerTotalRead]]:
+def build_worker_runtime(
+    events: list[JobHistoryEventRead], *, now: datetime
+) -> tuple[list[JobWorkerSegmentRead], list[JobWorkerTotalRead]]:
     segments: list[JobWorkerSegmentRead] = []
     current_worker: UUID | None = None
     segment_start: datetime | None = None
@@ -158,7 +169,11 @@ def build_worker_runtime(events: list[JobHistoryEventRead], *, now: datetime) ->
     for event in events:
         if event.event_type in {"assigned", "running"}:
             worker_id = event.worker_id
-            if current_worker is not None and segment_start is not None and worker_id != current_worker:
+            if (
+                current_worker is not None
+                and segment_start is not None
+                and worker_id != current_worker
+            ):
                 duration = max(0.0, (event.occurred_at - segment_start).total_seconds())
                 segments.append(
                     JobWorkerSegmentRead(
@@ -213,5 +228,7 @@ def build_worker_runtime(events: list[JobHistoryEventRead], *, now: datetime) ->
             existing.total_runtime_seconds += segment.duration_seconds
             existing.segment_count += 1
 
-    ordered_totals = sorted(totals.values(), key=lambda item: item.total_runtime_seconds, reverse=True)
+    ordered_totals = sorted(
+        totals.values(), key=lambda item: item.total_runtime_seconds, reverse=True
+    )
     return segments, ordered_totals

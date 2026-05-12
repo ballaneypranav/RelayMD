@@ -10,8 +10,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, JobStatus, Worker, WorkerRegister, WorkerStatus
 
-from .job_transitions import JobTransitionService
 from .job_history_service import append_job_event
+from .job_transitions import JobTransitionService
 
 logger = structlog.get_logger(__name__)
 
