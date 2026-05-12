@@ -296,7 +296,10 @@ class WorkerLifecycleService:
                 )
                 if cluster is not None and should_query:
                     statuses = await _query_live_slurm_job_statuses(cluster, [raw_job_id])
-                    if statuses is not None:
+                    if statuses is None:
+                        # SLURM query can fail transiently; do not treat unknown as dead.
+                        provider_alive = True
+                    else:
                         status = statuses.get(raw_job_id)
                         if status is None:
                             worker.provider_state = "gone"
