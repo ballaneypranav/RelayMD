@@ -114,8 +114,7 @@ def test_job_template_prepulls_oras_image() -> None:
     )
 
     assert (
-        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]'
-        in rendered
+        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]' in rendered
     )
     assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
     assert "flock -x 200" in rendered

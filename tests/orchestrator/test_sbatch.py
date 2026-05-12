@@ -241,14 +241,10 @@ async def test_submit_slurm_job_prepulls_oras_image_uri(monkeypatch) -> None:
     rendered = captured["script"]
     assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
     assert (
-        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]'
-        in rendered
+        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]' in rendered
     )
     assert "_SIF_CACHE_DIR='/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache'" in rendered
-    assert (
-        '_APPTAINER_CACHEDIR="${_SIF_CACHE_DIR}/apptainer-cache/${_IMAGE_KEY}"'
-        in rendered
-    )
+    assert '_APPTAINER_CACHEDIR="${_SIF_CACHE_DIR}/apptainer-cache/${_IMAGE_KEY}"' in rendered
     assert 'export APPTAINER_CACHEDIR="${_APPTAINER_CACHEDIR}"' in rendered
     assert 'export SINGULARITY_CACHEDIR="${APPTAINER_CACHEDIR}"' in rendered
     assert 'apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"' in rendered
