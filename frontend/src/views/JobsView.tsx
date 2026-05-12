@@ -2,6 +2,11 @@ import { etaSeconds, formatDuration, parseDate, toCsv, toDelimited, totalRuntime
 import { StatusPill } from "../components/StatusPill";
 import type { JobHistoryRead, JobRead } from "../types";
 
+const BLOCKED_REASON_LABELS: Record<string, string> = {
+  no_enabled_pinned_clusters: "Pinned clusters disabled",
+  no_matching_pinned_clusters: "Pinned clusters unavailable",
+};
+
 interface JobRow {
   id: string;
   job_id: string;
@@ -141,6 +146,9 @@ export function JobsView({
                         <StatusPill tone={row.status as Parameters<typeof StatusPill>[0]["tone"]}>
                           {row.status}
                         </StatusPill>
+                        {backingJob?.status === "queued" && backingJob.queue_blocked_reason ? (
+                          <small>{BLOCKED_REASON_LABELS[backingJob.queue_blocked_reason] ?? backingJob.queue_blocked_reason}</small>
+                        ) : null}
                       </td>
                       <td>{row.age}</td>
                       <td>{row.time_in_status}</td>
@@ -229,6 +237,22 @@ export function JobsView({
               <div>
                 <dt>Input Bundle</dt>
                 <dd>{selectedJob.input_bundle_path}</dd>
+              </div>
+              <div>
+                <dt>Pinned Clusters</dt>
+                <dd>{selectedJob.preferred_clusters.length > 0 ? selectedJob.preferred_clusters.join(", ") : "-"}</dd>
+              </div>
+              <div>
+                <dt>Comment</dt>
+                <dd style={{ whiteSpace: "pre-wrap" }}>{selectedJob.comment || "-"}</dd>
+              </div>
+              <div>
+                <dt>Queue Blocked</dt>
+                <dd>
+                  {selectedJob.status === "queued" && selectedJob.queue_blocked_reason
+                    ? (BLOCKED_REASON_LABELS[selectedJob.queue_blocked_reason] ?? selectedJob.queue_blocked_reason)
+                    : "-"}
+                </dd>
               </div>
               <div>
                 <dt>Progress</dt>

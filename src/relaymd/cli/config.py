@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -24,6 +24,10 @@ INFISICAL_BASE_URL = "https://app.infisical.com"
 INFISICAL_WORKSPACE_ID = "dcf29082-7972-4bca-be58-363f6ad969c0"
 INFISICAL_ENVIRONMENT = "prod"
 INFISICAL_SECRET_PATH = "/RelayMD"
+
+
+class CliClusterConfig(BaseModel):
+    name: str
 
 
 class CliSettings(BaseSettings):
@@ -98,6 +102,7 @@ class CliSettings(BaseSettings):
             "RELAYMD_CLI_ORCHESTRATOR_TIMEOUT_SECONDS",
         ),
     )
+    slurm_cluster_configs: list[CliClusterConfig] = []
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

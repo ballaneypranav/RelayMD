@@ -73,6 +73,8 @@ class JobTransitionService:
             job.assigned_worker_id = None
         elif assigned_worker_id is not None:
             job.assigned_worker_id = assigned_worker_id
+        if target_status != JobStatus.queued:
+            job.queue_blocked_reason = None
         now = utcnow_naive()
         job.status_changed_at = now
         job.updated_at = now
@@ -170,6 +172,9 @@ class JobTransitionService:
         return Job(
             title=job.title,
             input_bundle_path=job.input_bundle_path,
+            preferred_clusters_json=job.preferred_clusters_json,
+            comment=job.comment,
+            queue_blocked_reason=None,
             status=JobStatus.queued,
             latest_checkpoint_path=job.latest_checkpoint_path,
             last_checkpoint_at=job.last_checkpoint_at,

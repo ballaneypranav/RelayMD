@@ -74,11 +74,26 @@ Submit with command shortcut (writes `relaymd-worker.json` before packing):
 relaymd submit ./my-input --title "my job" --command "python run.py" --checkpoint-glob "*.cpt"
 ```
 
+Submit pinned to specific SLURM clusters (repeat `--cluster`):
+
+```bash
+relaymd submit ./my-input --title "my job" --cluster gilbreth --cluster anvil
+```
+
+Submit with an operator comment:
+
+```bash
+relaymd submit ./my-input --title "my job" --comment "Nightly benchmark run"
+```
+
 Submit machine-readable output:
 
 ```bash
 relaymd submit ./my-input --title "my job" --json
 ```
+
+`submit --json` includes `preferred_clusters`, `comment`, and `queue_blocked_reason`
+in addition to `job_id`, `title`, `input_bundle_path`, and `status`.
 
 On shared HPC installs, API-backed commands automatically delegate over SSH to
 the host that owns the active RelayMD service lock when run from another login
@@ -119,6 +134,7 @@ relaymd jobs checkpoint download-all <job-id> --json
 Strict transition rules apply:
 - cancelling a running job without `--force` returns a conflict
 - requeue is allowed only for terminal jobs (`completed`, `failed`, `cancelled`)
+- requeue clones preserve affinity and comment
 
 Monitor all jobs and workers concurrently (auto-refreshes every 3 seconds by default):
 
@@ -168,6 +184,12 @@ entrypoints remain available for packaging and debugging:
 
 `relaymd submit` requires a worker config in the input directory (`relaymd-worker.json` or `relaymd-worker.toml`) unless you pass `--command`.
 When `--command` is used, `--checkpoint-glob` is required.
+
+Affinity and comment validation:
+- `--cluster` must match configured SLURM cluster `name` values exactly
+- duplicate `--cluster` values are deduplicated preserving first-seen order
+- unknown cluster names fail fast before archive/upload
+- `--comment` is trimmed, blank/whitespace-only becomes null, max length is 2000 chars
 
 Example JSON:
 

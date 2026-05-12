@@ -11,11 +11,12 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
          ├── packs directory into bundle.tar.gz
          ├── generates canonical job_id UUID once
          ├── uploads to B2 at jobs/{job_id}/input/bundle.tar.gz
-         └── POST /jobs with id={job_id} → job enters "queued" state in orchestrator DB
+         └── POST /jobs with id={job_id} (+ optional preferred_clusters/comment)
+             → job enters "queued" state in orchestrator DB
                   │
                   ▼
          Orchestrator sbatch loop fires (every 60s)
-         Sees queued job, no active HPC workers for cluster
+         Sees queued job compatible with cluster affinity, no active HPC workers for cluster
                   │
                   ▼
          sbatch renders job.sbatch.j2 and calls sbatch directly
@@ -70,6 +71,11 @@ Job re-enters "queued" state with latest_checkpoint_path preserved
          ▼
 Next available worker resumes from that checkpoint
 ```
+
+If a queued job has affinity that cannot currently run, status remains `queued`
+and `queue_blocked_reason` is set:
+- `no_enabled_pinned_clusters`: all pinned clusters are currently disabled
+- `no_matching_pinned_clusters`: pinned cluster names no longer match runtime config
 
 ---
 

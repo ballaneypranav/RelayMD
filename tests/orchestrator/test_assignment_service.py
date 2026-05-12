@@ -155,3 +155,30 @@ async def test_concurrent_requests_from_same_worker_claim_only_one_job(tmp_path:
         assert assigned[0].id in job_ids
         assert assigned[0].assigned_worker_id == worker_id
         assert len(queued) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_only_claims_job_matching_pinned_cluster(tmp_path: Path) -> None:
+    async with _sessionmaker(tmp_path) as maker:
+        async with maker() as session:
+            worker = _worker(gpu_model="A100")
+            worker.provider_id = "gilbreth:12345"
+            pinned_job = _job(title="pinned")
+            pinned_job.preferred_clusters_json = '["anvil"]'
+            unpinned_job = _job(title="unpinned")
+            session.add_all([worker, pinned_job, unpinned_job])
+            await session.commit()
+            await session.refresh(worker)
+
+            worker_id = worker.id
+            pinned_job_id = pinned_job.id
+            unpinned_job_id = unpinned_job.id
+
+        claimed = await _assign(maker, worker_id=worker_id)
+        assert claimed is not None
+        assert claimed.id == unpinned_job_id
+
+        async with maker() as session:
+            pinned = await session.get(Job, pinned_job_id)
+            assert pinned is not None
+            assert pinned.status == JobStatus.queued

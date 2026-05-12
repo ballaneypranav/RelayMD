@@ -30,6 +30,9 @@ class JobRead:
         assigned_worker_id (None | UUID):
         created_at (datetime.datetime):
         updated_at (datetime.datetime):
+        preferred_clusters (list[str]):
+        comment (None | str):
+        queue_blocked_reason (None | str):
     """
 
     id: UUID
@@ -44,6 +47,9 @@ class JobRead:
     assigned_worker_id: None | UUID
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    preferred_clusters: list[str] = _attrs_field(factory=list)
+    comment: None | str = None
+    queue_blocked_reason: None | str = None
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -87,6 +93,9 @@ class JobRead:
         created_at = self.created_at.isoformat()
 
         updated_at = self.updated_at.isoformat()
+        preferred_clusters = self.preferred_clusters
+        comment = self.comment
+        queue_blocked_reason = self.queue_blocked_reason
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -104,6 +113,9 @@ class JobRead:
                 "assigned_worker_id": assigned_worker_id,
                 "created_at": created_at,
                 "updated_at": updated_at,
+                "preferred_clusters": preferred_clusters,
+                "comment": comment,
+                "queue_blocked_reason": queue_blocked_reason,
             }
         )
 
@@ -192,6 +204,9 @@ class JobRead:
         created_at = isoparse(d.pop("created_at"))
 
         updated_at = isoparse(d.pop("updated_at"))
+        preferred_clusters = cast(list[str], d.pop("preferred_clusters", []))
+        comment = cast(None | str, d.pop("comment", None))
+        queue_blocked_reason = cast(None | str, d.pop("queue_blocked_reason", None))
 
         job_read = cls(
             id=id,
@@ -206,6 +221,9 @@ class JobRead:
             assigned_worker_id=assigned_worker_id,
             created_at=created_at,
             updated_at=updated_at,
+            preferred_clusters=preferred_clusters,
+            comment=comment,
+            queue_blocked_reason=queue_blocked_reason,
         )
 
         job_read.additional_properties = d

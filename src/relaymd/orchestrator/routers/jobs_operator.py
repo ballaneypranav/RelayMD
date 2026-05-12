@@ -6,7 +6,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import delete
 from sqlmodel import col, select
@@ -22,8 +22,12 @@ from relaymd.models import (
     JobStatus,
 )
 from relaymd.orchestrator.auth import require_worker_api_token
+from relaymd.orchestrator.config import OrchestratorSettings
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
+from relaymd.orchestrator.services.cluster_provisioning_state_service import (
+    ClusterProvisioningStateService,
+)
 from relaymd.orchestrator.services.job_history_service import (
     append_job_event,
     build_worker_runtime,
@@ -37,9 +41,65 @@ router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_toke
 logger = structlog.get_logger(__name__)
 
 
+def _normalize_preferred_clusters(
+    cluster_names: list[str],
+    *,
+    known_cluster_names: set[str],
+) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in cluster_names:
+        name = value.strip()
+        if not name:
+            continue
+        if name not in known_cluster_names:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail={
+                    "error": "unknown_preferred_cluster",
+                    "cluster_name": name,
+                    "known_cluster_names": sorted(known_cluster_names),
+                },
+            )
+        if name not in seen:
+            seen.add(name)
+            normalized.append(name)
+    return normalized
+
+
+def _normalize_comment(comment: str | None) -> str | None:
+    if comment is None:
+        return None
+    trimmed = comment.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) > 2000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="comment must be 2000 characters or fewer",
+        )
+    return trimmed
+
+
+def _compute_queue_blocked_reason(
+    *,
+    preferred_clusters: list[str],
+    known_cluster_names: set[str],
+    enabled_map: dict[str, bool],
+) -> str | None:
+    if not preferred_clusters:
+        return None
+    if not any(cluster in known_cluster_names for cluster in preferred_clusters):
+        return "no_matching_pinned_clusters"
+    if not any(enabled_map.get(cluster, False) for cluster in preferred_clusters):
+        return "no_enabled_pinned_clusters"
+    return None
+
+
 def _job_to_read(job: Job) -> JobRead:
     progress_codes: list[str] = []
     checkpoint_cycle_failures: list[dict[str, str]] = []
+    preferred_clusters: list[str] = []
     if job.progress_codes_json:
         try:
             parsed_codes = json.loads(job.progress_codes_json)
@@ -58,12 +118,22 @@ def _job_to_read(job: Job) -> JobRead:
                 ]
         except Exception:
             checkpoint_cycle_failures = []
+    if job.preferred_clusters_json:
+        try:
+            parsed_clusters = json.loads(job.preferred_clusters_json)
+            if isinstance(parsed_clusters, list):
+                preferred_clusters = [str(item) for item in parsed_clusters if str(item).strip()]
+        except Exception:
+            preferred_clusters = []
 
     return JobRead(
         id=job.id,
         title=job.title,
         status=job.status,
         input_bundle_path=job.input_bundle_path,
+        preferred_clusters=preferred_clusters,
+        comment=job.comment,
+        queue_blocked_reason=job.queue_blocked_reason,
         assigned_at=job.assigned_at,
         started_at=job.started_at,
         status_changed_at=job.status_changed_at,
@@ -90,14 +160,32 @@ def _job_to_read(job: Job) -> JobRead:
     },
 )
 async def create_job(
+    request: Request,
     payload: JobCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> JobRead | JSONResponse:
+    settings: OrchestratorSettings = request.app.state.settings
+    known_cluster_names = {cluster.name for cluster in settings.slurm_cluster_configs}
+    normalized_clusters = _normalize_preferred_clusters(
+        payload.preferred_clusters, known_cluster_names=known_cluster_names
+    )
+    normalized_comment = _normalize_comment(payload.comment)
+    enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(
+        settings.slurm_cluster_configs
+    )
+    queue_blocked_reason = _compute_queue_blocked_reason(
+        preferred_clusters=normalized_clusters,
+        known_cluster_names=known_cluster_names,
+        enabled_map=enabled_map,
+    )
     now = datetime.now(UTC).replace(tzinfo=None)
     job = Job(
         id=payload.id if payload.id is not None else uuid4(),
         title=payload.title,
         input_bundle_path=payload.input_bundle_path,
+        preferred_clusters_json=(json.dumps(normalized_clusters) if normalized_clusters else None),
+        comment=normalized_comment,
+        queue_blocked_reason=queue_blocked_reason,
         status=JobStatus.queued,
         created_at=now,
         status_changed_at=now,
@@ -253,6 +341,7 @@ async def cancel_job(
     },
 )
 async def requeue_job(
+    request: Request,
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> JobRead | Response:
@@ -265,6 +354,25 @@ async def requeue_job(
         requeued_job = transitions.build_requeue_clone(existing_job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
+
+    settings: OrchestratorSettings = request.app.state.settings
+    known_cluster_names = {cluster.name for cluster in settings.slurm_cluster_configs}
+    preferred_clusters: list[str] = []
+    if requeued_job.preferred_clusters_json:
+        try:
+            parsed = json.loads(requeued_job.preferred_clusters_json)
+            if isinstance(parsed, list):
+                preferred_clusters = [str(item) for item in parsed if str(item).strip()]
+        except Exception:
+            preferred_clusters = []
+    enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(
+        settings.slurm_cluster_configs
+    )
+    requeued_job.queue_blocked_reason = _compute_queue_blocked_reason(
+        preferred_clusters=preferred_clusters,
+        known_cluster_names=known_cluster_names,
+        enabled_map=enabled_map,
+    )
 
     session.add(existing_job)
     session.add(requeued_job)

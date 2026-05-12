@@ -150,11 +150,54 @@ def register_job(
     job_id: uuid.UUID,
     title: str,
     b2_key: str,
+    preferred_clusters: list[str],
+    comment: str | None,
     *,
     service: SubmitService | None = None,
 ) -> JobRead:
     submit_service = service or SubmitService(create_cli_context())
-    return submit_service.register_job(job_id=job_id, title=title, b2_key=b2_key)
+    return submit_service.register_job_with_metadata(
+        job_id=job_id,
+        title=title,
+        b2_key=b2_key,
+        preferred_clusters=preferred_clusters,
+        comment=comment,
+    )
+
+
+def normalize_submit_clusters(raw_clusters: list[str], known_clusters: set[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_clusters:
+        name = raw.strip()
+        if not name:
+            continue
+        if name not in known_clusters:
+            raise SubmitCommandError(
+                code="unknown_cluster",
+                message=(
+                    f"Unknown --cluster value '{name}'. Known clusters: "
+                    f"{', '.join(sorted(known_clusters)) or '(none configured)'}"
+                ),
+            )
+        if name not in seen:
+            seen.add(name)
+            normalized.append(name)
+    return normalized
+
+
+def normalize_submit_comment(raw_comment: str | None) -> str | None:
+    if raw_comment is None:
+        return None
+    trimmed = raw_comment.strip()
+    if not trimmed:
+        return None
+    if len(trimmed) > 2000:
+        raise SubmitCommandError(
+            code="comment_too_long",
+            message="--comment must be 2000 characters or fewer.",
+        )
+    return trimmed
 
 
 def submit(
@@ -182,6 +225,14 @@ def submit(
         bool,
         typer.Option("--json", help="Emit machine-readable JSON."),
     ] = False,
+    clusters: Annotated[
+        list[str] | None,
+        typer.Option("--cluster", help="Pinned SLURM cluster name. Repeatable."),
+    ] = None,
+    comment: Annotated[
+        str | None,
+        typer.Option("--comment", help="Optional operator note for the job."),
+    ] = None,
 ) -> None:
     if not input_dir.exists() or not input_dir.is_dir():
         _exit_submit_error(
@@ -211,6 +262,12 @@ def submit(
             code="missing_settings",
             message=f"Failed to load settings: {str(exc)}",
         )
+    known_clusters = submit_service.known_cluster_names()
+    try:
+        normalized_clusters = normalize_submit_clusters(clusters or [], known_clusters)
+        normalized_comment = normalize_submit_comment(comment)
+    except SubmitCommandError as exc:
+        _exit_submit_error(json_mode=json_mode, code=exc.code, message=exc.message)
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -239,7 +296,14 @@ def submit(
         )
 
     try:
-        created_job = register_job(job_id, title, b2_key, service=submit_service)
+        created_job = register_job(
+            job_id,
+            title,
+            b2_key,
+            normalized_clusters,
+            normalized_comment,
+            service=submit_service,
+        )
     except Exception as exc:  # noqa: BLE001
         _exit_submit_error(
             json_mode=json_mode,
@@ -255,6 +319,9 @@ def submit(
                     "title": created_job.title,
                     "input_bundle_path": created_job.input_bundle_path,
                     "status": str(created_job.status.value),
+                    "preferred_clusters": created_job.preferred_clusters,
+                    "comment": created_job.comment,
+                    "queue_blocked_reason": created_job.queue_blocked_reason,
                 }
             )
         )
