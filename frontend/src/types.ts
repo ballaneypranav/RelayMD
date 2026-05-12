@@ -25,6 +25,38 @@ export interface JobRead {
   updated_at: string;
 }
 
+export interface JobHistoryEvent {
+  occurred_at: string;
+  event_seq: number;
+  event_type: string;
+  worker_id: string | null;
+  status_from: JobStatus | null;
+  status_to: JobStatus | null;
+  payload: Record<string, unknown>;
+  derived: boolean;
+}
+
+export interface JobWorkerSegment {
+  worker_id: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  open: boolean;
+}
+
+export interface JobWorkerTotal {
+  worker_id: string | null;
+  total_runtime_seconds: number;
+  segment_count: number;
+}
+
+export interface JobHistoryRead {
+  events: JobHistoryEvent[];
+  worker_segments: JobWorkerSegment[];
+  worker_totals: JobWorkerTotal[];
+  derived: boolean;
+}
+
 export interface WorkerRead {
   id: string;
   platform: string;

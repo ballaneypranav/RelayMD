@@ -4,6 +4,7 @@ import type {
   FrontendConfig,
   HealthStatus,
   JobRead,
+  JobHistoryRead,
   WorkerRead,
 } from "./types";
 
@@ -56,6 +57,10 @@ export async function requeueJob(apiBaseUrl: string, jobId: string): Promise<str
   }
   const payload = (await response.json()) as JobRead;
   return payload.id;
+}
+
+export async function fetchJobHistory(apiBaseUrl: string, jobId: string): Promise<JobHistoryRead> {
+  return readJson<JobHistoryRead>(`${apiBaseUrl}/jobs/${jobId}/history`);
 }
 
 export async function updateClusterProvisioningEnabledMap(

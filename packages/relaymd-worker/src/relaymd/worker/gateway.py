@@ -59,6 +59,8 @@ class OrchestratorGateway(Protocol):
         checkpoint_path: str,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
+        checkpoint_cycle_status: str | None = None,
+        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> None: ...
 
     def start_job(self, *, job_id: UUID) -> None: ...
@@ -280,12 +282,18 @@ class ApiOrchestratorGateway:
         checkpoint_path: str,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
+        checkpoint_cycle_status: str | None = None,
+        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> None:
         body = ApiCheckpointReport(checkpoint_path=checkpoint_path)
         if progress is not None:
             body["progress"] = progress
         if progress_codes is not None:
             body["progress_codes"] = progress_codes
+        if checkpoint_cycle_status is not None:
+            body["checkpoint_cycle_status"] = checkpoint_cycle_status
+        if checkpoint_cycle_failures is not None:
+            body["checkpoint_cycle_failures"] = checkpoint_cycle_failures
         self._call_with_conflict_handling(
             job_id=job_id,
             log_event="checkpoint_conflict_ignored",

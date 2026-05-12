@@ -506,12 +506,27 @@ def _sync_checkpoint_manifest_cycle(
         deleted_files += 1
         logger.info("checkpoint_file_deleted", relative_path=deleted_rel)
 
-    if len(matched_files) > CHECKPOINT_WATCH_FILE_CAP:
+    matched_files_count = len(matched_files)
+    if matched_files_count > CHECKPOINT_WATCH_FILE_CAP:
         failures.append(
-            {"code": "watch_file_cap_exceeded", "detail": f"matched_files={len(matched_files)}"}
+            {"code": "watch_file_cap_exceeded", "detail": f"matched_files={matched_files_count}"}
         )
         failed_files += 1
         matched_files = []
+
+    def _record_file_failure(relative_path: str, code: str, detail: str) -> None:
+        nonlocal failed_files
+        failures.append({"code": code, "detail": detail})
+        failed_files += 1
+        now = _utc_now_iso()
+        previous = files_state.get(relative_path)
+        if isinstance(previous, dict):
+            updated = dict(previous)
+            updated["last_seen_at"] = now
+            updated["last_failure_at"] = now
+            updated["last_failure_code"] = code
+            files_state[relative_path] = updated
+        logger.warning("checkpoint_file_failed", code=code, relative_path=relative_path)
 
     for file_path in matched_files:
         processed_files += 1
@@ -520,11 +535,7 @@ def _sync_checkpoint_manifest_cycle(
         try:
             stat_result = file_path.stat()
         except FileNotFoundError:
-            failures.append({"code": "file_disappeared", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="file_disappeared", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "file_disappeared", relative_path)
             continue
 
         if (
@@ -540,65 +551,35 @@ def _sync_checkpoint_manifest_cycle(
         try:
             source_hash_before = _compute_sha256(file_path)
         except Exception:
-            failures.append({"code": "source_hash_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="source_hash_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "source_hash_failed", relative_path)
             continue
         try:
             shutil.copy2(file_path, stage_path)
         except Exception:
-            failures.append({"code": "staging_copy_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="staging_copy_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "staging_copy_failed", relative_path)
             continue
         try:
             source_hash_after = _compute_sha256(file_path)
         except Exception:
-            failures.append({"code": "source_hash_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="source_hash_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "source_hash_failed", relative_path)
             continue
         try:
             staged_hash = _compute_sha256(stage_path)
         except Exception:
-            failures.append({"code": "staged_hash_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="staged_hash_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "staged_hash_failed", relative_path)
             continue
         if source_hash_before != source_hash_after:
-            failures.append({"code": "potential_write_in_progress", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed",
-                code="potential_write_in_progress",
-                relative_path=relative_path,
-            )
+            _record_file_failure(relative_path, "potential_write_in_progress", relative_path)
             continue
         if source_hash_before != staged_hash:
-            failures.append({"code": "staged_hash_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="staged_hash_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "staged_hash_failed", relative_path)
             continue
 
         remote_key = _checkpoint_file_key(job_id, relative_path)
         try:
             context.storage.upload_file(stage_path, remote_key)
         except Exception:
-            failures.append({"code": "upload_failed", "detail": relative_path})
-            failed_files += 1
-            logger.warning(
-                "checkpoint_file_failed", code="upload_failed", relative_path=relative_path
-            )
+            _record_file_failure(relative_path, "upload_failed", relative_path)
             continue
         now = _utc_now_iso()
         files_state[relative_path] = {
@@ -628,7 +609,7 @@ def _sync_checkpoint_manifest_cycle(
     manifest["cycle_summary"] = {
         "cycle_started_at": cycle_started_at,
         "cycle_finished_at": cycle_finished_at,
-        "matched_files": len(matched_files),
+        "matched_files": matched_files_count,
         "processed_files": processed_files,
         "uploaded_files": uploaded_files,
         "unchanged_files": unchanged_files,
@@ -660,6 +641,30 @@ def _sync_checkpoint_manifest_cycle(
     else:
         logger.warning("checkpoint_cycle_failed", checkpoint_manifest_key=manifest_key)
     return manifest, True
+
+
+def _checkpoint_diagnostics_from_manifest(
+    manifest: dict[str, Any],
+) -> tuple[str | None, list[dict[str, str]]]:
+    status: str | None = None
+    cycle_summary = manifest.get("cycle_summary")
+    if isinstance(cycle_summary, dict):
+        raw_status = cycle_summary.get("status")
+        if isinstance(raw_status, str):
+            status = raw_status
+
+    failures: list[dict[str, str]] = []
+    raw_failures = manifest.get("failures")
+    if isinstance(raw_failures, list):
+        for item in raw_failures:
+            if isinstance(item, dict):
+                failures.append(
+                    {
+                        "code": str(item.get("code", "")),
+                        "detail": str(item.get("detail", "")),
+                    }
+                )
+    return status, failures
 
 
 def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConfig) -> Path | None:
@@ -770,11 +775,16 @@ def _run_assigned_job(
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
+                        checkpoint_cycle_status, checkpoint_cycle_failures = (
+                            _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                        )
                         context.gateway.report_checkpoint(
                             job_id=assignment.job_id,
                             checkpoint_path=checkpoint_manifest_key,
                             progress=latest_progress,
                             progress_codes=latest_progress_codes,
+                            checkpoint_cycle_status=checkpoint_cycle_status,
+                            checkpoint_cycle_failures=checkpoint_cycle_failures,
                         )
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return
@@ -791,11 +801,16 @@ def _run_assigned_job(
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
+                        checkpoint_cycle_status, checkpoint_cycle_failures = (
+                            _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                        )
                         context.gateway.report_checkpoint(
                             job_id=assignment.job_id,
                             checkpoint_path=checkpoint_manifest_key,
                             progress=latest_progress,
                             progress_codes=latest_progress_codes,
+                            checkpoint_cycle_status=checkpoint_cycle_status,
+                            checkpoint_cycle_failures=checkpoint_cycle_failures,
                         )
                     if checkpoint_poll_interval_seconds > 0:
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
@@ -837,11 +852,16 @@ def _run_assigned_job(
                             manifest=checkpoint_manifest,
                         )
                         if manifest_uploaded:
+                            checkpoint_cycle_status, checkpoint_cycle_failures = (
+                                _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                            )
                             context.gateway.report_checkpoint(
                                 job_id=assignment.job_id,
                                 checkpoint_path=checkpoint_manifest_key,
                                 progress=latest_progress,
                                 progress_codes=latest_progress_codes,
+                                checkpoint_cycle_status=checkpoint_cycle_status,
+                                checkpoint_cycle_failures=checkpoint_cycle_failures,
                             )
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
@@ -870,11 +890,16 @@ def _run_assigned_job(
                 manifest=checkpoint_manifest,
             )
             if manifest_uploaded:
+                checkpoint_cycle_status, checkpoint_cycle_failures = (
+                    _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                )
                 context.gateway.report_checkpoint(
                     job_id=assignment.job_id,
                     checkpoint_path=checkpoint_manifest_key,
                     progress=latest_progress,
                     progress_codes=latest_progress_codes,
+                    checkpoint_cycle_status=checkpoint_cycle_status,
+                    checkpoint_cycle_failures=checkpoint_cycle_failures,
                 )
 
             result = execution.result()

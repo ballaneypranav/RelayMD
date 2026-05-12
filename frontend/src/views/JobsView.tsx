@@ -1,6 +1,6 @@
-import { formatDuration, parseDate, toCsv, toDelimited } from "../format";
+import { etaSeconds, formatDuration, parseDate, toCsv, toDelimited, totalRuntimeSeconds } from "../format";
 import { StatusPill } from "../components/StatusPill";
-import type { JobRead } from "../types";
+import type { JobHistoryRead, JobRead } from "../types";
 
 interface JobRow {
   id: string;
@@ -27,6 +27,7 @@ interface JobsViewProps {
   onCancelJob: (job: JobRead) => void;
   onRequeueJob: (job: JobRead) => void;
   loading: boolean;
+  selectedJobHistory: JobHistoryRead | null;
 }
 
 export function JobsView({
@@ -41,6 +42,7 @@ export function JobsView({
   onCancelJob,
   onRequeueJob,
   loading,
+  selectedJobHistory,
 }: JobsViewProps) {
   const availableStatuses = Array.from(new Set(rows.map((job) => job.status))).sort();
   const filteredRows =
@@ -48,6 +50,13 @@ export function JobsView({
       ? rows.filter((row) => selectedStatuses.includes(row.status))
       : rows;
   const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null;
+  const now = new Date();
+  const selectedRuntimeSeconds = selectedJob
+    ? totalRuntimeSeconds(selectedJob, now, selectedJobHistory?.worker_segments)
+    : 0;
+  const selectedEtaSeconds = selectedJob
+    ? etaSeconds(selectedJob, now, selectedJobHistory?.worker_segments)
+    : null;
 
   return (
     <div className="view-grid view-grid-jobs">
@@ -203,14 +212,14 @@ export function JobsView({
                 <dt>Status Changed</dt>
                 <dd>{parseDate(selectedJob.status_changed_at)?.toISOString() ?? "-"}</dd>
               </div>
-              {selectedJob.started_at ? (
+              <div>
+                <dt>Total Runtime</dt>
+                <dd>{formatDuration(selectedRuntimeSeconds)}</dd>
+              </div>
+              {selectedEtaSeconds !== null ? (
                 <div>
-                  <dt>Runtime</dt>
-                  <dd>
-                    {formatDuration(
-                      (Date.now() - parseDate(selectedJob.started_at)!.getTime()) / 1000,
-                    )}
-                  </dd>
+                  <dt>ETA</dt>
+                  <dd>{formatDuration(selectedEtaSeconds)}</dd>
                 </div>
               ) : null}
               <div>
@@ -246,6 +255,10 @@ export function JobsView({
                 </dd>
               </div>
               <div>
+                <dt>History Source</dt>
+                <dd>{selectedJobHistory?.derived ? "Derived fallback" : "Persisted events"}</dd>
+              </div>
+              <div>
                 <dt>Checkpoint Age</dt>
                 <dd>
                   {selectedJob.last_checkpoint_at
@@ -256,6 +269,35 @@ export function JobsView({
                 </dd>
               </div>
             </dl>
+            <div>
+              <h3>Worker Runtime Totals</h3>
+              {selectedJobHistory && selectedJobHistory.worker_totals.length > 0 ? (
+                <ul>
+                  {selectedJobHistory.worker_totals.map((total) => (
+                    <li key={`${total.worker_id || "none"}-${total.segment_count}`}>
+                      {(total.worker_id || "unassigned").slice(0, 12)}: {formatDuration(total.total_runtime_seconds)} ({total.segment_count} segments)
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="panel-copy">No runtime segments yet.</p>
+              )}
+            </div>
+            <div>
+              <h3>Timeline</h3>
+              {selectedJobHistory && selectedJobHistory.events.length > 0 ? (
+                <ul>
+                  {selectedJobHistory.events.map((event) => (
+                    <li key={`${event.occurred_at}-${event.event_seq}`}>
+                      {parseDate(event.occurred_at)?.toISOString() ?? event.occurred_at} - {event.event_type}
+                      {event.worker_id ? ` (${event.worker_id.slice(0, 12)})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="panel-copy">No history events available.</p>
+              )}
+            </div>
 
             <div className="detail-actions">
               {(selectedJob.status === "queued" ||

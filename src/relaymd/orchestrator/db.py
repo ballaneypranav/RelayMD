@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import ClusterProvisioningState, Job, Worker
+from relaymd.models import ClusterProvisioningState, Job, JobEvent, Worker
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
@@ -35,7 +35,7 @@ def init_engine(database_url: str) -> None:
     _sessionmaker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
 
     # Ensure SQLModel metadata includes all mapped tables used by the orchestrator.
-    _ = (Job, Worker, ClusterProvisioningState)
+    _ = (Job, JobEvent, Worker, ClusterProvisioningState)
 
 
 def get_engine() -> AsyncEngine:
@@ -62,6 +62,8 @@ async def create_db_and_tables() -> None:
         await connection.run_sync(SQLModel.metadata.create_all)
     async with engine.begin() as connection:
         await connection.run_sync(_ensure_job_lifecycle_columns)
+    async with engine.begin() as connection:
+        await connection.run_sync(_ensure_job_event_indexes)
 
 
 def _ensure_job_lifecycle_columns(connection: Connection) -> None:
@@ -101,6 +103,36 @@ def _ensure_job_lifecycle_columns(connection: Connection) -> None:
             "UPDATE job SET assigned_at = updated_at "
             "WHERE assigned_at IS NULL AND status IN ('assigned', 'running')"
         )
+    )
+
+
+def _ensure_job_event_indexes(connection: Connection) -> None:
+    if connection.dialect.name == "sqlite":
+        table_exists = connection.exec_driver_sql(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jobevent'"
+        ).first()
+        if table_exists is None:
+            return
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_jobevent_job_id ON jobevent (job_id)"
+        )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_jobevent_occurred_at ON jobevent (occurred_at)"
+        )
+        connection.exec_driver_sql(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)"
+        )
+        return
+
+    inspector = inspect(connection)
+    if "jobevent" not in inspector.get_table_names():
+        return
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobevent_job_id ON jobevent (job_id)"))
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_jobevent_occurred_at ON jobevent (occurred_at)")
+    )
+    connection.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)")
     )
 
 
