@@ -121,6 +121,8 @@ class JobTransitionService:
         checkpoint_path: str,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
+        checkpoint_cycle_status: str | None = None,
+        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> Job:
         if job.status not in ACTIVE_CHECKPOINT_JOB_STATUSES:
             raise JobTransitionConflictError(
@@ -139,6 +141,10 @@ class JobTransitionService:
             job.progress = progress
         if progress_codes is not None:
             job.progress_codes_json = json.dumps(progress_codes)
+        if checkpoint_cycle_status is not None:
+            job.checkpoint_cycle_status = checkpoint_cycle_status
+        if checkpoint_cycle_failures is not None:
+            job.checkpoint_cycle_failures_json = json.dumps(checkpoint_cycle_failures)
         job.updated_at = now
         logger.info(
             "checkpoint_recorded",

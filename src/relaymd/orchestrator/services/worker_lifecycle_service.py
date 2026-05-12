@@ -10,6 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, JobStatus, Worker, WorkerRegister, WorkerStatus
 
+from .job_history_service import append_job_event
 from .job_transitions import JobTransitionService
 
 logger = structlog.get_logger(__name__)
@@ -131,8 +132,18 @@ class WorkerLifecycleService:
             )
         ).all()
         for job in jobs:
+            previous_status = job.status
+            previous_worker_id = job.assigned_worker_id
             self._transitions.requeue_in_place(job)
             self._session.add(job)
+            await append_job_event(
+                self._session,
+                job_id=job.id,
+                event_type="worker_deregistered_requeue",
+                worker_id=previous_worker_id,
+                status_from=previous_status,
+                status_to=JobStatus.queued,
+            )
 
         await self._session.delete(worker)
         await self._session.commit()
@@ -163,8 +174,18 @@ class WorkerLifecycleService:
             )
         ).all()
         for job in jobs_to_requeue:
+            previous_status = job.status
+            previous_worker_id = job.assigned_worker_id
             self._transitions.requeue_in_place(job)
             self._session.add(job)
+            await append_job_event(
+                self._session,
+                job_id=job.id,
+                event_type="worker_deregistered_requeue",
+                worker_id=previous_worker_id,
+                status_from=previous_status,
+                status_to=JobStatus.queued,
+            )
 
         for worker in stale_workers:
             await self._session.delete(worker)
@@ -186,8 +207,18 @@ class WorkerLifecycleService:
         requeued_count = 0
         for job in assigned_jobs:
             if job.assigned_worker_id not in worker_ids:
+                previous_status = job.status
+                previous_worker_id = job.assigned_worker_id
                 self._transitions.requeue_in_place(job)
                 self._session.add(job)
+                await append_job_event(
+                    self._session,
+                    job_id=job.id,
+                    event_type="worker_deregistered_requeue",
+                    worker_id=previous_worker_id,
+                    status_from=previous_status,
+                    status_to=JobStatus.queued,
+                )
                 requeued_count += 1
 
         if requeued_count > 0:

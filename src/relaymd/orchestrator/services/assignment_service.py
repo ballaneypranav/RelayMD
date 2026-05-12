@@ -10,6 +10,7 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, JobStatus, Worker, WorkerStatus
+from relaymd.orchestrator.services.job_history_service import append_job_event
 
 logger = structlog.get_logger(__name__)
 
@@ -83,6 +84,15 @@ class AssignmentService:
             await self._session.rollback()
             return None
 
+        await append_job_event(
+            self._session,
+            job_id=job_id,
+            event_type="assigned",
+            worker_id=worker_id,
+            status_from=JobStatus.queued,
+            status_to=JobStatus.assigned,
+            occurred_at=now,
+        )
         await self._session.commit()
         return await self._session.get(Job, job_id)
 

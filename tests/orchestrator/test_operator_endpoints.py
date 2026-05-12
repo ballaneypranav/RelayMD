@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -151,10 +151,12 @@ async def test_create_list_get_and_cancel_paths() -> None:
             assert cancelled_queued_job.status == JobStatus.cancelled
             assert cancelled_queued_job.assigned_worker_id is None
 
+            running_worker_id = uuid4()
             running_job = Job(
                 title="job-3",
                 input_bundle_path="jobs/3/input/bundle.tar.gz",
                 status=JobStatus.running,
+                assigned_worker_id=running_worker_id,
             )
             session.add(running_job)
             await session.commit()
@@ -168,6 +170,13 @@ async def test_create_list_get_and_cancel_paths() -> None:
             f"/jobs/{running_job_id}?force=true", headers=headers
         )
         assert force_cancel_response.status_code == 204
+
+        history_response = await client.get(f"/jobs/{running_job_id}/history", headers=headers)
+        assert history_response.status_code == 200
+        history_events = history_response.json()["events"]
+        cancelled_events = [event for event in history_events if event["event_type"] == "cancelled"]
+        assert len(cancelled_events) == 1
+        assert cancelled_events[0]["worker_id"] == str(running_worker_id)
 
         async with get_sessionmaker()() as session:
             cancelled_running_job = await session.get(Job, running_job_id)

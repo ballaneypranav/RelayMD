@@ -22,6 +22,7 @@ from relaymd.orchestrator.services import (
     JobTransitionConflictError,
     JobTransitionService,
 )
+from relaymd.orchestrator.services.job_history_service import append_job_event
 
 from ._responses import job_transition_conflict_response
 
@@ -78,11 +79,20 @@ async def start_job(
 
     transitions = JobTransitionService()
     try:
+        previous_status = job.status
         transitions.mark_job_running(job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="running",
+        worker_id=job.assigned_worker_id,
+        status_from=previous_status,
+        status_to=JobStatus.running,
+    )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -115,11 +125,39 @@ async def report_checkpoint(
             progress_codes=(
                 payload.progress_codes if "progress_codes" in payload.model_fields_set else None
             ),
+            checkpoint_cycle_status=(
+                payload.checkpoint_cycle_status
+                if "checkpoint_cycle_status" in payload.model_fields_set
+                else None
+            ),
+            checkpoint_cycle_failures=(
+                payload.checkpoint_cycle_failures
+                if "checkpoint_cycle_failures" in payload.model_fields_set
+                else None
+            ),
         )
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    event_payload: dict[str, object] = {"checkpoint_path": payload.checkpoint_path}
+    for field_name in (
+        "progress",
+        "progress_codes",
+        "checkpoint_cycle_status",
+        "checkpoint_cycle_failures",
+    ):
+        if field_name in payload.model_fields_set:
+            event_payload[field_name] = getattr(payload, field_name)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="checkpoint",
+        worker_id=job.assigned_worker_id,
+        status_from=job.status,
+        status_to=job.status,
+        payload=event_payload,
+    )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -144,11 +182,20 @@ async def complete_job(
 
     transitions = JobTransitionService()
     try:
+        previous_status = job.status
         transitions.mark_job_completed(job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="completed",
+        worker_id=job.assigned_worker_id,
+        status_from=previous_status,
+        status_to=JobStatus.completed,
+    )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -173,10 +220,19 @@ async def fail_job(
 
     transitions = JobTransitionService()
     try:
+        previous_status = job.status
         transitions.mark_job_failed(job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="failed",
+        worker_id=job.assigned_worker_id,
+        status_from=previous_status,
+        status_to=JobStatus.failed,
+    )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

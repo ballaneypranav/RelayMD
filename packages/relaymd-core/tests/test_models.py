@@ -1,18 +1,29 @@
 import uuid
 
-from relaymd.models import Job, JobAssigned, NoJobAvailable, Worker
+from relaymd.models import Job, JobAssigned, JobEvent, NoJobAvailable, Worker
 from sqlalchemy import inspect
 from sqlmodel import SQLModel, create_engine
 
 
 def test_sqlmodel_tables_create_without_error() -> None:
-    assert Job.__tablename__
-    assert Worker.__tablename__
+    job_table_name = str(Job.__tablename__)
+    job_event_table_name = str(JobEvent.__tablename__)
+    worker_table_name = str(Worker.__tablename__)
+    assert job_table_name
+    assert job_event_table_name
+    assert worker_table_name
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)
-    tables = set(inspect(engine).get_table_names())
-    assert Job.__tablename__ in tables
-    assert Worker.__tablename__ in tables
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    assert job_table_name in tables
+    assert job_event_table_name in tables
+    assert worker_table_name in tables
+    job_event_fks = inspector.get_foreign_keys(job_event_table_name)
+    assert any(
+        fk.get("referred_table") == job_table_name and fk.get("constrained_columns") == ["job_id"]
+        for fk in job_event_fks
+    )
 
 
 def test_job_request_response_json_shapes() -> None:

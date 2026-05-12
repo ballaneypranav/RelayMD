@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { cancelJob, fetchDashboardData, fetchFrontendConfig, requeueJob, updateClusterProvisioningEnabledMap } from "./api";
+import { cancelJob, fetchDashboardData, fetchFrontendConfig, fetchJobHistory, requeueJob, updateClusterProvisioningEnabledMap } from "./api";
 import { AppShell } from "./components/AppShell";
 import { MetricStrip } from "./components/MetricStrip";
 import { StatusPill } from "./components/StatusPill";
 import { buildJobRows, buildWorkerRows, formatDuration, toCsv, toDelimited } from "./format";
-import type { DashboardPayload, FrontendConfig, JobRead } from "./types";
+import type { DashboardPayload, FrontendConfig, JobHistoryRead, JobRead } from "./types";
 import { ClustersView } from "./views/ClustersView";
 import { JobsView } from "./views/JobsView";
 import { SettingsView } from "./views/SettingsView";
@@ -136,6 +136,8 @@ export function App() {
   const [actionError, setActionError] = useState<string>("");
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
   const [saveClusterEditsInFlight, setSaveClusterEditsInFlight] = useState(false);
+  const [selectedJobHistory, setSelectedJobHistory] = useState<JobHistoryRead | null>(null);
+  const historyRequestSeqRef = useRef(0);
 
   const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
     useDashboardData(config);
@@ -201,6 +203,29 @@ export function App() {
       setSelectedJobId(jobs[0].id);
     }
   }, [jobs, selectedJobId]);
+
+  useEffect(() => {
+    if (!config || !selectedJobId) {
+      historyRequestSeqRef.current += 1;
+      setSelectedJobHistory(null);
+      return;
+    }
+    const requestSeq = historyRequestSeqRef.current + 1;
+    historyRequestSeqRef.current = requestSeq;
+    void fetchJobHistory(config.api_base_url, selectedJobId)
+      .then((history) => {
+        if (historyRequestSeqRef.current !== requestSeq) {
+          return;
+        }
+        setSelectedJobHistory(history);
+      })
+      .catch(() => {
+        if (historyRequestSeqRef.current !== requestSeq) {
+          return;
+        }
+        setSelectedJobHistory(null);
+      });
+  }, [config, selectedJobId, jobs]);
 
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
@@ -416,6 +441,7 @@ export function App() {
           onCancelJob={setPendingCancelJob}
           onRequeueJob={(job) => void handleRequeue(job)}
           loading={loading}
+          selectedJobHistory={selectedJobHistory}
         />
       ) : null}
 

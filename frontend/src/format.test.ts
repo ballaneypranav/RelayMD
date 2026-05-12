@@ -1,8 +1,10 @@
 import {
   buildJobRows,
+  etaSeconds,
   buildWorkerRows,
   formatDuration,
   parseDate,
+  totalRuntimeSeconds,
   toCsv,
   toDelimited,
   truncateUuid,
@@ -105,5 +107,64 @@ describe("format helpers", () => {
 
   it("renders CSV output", () => {
     expect(toCsv([{ job_id: "abc", title: "a,b" }])).toBe('job_id,title\nabc,"a,b"\n');
+  });
+
+  it("computes total runtime for active and terminal jobs", () => {
+    const now = new Date("2026-02-24T12:00:00Z");
+    const runningJob = {
+      id: "job-1",
+      title: "protein-folding",
+      status: "running" as const,
+      input_bundle_path: "/tmp/input",
+      assigned_at: "2026-02-24T11:10:00Z",
+      started_at: "2026-02-24T11:20:00Z",
+      status_changed_at: "2026-02-24T11:20:00Z",
+      latest_checkpoint_path: null,
+      last_checkpoint_at: null,
+      progress: 0.5,
+      progress_codes: [],
+      checkpoint_cycle_status: null,
+      checkpoint_cycle_failures: [],
+      assigned_worker_id: "worker-1",
+      created_at: "2026-02-24T11:00:00Z",
+      updated_at: "2026-02-24T11:50:00Z",
+    };
+    const completedJob = {
+      ...runningJob,
+      status: "completed" as const,
+      status_changed_at: "2026-02-24T11:45:00Z",
+    };
+
+    expect(totalRuntimeSeconds(runningJob, now)).toBe(40 * 60);
+    expect(totalRuntimeSeconds(completedJob, now)).toBe(25 * 60);
+  });
+
+  it("computes eta and hides it for invalid cases", () => {
+    const now = new Date("2026-02-24T12:00:00Z");
+    const baseJob = {
+      id: "job-1",
+      title: "protein-folding",
+      status: "running" as const,
+      input_bundle_path: "/tmp/input",
+      assigned_at: "2026-02-24T11:10:00Z",
+      started_at: "2026-02-24T11:20:00Z",
+      status_changed_at: "2026-02-24T11:20:00Z",
+      latest_checkpoint_path: null,
+      last_checkpoint_at: null,
+      progress: 0.5,
+      progress_codes: [],
+      checkpoint_cycle_status: null,
+      checkpoint_cycle_failures: [],
+      assigned_worker_id: "worker-1",
+      created_at: "2026-02-24T11:00:00Z",
+      updated_at: "2026-02-24T11:50:00Z",
+    };
+
+    expect(etaSeconds(baseJob, now)).toBe(40 * 60);
+    expect(etaSeconds({ ...baseJob, progress: 0 }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, progress: 1 }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, status: "completed" as const }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, progress: 1.2 }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, progress: -0.2 }, now)).toBeNull();
   });
 });

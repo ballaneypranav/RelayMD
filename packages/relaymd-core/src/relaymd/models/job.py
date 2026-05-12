@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlmodel import Field, SQLModel
 
@@ -59,6 +60,52 @@ class CheckpointReport(SQLModel):
     checkpoint_path: str
     progress: float | None = None
     progress_codes: list[str] = []
+    checkpoint_cycle_status: str | None = None
+    checkpoint_cycle_failures: list[dict[str, str]] = []
+
+
+class JobEvent(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    job_id: uuid.UUID = Field(foreign_key="job.id")
+    occurred_at: datetime = Field(default_factory=utcnow_naive)
+    event_seq: int
+    event_type: str
+    worker_id: uuid.UUID | None = None
+    status_from: JobStatus | None = None
+    status_to: JobStatus | None = None
+    payload_json: str | None = None
+
+
+class JobHistoryEventRead(SQLModel):
+    occurred_at: datetime
+    event_seq: int
+    event_type: str
+    worker_id: uuid.UUID | None = None
+    status_from: JobStatus | None = None
+    status_to: JobStatus | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    derived: bool = False
+
+
+class JobWorkerSegmentRead(SQLModel):
+    worker_id: uuid.UUID | None = None
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    open: bool = False
+
+
+class JobWorkerTotalRead(SQLModel):
+    worker_id: uuid.UUID | None = None
+    total_runtime_seconds: float
+    segment_count: int
+
+
+class JobHistoryRead(SQLModel):
+    events: list[JobHistoryEventRead]
+    worker_segments: list[JobWorkerSegmentRead]
+    worker_totals: list[JobWorkerTotalRead]
+    derived: bool = False
 
 
 class WorkerHeartbeat(SQLModel):

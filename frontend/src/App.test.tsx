@@ -308,5 +308,180 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByText(/save failed/i)).toBeInTheDocument());
     expect(screen.getByText("1 unsaved changes")).toBeInTheDocument();
+    });
   });
-});
+
+  it("shows history source as unavailable when history fetch fails", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(
+        JSON.stringify([
+          {
+            id: "job-1",
+            title: "protein-folding",
+            status: "running",
+            input_bundle_path: "/tmp/input",
+            assigned_at: "2026-02-24T11:10:00Z",
+            started_at: "2026-02-24T11:20:00Z",
+            status_changed_at: "2026-02-24T11:20:00Z",
+            latest_checkpoint_path: null,
+            last_checkpoint_at: "2026-02-24T11:58:45Z",
+            progress: 0.4,
+            progress_codes: [],
+            checkpoint_cycle_status: "success",
+            checkpoint_cycle_failures: [],
+            assigned_worker_id: "worker-1",
+            created_at: "2026-02-24T11:00:00Z",
+            updated_at: "2026-02-24T11:50:00Z",
+          },
+        ]),
+      ),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /jobs/job-1/history": new Response("boom", { status: 500 }),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("History Source")).toBeInTheDocument());
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  });
+
+  it("ignores stale job-history responses for previously selected jobs", async () => {
+    let resolveJob1History: ((value: Response) => void) | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        const key = `${init?.method ?? "GET"} ${url}`;
+        if (key === "GET /config/frontend") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 })),
+          );
+        }
+        if (key === "GET /jobs") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                {
+                  id: "job-1",
+                  title: "first-job",
+                  status: "running",
+                  input_bundle_path: "/tmp/input",
+                  assigned_at: "2026-02-24T11:10:00Z",
+                  started_at: "2026-02-24T11:20:00Z",
+                  status_changed_at: "2026-02-24T11:20:00Z",
+                  latest_checkpoint_path: null,
+                  last_checkpoint_at: "2026-02-24T11:58:45Z",
+                  progress: 0.4,
+                  progress_codes: [],
+                  checkpoint_cycle_status: "success",
+                  checkpoint_cycle_failures: [],
+                  assigned_worker_id: "worker-1",
+                  created_at: "2026-02-24T11:00:00Z",
+                  updated_at: "2026-02-24T11:50:00Z",
+                },
+                {
+                  id: "job-2",
+                  title: "second-job",
+                  status: "running",
+                  input_bundle_path: "/tmp/input2",
+                  assigned_at: "2026-02-24T11:10:00Z",
+                  started_at: "2026-02-24T11:20:00Z",
+                  status_changed_at: "2026-02-24T11:20:00Z",
+                  latest_checkpoint_path: null,
+                  last_checkpoint_at: "2026-02-24T11:58:45Z",
+                  progress: 0.6,
+                  progress_codes: [],
+                  checkpoint_cycle_status: "success",
+                  checkpoint_cycle_failures: [],
+                  assigned_worker_id: "worker-2",
+                  created_at: "2026-02-24T11:00:00Z",
+                  updated_at: "2026-02-24T11:50:00Z",
+                },
+              ]),
+            ),
+          );
+        }
+        if (key === "GET /workers") {
+          return Promise.resolve(new Response(JSON.stringify([])));
+        }
+        if (key === "GET /config/slurm-clusters") {
+          return Promise.resolve(new Response(JSON.stringify({ clusters: [] })));
+        }
+        if (key === "GET /healthz") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+          );
+        }
+        if (key === "GET /jobs/job-1/history") {
+          return new Promise<Response>((resolve) => {
+            resolveJob1History = resolve;
+          });
+        }
+        if (key === "GET /jobs/job-2/history") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                derived: false,
+                worker_segments: [],
+                worker_totals: [],
+                events: [
+                  {
+                    occurred_at: "2026-02-24T11:21:00Z",
+                    event_seq: 1,
+                    event_type: "second-history",
+                    worker_id: "worker-2",
+                    status_from: null,
+                    status_to: "running",
+                    payload: {},
+                    derived: false,
+                  },
+                ],
+              }),
+            ),
+          );
+        }
+        throw new Error(`Unexpected request: ${key}`);
+      }),
+    );
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /second-job/i })).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /second-job/i }));
+    });
+
+    await waitFor(() => expect(screen.getByText(/second-history/)).toBeInTheDocument());
+
+    await act(async () => {
+      resolveJob1History?.(
+        new Response(
+          JSON.stringify({
+            derived: false,
+            worker_segments: [],
+            worker_totals: [],
+            events: [
+              {
+                occurred_at: "2026-02-24T11:22:00Z",
+                event_seq: 1,
+                event_type: "first-history-stale",
+                worker_id: "worker-1",
+                status_from: null,
+                status_to: "running",
+                payload: {},
+                derived: false,
+              },
+            ],
+          }),
+        ),
+      );
+    });
+
+    expect(screen.getByText(/second-history/)).toBeInTheDocument();
+    expect(screen.queryByText(/first-history-stale/)).not.toBeInTheDocument();
+  });

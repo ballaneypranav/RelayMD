@@ -235,6 +235,62 @@ async def test_worker_start_lifecycle_and_checkpoint_timestamps() -> None:
 
 
 @pytest.mark.asyncio
+async def test_checkpoint_history_payload_includes_only_supplied_optional_fields() -> None:
+    settings = make_settings()
+    headers = {"X-API-Token": "test-token"}
+
+    async with app_client(settings) as (_app, client):
+        worker_id = (
+            await client.post(
+                "/workers/register",
+                headers=headers,
+                json={
+                    "platform": "hpc",
+                    "gpu_model": "A100",
+                    "gpu_count": 1,
+                    "vram_gb": 80,
+                },
+            )
+        ).json()["worker_id"]
+        job_id = (
+            await client.post(
+                "/jobs",
+                headers=headers,
+                json={
+                    "title": "checkpoint-fields",
+                    "input_bundle_path": "jobs/cp/input/bundle.tar.gz",
+                },
+            )
+        ).json()["id"]
+        request_response = await client.post(
+            "/jobs/request",
+            headers=headers,
+            params={"worker_id": worker_id},
+        )
+        assert request_response.status_code == 200
+
+        checkpoint_response = await client.post(
+            f"/jobs/{job_id}/checkpoint",
+            headers=headers,
+            json={"checkpoint_path": "jobs/cp/checkpoints/latest", "progress": 0.75},
+        )
+        assert checkpoint_response.status_code == 204
+
+        history_response = await client.get(f"/jobs/{job_id}/history", headers=headers)
+        assert history_response.status_code == 200
+        checkpoint_events = [
+            event
+            for event in history_response.json()["events"]
+            if event["event_type"] == "checkpoint"
+        ]
+        assert len(checkpoint_events) == 1
+        assert checkpoint_events[0]["payload"] == {
+            "checkpoint_path": "jobs/cp/checkpoints/latest",
+            "progress": 0.75,
+        }
+
+
+@pytest.mark.asyncio
 async def test_stale_worker_reaper_requeues_jobs() -> None:
     settings = make_settings()
 

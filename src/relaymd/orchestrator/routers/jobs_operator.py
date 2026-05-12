@@ -12,10 +12,24 @@ from sqlalchemy import delete
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from relaymd.models import Job, JobConflict, JobCreate, JobCreateConflict, JobRead, JobStatus
+from relaymd.models import (
+    Job,
+    JobConflict,
+    JobCreate,
+    JobCreateConflict,
+    JobHistoryRead,
+    JobRead,
+    JobStatus,
+)
 from relaymd.orchestrator.auth import require_worker_api_token
 from relaymd.orchestrator.db import get_session
 from relaymd.orchestrator.services import JobTransitionConflictError, JobTransitionService
+from relaymd.orchestrator.services.job_history_service import (
+    append_job_event,
+    build_worker_runtime,
+    derive_history_events,
+    load_job_history_events,
+)
 
 from ._responses import job_transition_conflict_response
 
@@ -90,6 +104,14 @@ async def create_job(
         updated_at=now,
     )
     session.add(job)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="created",
+        worker_id=None,
+        status_from=None,
+        status_to=JobStatus.queued,
+    )
     try:
         await session.commit()
     except Exception:
@@ -201,11 +223,21 @@ async def cancel_job(
 
     transitions = JobTransitionService()
     try:
+        previous_status = job.status
+        cancelled_worker_id = job.assigned_worker_id
         transitions.cancel_job(job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    await append_job_event(
+        session,
+        job_id=job.id,
+        event_type="cancelled",
+        worker_id=cancelled_worker_id,
+        status_from=previous_status,
+        status_to=JobStatus.cancelled,
+    )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -234,7 +266,51 @@ async def requeue_job(
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
+    session.add(existing_job)
     session.add(requeued_job)
+    await append_job_event(
+        session,
+        job_id=existing_job.id,
+        event_type="requeued_with",
+        worker_id=existing_job.assigned_worker_id,
+        status_from=existing_job.status,
+        status_to=existing_job.status,
+        payload={"new_job_id": str(requeued_job.id)},
+    )
+    await append_job_event(
+        session,
+        job_id=requeued_job.id,
+        event_type="requeued_from",
+        worker_id=None,
+        status_from=None,
+        status_to=JobStatus.queued,
+        payload={"old_job_id": str(existing_job.id)},
+    )
     await session.commit()
     await session.refresh(requeued_job)
     return _job_to_read(requeued_job)
+
+
+@router.get("/{job_id}/history", response_model=JobHistoryRead)
+async def get_job_history(
+    job_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JobHistoryRead:
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+
+    events = await load_job_history_events(session, job_id=job_id)
+    derived = False
+    if not events:
+        events = derive_history_events(job)
+        derived = True
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    segments, totals = build_worker_runtime(events, now=now)
+    return JobHistoryRead(
+        events=events,
+        worker_segments=segments,
+        worker_totals=totals,
+        derived=derived,
+    )
