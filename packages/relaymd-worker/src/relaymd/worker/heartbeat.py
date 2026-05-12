@@ -36,6 +36,13 @@ def _is_retryable_heartbeat_error(exception: BaseException) -> bool:
     return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
 
 
+def _heartbeat_error_fields(exception: BaseException) -> dict[str, str]:
+    return {
+        "error_type": type(exception).__name__,
+        "error": str(exception),
+    }
+
+
 @dataclass(frozen=True)
 class HeartbeatHealthSnapshot:
     consecutive_failures: int
@@ -102,12 +109,13 @@ class HeartbeatThread(threading.Thread):
                 try:
                     self._send(client)
                     self._mark_success()
-                except (httpx.HTTPError, api_errors.UnexpectedStatus):
+                except (httpx.HTTPError, api_errors.UnexpectedStatus) as exception:
                     self._mark_failure()
+                    error_fields = _heartbeat_error_fields(exception)
                     LOG.warning(
                         "heartbeat_send_failed",
                         worker_id=str(self._worker_id),
-                        exc_info=True,
+                        **error_fields,
                     )
                 if self._stop_event.wait(self._interval_seconds):
                     break

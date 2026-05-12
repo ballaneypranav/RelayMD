@@ -408,6 +408,70 @@ def _load_persisted_manifest(
     return empty
 
 
+def _resolve_hydration_destination(*, bundle_root: Path, relative_path: str) -> Path:
+    raw_relative = Path(relative_path)
+    if raw_relative.is_absolute() or ".." in raw_relative.parts:
+        raise RuntimeError("invalid_relative_path")
+
+    bundle_root_resolved = bundle_root.resolve()
+    destination = bundle_root / raw_relative
+    destination_parent = destination.parent
+    destination_parent.mkdir(parents=True, exist_ok=True)
+
+    current = bundle_root_resolved
+    for part in raw_relative.parts[:-1]:
+        current = current / part
+        if current.is_symlink():
+            raise RuntimeError("unsafe_symlink_in_destination_path")
+    if destination.exists() and destination.is_symlink():
+        raise RuntimeError("unsafe_symlink_destination")
+
+    destination_resolved = destination.resolve(strict=False)
+    if destination_resolved != bundle_root_resolved and bundle_root_resolved not in (
+        destination_resolved.parents
+    ):
+        raise RuntimeError("destination_outside_bundle_root")
+    return destination
+
+
+def _hydrate_checkpoint_files_from_manifest(
+    *,
+    context: WorkerContext,
+    logger,
+    job_id: UUID,
+    bundle_root: Path,
+    manifest: dict[str, Any],
+) -> None:
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise RuntimeError("invalid_manifest_files")
+
+    logger.info("checkpoint_hydration_started", job_id=str(job_id))
+    for relative_path, file_entry in sorted(files.items()):
+        if not isinstance(relative_path, str) or not relative_path:
+            raise RuntimeError("invalid_manifest_relative_path")
+        if not isinstance(file_entry, dict):
+            raise RuntimeError("invalid_manifest_file_entry")
+
+        remote_key = file_entry.get("remote_key")
+        if not isinstance(remote_key, str) or not remote_key:
+            raise RuntimeError("invalid_manifest_remote_key")
+
+        destination = _resolve_hydration_destination(
+            bundle_root=bundle_root,
+            relative_path=relative_path,
+        )
+        context.storage.download_file(remote_key, destination)
+        logger.info(
+            "checkpoint_file_hydrated",
+            job_id=str(job_id),
+            relative_path=relative_path,
+            remote_key=remote_key,
+        )
+
+    logger.info("checkpoint_hydration_completed", job_id=str(job_id))
+
+
 def _resolve_watch_files(
     *, bundle_root: Path, watch_paths: list[str]
 ) -> tuple[list[Path], list[dict[str, str]]]:
@@ -506,10 +570,12 @@ def _sync_checkpoint_manifest_cycle(
     current_rel_paths = {
         str(path.relative_to(bundle_root)).replace(os.sep, "/") for path in matched_files
     }
-    for deleted_rel in sorted(previous_rel_paths - current_rel_paths):
-        files_state.pop(deleted_rel, None)
-        deleted_files += 1
-        logger.info("checkpoint_file_deleted", relative_path=deleted_rel)
+    preserve_existing_files_once = bool(manifest.pop("_preserve_existing_files_once", False))
+    if not preserve_existing_files_once:
+        for deleted_rel in sorted(previous_rel_paths - current_rel_paths):
+            files_state.pop(deleted_rel, None)
+            deleted_files += 1
+            logger.info("checkpoint_file_deleted", relative_path=deleted_rel)
 
     matched_files_count = len(matched_files)
     if matched_files_count > CHECKPOINT_WATCH_FILE_CAP:
@@ -760,13 +826,6 @@ def _run_assigned_job(
 
         bundle_root = _extract_input_bundle(input_bundle_path, workdir / "bundle")
 
-        if assignment.latest_checkpoint_path:
-            checkpoint_download_path = workdir / Path(assignment.latest_checkpoint_path).name
-            context.storage.download_file(
-                assignment.latest_checkpoint_path,
-                checkpoint_download_path,
-            )
-
         execution_config = _load_bundle_execution_config(bundle_root)
         checkpoint_manifest = _load_persisted_manifest(
             context=context,
@@ -774,6 +833,25 @@ def _run_assigned_job(
             job_id=assignment.job_id,
             workdir=workdir,
         )
+        if assignment.latest_checkpoint_path:
+            try:
+                _hydrate_checkpoint_files_from_manifest(
+                    context=context,
+                    logger=job_log,
+                    job_id=assignment.job_id,
+                    bundle_root=bundle_root,
+                    manifest=checkpoint_manifest,
+                )
+                checkpoint_manifest["_preserve_existing_files_once"] = True
+            except Exception as exc:
+                job_log.warning(
+                    "checkpoint_hydration_failed",
+                    job_id=str(assignment.job_id),
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                context.gateway.fail_job(job_id=assignment.job_id)
+                return
 
         required_platform = _required_openmm_platform(bundle_root)
         if required_platform is not None and required_platform not in context.openmm_platforms:
