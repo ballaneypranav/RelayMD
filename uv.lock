@@ -1193,7 +1193,7 @@ wheels = [
 
 [[package]]
 name = "relaymd"
-version = "0.1.60"
+version = "0.1.61"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
