@@ -21,8 +21,7 @@ def test_sqlmodel_tables_create_without_error() -> None:
     assert worker_table_name in tables
     job_event_fks = inspector.get_foreign_keys(job_event_table_name)
     assert any(
-        fk.get("referred_table") == job_table_name
-        and fk.get("constrained_columns") == ["job_id"]
+        fk.get("referred_table") == job_table_name and fk.get("constrained_columns") == ["job_id"]
         for fk in job_event_fks
     )
 
