@@ -196,6 +196,62 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_submit_slurm_job_prepulls_oras_image_uri(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+            if input is not None:
+                captured["script"] = input.decode("utf-8")
+            return b"12345\n", b""
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        _ = (args, kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        "relaymd.orchestrator.slurm.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    cluster = ClusterConfig(
+        name="anvil-ai",
+        partition="ai",
+        account="nairr260042-ai",
+        ssh_host="anvil.rcac.purdue.edu",
+        ssh_username="x-pballaney",
+        image_uri="oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234",
+        sif_cache_dir="/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache",
+        gres="gpu:1",
+        nodes=1,
+        ntasks=8,
+        memory="10G",
+        wall_time="1-00:00:00",
+    )
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        database_url="sqlite+aiosqlite:///:memory:",
+        api_token="test-token",
+    )
+
+    await submit_slurm_job(cluster, settings)
+
+    rendered = captured["script"]
+    assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
+    assert (
+        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]' in rendered
+    )
+    assert "_SIF_CACHE_DIR='/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache'" in rendered
+    assert '_APPTAINER_CACHEDIR="${_SIF_CACHE_DIR}/apptainer-cache/${_IMAGE_KEY}"' in rendered
+    assert 'export APPTAINER_CACHEDIR="${_APPTAINER_CACHEDIR}"' in rendered
+    assert 'export SINGULARITY_CACHEDIR="${APPTAINER_CACHEDIR}"' in rendered
+    assert 'apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"' in rendered
+    assert 'apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc' in rendered
+
+
+@pytest.mark.asyncio
 async def test_submit_slurm_job_passes_purdue_storage_provider(monkeypatch) -> None:
     captured: dict[str, str] = {}
 

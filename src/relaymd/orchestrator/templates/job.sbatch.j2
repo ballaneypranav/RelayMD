@@ -37,10 +37,13 @@ export APPTAINER_DOCKER_USERNAME={{ apptainer_docker_username_shell_quoted }}
 export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
 {% endif %}
 
-# Resolve the Apptainer image.  For docker:// URIs we pre-pull to a shared SIF
-# cache under ~/.apptainer/relaymd-sif-cache, using flock to serialise the
-# OCI→SIF build.  The first job that arrives builds the SIF; every subsequent
-# job acquires the lock, finds the SIF already present, and skips the build.
+# Resolve the Apptainer image.  For registry URIs we pull to a shared SIF cache
+# under ~/.apptainer/relaymd-sif-cache, using flock to serialise the download.
+# docker:// sources are converted to SIF by Apptainer; oras:// sources are
+# pre-built SIF artifacts from CI. The first job that arrives writes the final
+# SIF; subsequent jobs acquire the lock, find it already present, and skip the
+# pull. The pull also uses an image-keyed APPTAINER_CACHEDIR so concurrent jobs
+# do not race through Apptainer's default per-user cache.
 #
 # Cache key: SHA-256 of the full image URI (first 16 hex chars).  A content
 # hash is used instead of a slug so that URIs that differ only in characters
@@ -55,7 +58,7 @@ export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
 #   rm ~/.apptainer/relaymd-sif-cache/<key>.sif
 _APPTAINER_IMAGE="{{ apptainer_image | default(sif_path) }}"
 
-if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
+if [[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]; then
   _IMAGE_KEY="$(printf '%s' "${_APPTAINER_IMAGE}" | sha256sum | cut -c1-16)"
 {% if sif_cache_dir_shell_quoted %}
   _SIF_CACHE_DIR={{ sif_cache_dir_shell_quoted }}
@@ -65,6 +68,7 @@ if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
   mkdir -p "${_SIF_CACHE_DIR}"
   _SIF_PATH="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.sif"
   _LOCK_FILE="${_SIF_CACHE_DIR}/${_IMAGE_KEY}.lock"
+  _APPTAINER_CACHEDIR="${_SIF_CACHE_DIR}/apptainer-cache/${_IMAGE_KEY}"
 
   (
     flock -x 200
@@ -85,11 +89,13 @@ if [[ "${_APPTAINER_IMAGE}" == docker://* ]]; then
     fi
     if [[ ! -f "${_SIF_PATH}" ]]; then
       export APPTAINER_TMPDIR="${TMPDIR:-/tmp}/apptainer-tmp-${SLURM_JOB_ID}"
+      export APPTAINER_CACHEDIR="${_APPTAINER_CACHEDIR}"
+      export SINGULARITY_CACHEDIR="${APPTAINER_CACHEDIR}"
       _SIF_TMP="${_SIF_PATH}.tmp.${SLURM_JOB_ID}"
-      mkdir -p "${APPTAINER_TMPDIR}"
-      # Clean up both the staging SIF and the tmp build dir on any exit so that
-      # a failed or killed pull never leaves a partial .sif that future jobs
-      # would mistake for a complete image.
+      mkdir -p "${APPTAINER_TMPDIR}" "${APPTAINER_CACHEDIR}"
+      # Clean up both the staging SIF and the tmp dir on any exit so that a
+      # failed or killed pull never leaves a partial .sif that future jobs would
+      # mistake for a complete image.
       trap 'rm -f "${_SIF_TMP}"; rm -rf "${APPTAINER_TMPDIR}"' EXIT
       apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"
       # Atomic rename: observers see either a complete SIF or nothing.
