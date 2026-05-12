@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
@@ -33,6 +34,12 @@ class SlurmProviderJobStatus(NamedTuple):
     provider_state: str
     provider_state_raw: str
     provider_reason: str | None
+
+
+class QueuedJobCandidate(NamedTuple):
+    id: UUID
+    created_at: datetime
+    preferred_clusters_json: str | None
 
 
 def _squeue_stderr_has_invalid_job_id(stderr_text: str) -> bool:
@@ -241,15 +248,33 @@ class SlurmProvisioningService:
         self._stale_cutoff = stale_cutoff
         self._submit_job = submit_job
 
-    async def submit_cluster_if_needed(self, *, cluster: ClusterConfig) -> bool:
-        queued_job = (
-            await self._session.exec(
-                select(Job)
-                .where(Job.status == JobStatus.queued)
-                .order_by(col(Job.created_at))
-                .limit(1)
-            )
-        ).first()
+    @staticmethod
+    def _preferred_clusters_json(preferred_clusters_json: str | None) -> list[str]:
+        if not preferred_clusters_json:
+            return []
+        try:
+            parsed = json.loads(preferred_clusters_json)
+        except Exception:
+            return []
+        if not isinstance(parsed, list):
+            return []
+        return [name for item in parsed if (name := str(item).strip())]
+
+    async def submit_cluster_if_needed(
+        self, *, cluster: ClusterConfig, queued_jobs: list[QueuedJobCandidate]
+    ) -> bool:
+        queued_job = next(
+            (
+                job
+                for job in queued_jobs
+                if (
+                    preferred_clusters := self._preferred_clusters_json(job.preferred_clusters_json)
+                )
+                == []
+                or cluster.name in preferred_clusters
+            ),
+            None,
+        )
         if queued_job is None:
             logger.info("provisioning_skipped_no_queued_jobs", cluster_name=cluster.name)
             return False
@@ -495,6 +520,7 @@ async def submit_pending_slurm_jobs(
     submissions = 0
     async with sessionmaker() as session:
         cluster_state_service = ClusterProvisioningStateService(session)
+        configured_cluster_names = {cluster.name for cluster in settings.slurm_cluster_configs}
         enabled_map = await cluster_state_service.get_enabled_map(settings.slurm_cluster_configs)
         enabled_clusters = [
             cluster
@@ -509,6 +535,42 @@ async def submit_pending_slurm_jobs(
             if queued_job is not None:
                 _emit_all_clusters_disabled_warning()
 
+        queued_jobs = (
+            await session.exec(
+                select(Job).where(col(Job.status) == JobStatus.queued).order_by(col(Job.created_at))
+            )
+        ).all()
+        queued_job_candidates = [
+            QueuedJobCandidate(
+                id=job.id,
+                created_at=job.created_at,
+                preferred_clusters_json=job.preferred_clusters_json,
+            )
+            for job in queued_jobs
+        ]
+        for job in queued_jobs:
+            reason: str | None = None
+            preferred_clusters: list[str] = []
+            if job.preferred_clusters_json:
+                try:
+                    parsed = json.loads(job.preferred_clusters_json)
+                    if isinstance(parsed, list):
+                        preferred_clusters = [
+                            name for item in parsed if (name := str(item).strip())
+                        ]
+                except Exception:
+                    preferred_clusters = []
+            if preferred_clusters:
+                if not any(name in configured_cluster_names for name in preferred_clusters):
+                    reason = "no_matching_pinned_clusters"
+                elif not any(enabled_map.get(name, False) for name in preferred_clusters):
+                    reason = "no_enabled_pinned_clusters"
+            if job.queue_blocked_reason != reason:
+                job.queue_blocked_reason = reason
+                job.updated_at = datetime.now(UTC).replace(tzinfo=None)
+                session.add(job)
+        await session.commit()
+
         service = SlurmProvisioningService(
             session,
             settings=settings,
@@ -517,7 +579,9 @@ async def submit_pending_slurm_jobs(
         )
         for cluster in enabled_clusters:
             try:
-                submitted = await service.submit_cluster_if_needed(cluster=cluster)
+                submitted = await service.submit_cluster_if_needed(
+                    cluster=cluster, queued_jobs=queued_job_candidates
+                )
             except SlurmSubmissionError as exc:
                 try:
                     await session.rollback()

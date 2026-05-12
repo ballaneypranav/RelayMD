@@ -19,6 +19,9 @@ class Job(SQLModel, table=True):
     title: str
     status: JobStatus = JobStatus.queued
     input_bundle_path: str
+    preferred_clusters_json: str | None = None
+    comment: str | None = None
+    queue_blocked_reason: str | None = None
     latest_checkpoint_path: str | None = None
     last_checkpoint_at: datetime | None = None
     progress: float | None = None
@@ -35,6 +38,8 @@ class JobCreate(SQLModel):
     id: uuid.UUID | None = None
     title: str
     input_bundle_path: str
+    preferred_clusters: list[str] = []
+    comment: str | None = None
 
 
 class JobRead(SQLModel):
@@ -42,6 +47,9 @@ class JobRead(SQLModel):
     title: str
     status: JobStatus
     input_bundle_path: str
+    preferred_clusters: list[str] = []
+    comment: str | None = None
+    queue_blocked_reason: str | None = None
     assigned_at: datetime | None
     started_at: datetime | None
     status_changed_at: datetime

@@ -32,8 +32,9 @@ Three APScheduler interval jobs are registered from FastAPI `lifespan` using an 
 1. **`stale_worker_reaper_job`** — every `stale_worker_reaper_interval_seconds` (default 60s); marks workers stale if `last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`; re-queues their jobs; calls Salad autoscaling.
 2. **`orphaned_job_requeue_once`** — every `orphaned_job_requeue_interval_seconds` (default 60s); handles jobs that reached `assigned` state but whose worker never registered (e.g. SLURM job failed to boot).
 3. **`sbatch_submission_job`** — every `sbatch_submission_interval_seconds` (default 60s); for each `ClusterConfig`, proceeds in two steps:
-   - **Dead-placeholder reap**: queries all placeholder workers (those with `slurm_job_id` containing `:`), calls `squeue --jobs <id,...>`, and deletes any whose SLURM job is no longer alive. This reclaims the `max_pending_jobs` slot so the next submission cycle can proceed. Errors from `squeue` (e.g. on non-HPC environments) are swallowed and never crash the scheduler.
-   - **New submission**: if there are queued jobs and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record (`slurm_job_id = "<cluster>:<id>"`) to prevent duplicate submissions during the SLURM pending window.
+   - **Dead-placeholder reap**: queries all placeholder workers (those with `provider_id` in `<cluster>:<slurm_job_id>` format), calls `squeue --jobs <id,...>`, and deletes any whose SLURM job is no longer alive. This reclaims the `max_pending_jobs` slot so the next submission cycle can proceed. Errors from `squeue` (e.g. on non-HPC environments) are swallowed and never crash the scheduler.
+   - **New submission**: if there are queued jobs compatible with that cluster's affinity constraints and no active/pending HPC workers for that cluster, renders the Jinja2 sbatch template and calls `sbatch --parsable` as a direct subprocess. Stores the SLURM job ID in the DB as a placeholder worker record (`provider_id = "<cluster>:<id>"`) to prevent duplicate submissions during the SLURM pending window.
+   - **Queue-blocked reason maintenance**: queued jobs with affinity constraints get `queue_blocked_reason` set/cleared as cluster config/enabled state changes (`no_enabled_pinned_clusters`, `no_matching_pinned_clusters`).
 
 Scheduler settings: `coalesce=True`, `max_instances=1`, no persistent job store.
 
@@ -56,14 +57,14 @@ result = await asyncio.create_subprocess_exec(
 When `sbatch` succeeds, the orchestrator inserts a **placeholder** `Worker` row with:
 
 - `platform = hpc`
-- `slurm_job_id = "<cluster_name>:<slurm_job_id>"` (the colon is the sentinel)
+- `provider_id = "<cluster_name>:<slurm_job_id>"` (the colon is the sentinel)
 - `vram_gb = 0` (unknown until the real worker registers)
 - `last_heartbeat = now`
 
-The placeholder is visible in the UI with `status = provisioning`. It is **never reaped by the stale-worker reaper** (which explicitly skips rows whose `slurm_job_id` contains `:`), and it is **never assigned jobs** (the assignment query requires `slurm_job_id IS NULL`).
+The placeholder is visible in the UI with `status = provisioning`. It is **never reaped by the stale-worker reaper** (which explicitly skips placeholder semantics), and it is **never assigned jobs** (only active workers are assignment candidates).
 
 The placeholder is cleaned up by one of two paths:
 
-1. **Happy path** — the SLURM job starts and the worker process calls `POST /workers/register` with `slurm_job_id` set to `$SLURM_JOB_ID`. `register_worker` finds the matching placeholder (by suffix `":<id>"`) and deletes it atomically before committing the real worker row. The real worker has `slurm_job_id = NULL` and a live heartbeat.
+1. **Happy path** — the SLURM job starts and the worker process calls `POST /workers/register` with `provider_id` set to `"$RELAYMD_CLUSTER_NAME:$SLURM_JOB_ID"`. `register_worker` finds the matching placeholder and deletes it atomically before committing the real worker row.
 
 2. **Dead-job path** — the `sbatch_submission_job` scheduler calls `reap_dead_slurm_placeholders` before each submission cycle. It calls `squeue --jobs <id1,id2,...> --noheader --format=%i` and deletes any placeholder whose job ID is no longer returned by squeue (job failed, timed out, or was cancelled before starting).

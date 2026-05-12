@@ -13,10 +13,11 @@ A dependency injection workaround using `typer.Context.obj`. The root callback i
 The `submit` command is the most complex component of the CLI. It does:
 
 1. Validates the input directory and ensures `relaymd-worker.json` or `.toml` exists (or writes it when `--command` is provided).
-2. Generates one canonical `UUIDv4` for the job.
-3. Streams the input directory into a `/tmp` gzip tarball using `tarfile`.
-4. Uploads the tarball directly to B2 via `StorageClient` at `jobs/{job_id}/input/bundle.tar.gz`.
-5. Registers the job with the orchestrator via `POST /jobs` with the same `id={job_id}`.
+2. Resolves configured SLURM cluster names from settings, validates repeatable `--cluster` values, dedupes them preserving first-seen order, and normalizes `--comment` (trim, blank→null, max 2000 chars).
+3. Generates one canonical `UUIDv4` for the job.
+4. Streams the input directory into a `/tmp` gzip tarball using `tarfile`.
+5. Uploads the tarball directly to B2 via `StorageClient` at `jobs/{job_id}/input/bundle.tar.gz`.
+6. Registers the job with the orchestrator via `POST /jobs` with the same `id={job_id}`, plus optional `preferred_clusters` and `comment`.
 
 Because the upload goes directly to B2, there is no file upload proxying through the orchestrator. The CLI just tells the orchestrator where the file is.
 

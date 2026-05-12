@@ -11,6 +11,9 @@ export interface JobRead {
   title: string;
   status: JobStatus;
   input_bundle_path: string;
+  preferred_clusters: string[];
+  comment: string | null;
+  queue_blocked_reason: string | null;
   assigned_at: string | null;
   started_at: string | null;
   status_changed_at: string;

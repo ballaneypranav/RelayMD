@@ -282,3 +282,28 @@ def test_heartbeat_skips_proxy_when_userspace_proxy_is_unavailable(monkeypatch) 
     thread.run()
 
     assert created_kwargs["httpx_args"] == {}
+
+
+def test_heartbeat_health_snapshot_tracks_degraded_and_recovery() -> None:
+    thread = HeartbeatThread(
+        orchestrator_url="http://orchestrator",
+        worker_id=uuid4(),
+        api_token="token",
+    )
+
+    baseline = thread.health_snapshot()
+    assert baseline.is_degraded is False
+    assert baseline.consecutive_failures == 0
+    assert baseline.last_success_at is not None
+
+    thread._mark_failure()
+    degraded = thread.health_snapshot()
+    assert degraded.is_degraded is True
+    assert degraded.degraded_since is not None
+    assert degraded.consecutive_failures == 1
+
+    thread._mark_success()
+    recovered = thread.health_snapshot()
+    assert recovered.is_degraded is False
+    assert recovered.consecutive_failures == 0
+    assert recovered.last_success_at is not None

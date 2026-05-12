@@ -1,112 +1,168 @@
-## Job History + Worker Runtime Timeline (Single PR)
+### Worker Heartbeat Degraded-Mode Resilience Plan
 
 ### Summary
-Implement persistent, orchestrator-authored job history and expose it in the operator frontend so each job shows a timeline of what happened since submission, including worker handoffs and runtime per worker.  
-History is authoritative for new events going forward; existing jobs can show derived minimal history when persisted events are absent.
+Implement degraded-mode handling in the worker so transient heartbeat failures do not immediately cascade into job termination when checkpoint reporting remains healthy. The worker will continue job execution through temporary control-plane outages, and only trigger shutdown after a bounded grace policy is exceeded.
 
-### Key Implementation Changes
-- **Data model + persistence**
-  - Add append-only `job_event` storage with typed core fields (`job_id`, `occurred_at`, per-job `event_seq`, `event_type`, `worker_id`, `status_from`, `status_to`) and optional `payload_json`.
-  - Add startup migration in orchestrator DB init to create/upgrade `job_event` table and indexes (`job_id`, `occurred_at`, `event_seq`), matching current in-place migration pattern.
-  - Define a validated event-type set (stored as strings): `created`, `assigned`, `running`, `checkpoint`, `requeued_with`, `requeued_from`, `completed`, `failed`, `cancelled`, `worker_deregistered_requeue`.
+### Implementation Changes
+- Add a heartbeat degradation state machine in worker runtime:
+  - Enter degraded mode on consecutive heartbeat send failures.
+  - Track `degraded_since`, `last_heartbeat_success_at`, and `last_checkpoint_report_success_at`.
+  - Exit degraded mode immediately when heartbeat succeeds again.
+- Add configurable grace policy (adaptive):
+  - New settings using multiplier + floor:
+    - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER`
+    - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS`
+  - Effective grace window: `max(multiplier * heartbeat_interval_seconds, floor_seconds)`.
+- Add checkpoint-health gating during degraded mode:
+  - Define “checkpoint healthy” as last successful checkpoint *report* within `3x checkpoint_poll_interval_seconds`.
+  - While within grace and checkpoint is healthy, keep job running and keep retrying heartbeat as normal.
+- Add bounded shutdown decision:
+  - If heartbeat remains failed beyond grace window and checkpoint is no longer healthy, trigger existing graceful cleanup path (`SIGTERM`, final checkpoint attempt, existing termination behavior).
+  - Preserve current behavior for non-transient fatal errors (e.g., explicit job/process failure paths).
+- Improve observability:
+  - Add structured logs/events for:
+    - `heartbeat_degraded_mode_entered`
+    - `heartbeat_degraded_mode_recovered`
+    - `heartbeat_degraded_mode_grace_extended_by_checkpoint_health`
+    - `heartbeat_degraded_mode_shutdown_triggered`
+  - Include elapsed outage duration, grace limit, and last checkpoint report age in log fields.
 
-- **Event capture (strict atomic with job updates)**
-  - Emit `job_event` rows in the same DB transaction as lifecycle mutations so status changes cannot commit without corresponding history.
-  - Capture events at all orchestrator write points: job creation, assignment success, start, checkpoint report, terminal transitions, cancel, and requeue paths.
-  - Requeue behavior:
-    - old job gets `requeued_with=<new_job_id>`
-    - new job gets `requeued_from=<old_job_id>`
-  - For checkpoint events, persist progress/progress-codes/checkpoint status-failure metadata in payload for auditability.
-
-- **History read API**
-  - Add `GET /jobs/{job_id}/history` returning:
-    - `events` (ordered by `occurred_at`, tie-broken by `event_seq`)
-    - `worker_segments` (start/end/running duration segments)
-    - `worker_totals` (total runtime and segment count per worker)
-  - Runtime semantics:
-    - segment start = `running` when present, else `assigned`
-    - segment end = next assignment to different worker, terminal event, or `now` for active jobs
-    - terminal event is authoritative cutoff for runtime accounting.
-  - If no persisted events exist (legacy jobs), synthesize minimal derived timeline from current job fields with `derived=true`.
-
-- **Frontend UI**
-  - Extend frontend API/types to consume `/jobs/{id}/history`.
-  - In selected job detail pane, add:
-    - timeline view (timestamp, event, worker, key details)
-    - worker runtime summary table
-    - pinned “Latest issues” panel for current failures/codes
-  - Collapse successful checkpoint events by default with expand control; failures remain prominently visible.
-  - Keep this feature in detail pane only (no jobs-table indicator in v1).
-
-- **Schema/client updates**
-  - Add shared read models for job history/event payloads and update OpenAPI.
-  - Regenerate `relaymd-api-client` from OpenAPI once backend schema/routes are complete.
-  - Ensure frontend type contracts align with generated/read models.
+### Public Interfaces / Config Additions
+- Worker runtime config additions (env aliases + defaults in worker settings):
+  - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER` (default chosen below)
+  - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS` (default chosen below)
+- No orchestrator API contract changes.
 
 ### Test Plan
-- **Orchestrator/DB**
-  - Migration creates `job_event` table/indexes on clean and existing DBs.
-  - Event write is atomic with lifecycle updates (failure in event insert prevents transition commit).
-  - `event_seq` monotonic ordering per job, including same-timestamp events.
-- **Lifecycle/history behavior**
-  - Events emitted for create/assign/start/checkpoint/terminal/cancel/requeue.
-  - Requeue writes both `requeued_with` and `requeued_from` entries with correct job IDs.
-  - History endpoint ordering, payload shape, and derived-history fallback for legacy jobs.
-  - Runtime calculations for:
-    - single-worker run
-    - worker handoff(s)
-    - running-without-terminal (open segment to now)
-    - assigned-without-running fallback
-- **Frontend**
-  - Job detail renders timeline and worker totals.
-  - Checkpoint success collapse/expand behavior works.
-  - Latest issues panel shows failures/codes and handles empty state.
+- Unit tests for degraded-mode policy:
+  - Heartbeat fails transiently, checkpoint reports remain fresh -> worker does not terminate.
+  - Heartbeat recovers before grace expiry -> degraded mode clears, no shutdown.
+  - Heartbeat fails past grace and checkpoint freshness expires -> graceful termination path invoked.
+- Timing-policy tests:
+  - Verify `max(multiplier * heartbeat_interval, floor)` calculation.
+  - Verify checkpoint freshness threshold of `3x checkpoint_poll_interval`.
+- Regression tests:
+  - Existing cleanup behavior still occurs when shutdown is triggered.
+  - Existing success path unchanged when heartbeats are healthy.
+- Logging assertions:
+  - Degraded-mode lifecycle events emitted with expected fields.
 
 ### Assumptions and Defaults
-- Scope is orchestrator-only history (not worker-local log timelines).
-- No pruning for `job_event` in this iteration.
-- History view is per-job only (no cross-job lineage stitching), but requeue link events are persisted for future lineage features.
-- Paths/details are included in history payload with defensive sanitization/truncation for obviously sensitive strings.
-- Delivery is a single PR containing schema, backend, frontend, and tests.
+- Default grace config:
+  - `heartbeat_failure_grace_multiplier = 15`
+  - `heartbeat_failure_grace_floor_seconds = 900`
+  - With default 60s heartbeat interval, this yields a 15-minute grace.
+- “Checkpoint healthy” is based on successful checkpoint **report RPC** recency (not local file writes).
+- Post-grace action remains graceful termination (not indefinite run, not immediate hard fail).
 
-## Frontend Runtime + ETA Additions
+---
+
+### Cluster-Affinity Submit + Queue Blocking Visibility Plan
 
 ### Summary
-Extend the frontend job detail view to show total running time and estimated time remaining (ETA) derived from job history runtime segments plus current progress.
+Add per-job cluster affinity to `relaymd submit`, allowing one job to target one or more named SLURM cluster configs (for example `anvil-gpu`, `gilbreth-a30`) with strict no-fallback behavior. Add optional job comments captured at submit time and shown in frontend job details. Preserve lifecycle status semantics (`queued` stays `queued`) and expose explicit queue blocking reasons when affinity cannot currently run.
 
-### Key Implementation Additions
-- **Runtime source and semantics**
-  - Compute `total_runtime_seconds` from history worker segments (sum of all running durations across workers).
-  - Use `running` segment starts when available; fallback to `assigned` starts when no running segment exists.
-  - For active jobs, treat open segment end as `now` on each refresh tick.
-  - For terminal jobs, freeze total runtime at terminal-event cutoff.
+### Agreed Product Decisions
+- Affinity policy:
+  - No fallback to non-pinned clusters.
+  - Affinity accepts exact cluster `name` values only.
+  - Multiple clusters allowed via repeatable `--cluster`.
+  - Duplicate `--cluster` values are deduplicated preserving first-seen order.
+- Validation:
+  - CLI validates names using existing settings resolution precedence.
+  - Orchestrator re-validates as source of truth.
+  - Fail fast in CLI (before bundle archive/upload) if provided names are unknown.
+- Comment support:
+  - New optional `--comment`.
+  - Trimmed string with max length `2000`.
+  - Whitespace-only normalizes to `null`.
+  - Immutable after submit for now.
+- Queue blocking semantics:
+  - Persist job lifecycle status as `queued`; do not add a new lifecycle enum for blocked.
+  - Add machine-readable reason field: `queue_blocked_reason`.
+  - Initial codes:
+    - `no_enabled_pinned_clusters`
+    - `no_matching_pinned_clusters`
+  - Frontend maps codes to operator-friendly labels.
+- Requeue:
+  - Requeue clone copies affinity and comment.
+- Frontend display:
+  - Jobs list keeps primary status `queued`; show blocked indicator as secondary text/badge.
+  - Add `Blocked` overview metric tile.
+  - Selected job detail panel shows `Pinned Clusters` and `Comment`.
 
-- **ETA calculation**
-  - Use linear estimate with latest progress value:
-    - `estimated_total_seconds = total_runtime_seconds / progress`
-    - `eta_seconds = estimated_total_seconds - total_runtime_seconds`
-  - Use latest reported progress directly (regressions are accepted and can increase ETA).
-  - Frontend defensively clamps progress to `[0,1]` before ETA math.
-  - Hide ETA when:
-    - job is not `assigned`/`running`, or
-    - progress `<= 0`, or
-    - progress `>= 1`.
+### Backend / Data Model Changes
+- `packages/relaymd-core` (`Job`, `JobCreate`, `JobRead`):
+  - Add nullable persisted fields:
+    - `preferred_clusters_json: str | None`
+    - `comment: str | None`
+    - `queue_blocked_reason: str | None`
+  - Expose parsed `preferred_clusters: list[str]` in `JobRead`.
+  - Keep backward compatibility for existing rows (`null` defaults).
+- Orchestrator jobs router (`src/relaymd/orchestrator/routers/jobs_operator.py`):
+  - Accept `preferred_clusters` and `comment` in create payload.
+  - Validate against configured cluster names.
+  - Normalize/trim/dedupe affinity list and comment.
+  - Populate persisted fields and return in `JobRead`.
+- Scheduler/provisioning paths:
+  - Filter job eligibility and cluster submission decisions using job affinity.
+  - Compute and persist `queue_blocked_reason` for queued jobs when affinity is unschedulable due to:
+    - all pinned clusters disabled
+    - pinned clusters no longer present in runtime config
+  - Clear `queue_blocked_reason` when job becomes schedulable or transitions out of queued.
+- Requeue path:
+  - Copy `preferred_clusters_json`, `comment`, and reset `queue_blocked_reason` based on current eligibility.
 
-- **UI placement and formatting**
-  - Add `Total Runtime` and `ETA` to selected job detail pane (no jobs-table column in this iteration).
-  - Format both via existing compact duration formatter (e.g., `2h 13m`, `14m 20s`).
-  - For `assigned` jobs with no started/runtime segment, show `Total Runtime = 0m 0s` and hide ETA.
+### CLI Changes (`relaymd submit`)
+- Add repeatable option:
+  - `--cluster <name>` (multiple allowed).
+- Add optional:
+  - `--comment <text>`.
+- Submit flow updates:
+  - Resolve known cluster names from loaded settings.
+  - Validate/dedupe clusters before archive/upload.
+  - Normalize comment (`trim`, length check, empty -> `null`).
+  - Send new fields in `JobCreate`.
+- JSON output updates:
+  - Include `preferred_clusters`, `comment`, and `queue_blocked_reason` in `--json` output.
 
-### Test Plan Additions
-- **Frontend unit/integration tests**
-  - Runtime sum across single-worker and multi-worker segment histories.
-  - Open running segment grows with current time.
-  - Terminal jobs show stable total runtime and hidden ETA.
-  - ETA hidden cases: progress `0`, progress `1`, and non-active statuses.
-  - ETA updates upward when progress regresses.
-  - Out-of-range progress values are clamped before calculation.
+### Frontend Changes
+- Types/API:
+  - Extend `JobRead` type with `preferred_clusters`, `comment`, `queue_blocked_reason`.
+- Jobs view:
+  - Show secondary blocked indicator when `status=queued` + `queue_blocked_reason` set.
+  - Add readable mapping for blocking reason codes.
+  - In selected job details, render:
+    - `Pinned Clusters` (comma-separated or `-`)
+    - `Comment` (preserve line breaks; show `-` when null)
+- Metrics:
+  - Add `Blocked` tile counting queued jobs with non-null `queue_blocked_reason`.
 
-### Assumptions and Defaults
-- No progress threshold guard before showing ETA in this iteration.
-- No extra ETA label/caveat text is required in the UI.
-- Runtime/ETA rely on history endpoint segment data as source of truth.
+### Migration / Compatibility
+- Add DB migration for new nullable columns on `job` table:
+  - `preferred_clusters_json`
+  - `comment`
+  - `queue_blocked_reason`
+- Backfill existing rows as `NULL`.
+- Keep existing status enum unchanged to avoid transition/contract breakage.
+
+### Test Plan
+- CLI tests:
+  - Accept multiple `--cluster`; dedupe duplicates.
+  - Unknown clusters fail fast pre-upload with useful error.
+  - `--comment` trim, max length enforcement, whitespace normalization.
+- Orchestrator API tests:
+  - Create job with valid affinity/comment persists and round-trips via `JobRead`.
+  - Invalid affinity names rejected by API.
+  - Create job with no affinity remains current behavior.
+- Scheduling/provisioning tests:
+  - Jobs only considered by pinned clusters.
+  - `queue_blocked_reason=no_enabled_pinned_clusters` when all pinned disabled.
+  - `queue_blocked_reason=no_matching_pinned_clusters` when config drift removes pinned names.
+  - Reason clears when constraints become satisfiable.
+- Requeue tests:
+  - Requeued job copies affinity/comment and has correct initial blocking reason.
+- Frontend tests:
+  - Blocked indicator rendering and code-to-label mapping.
+  - Details panel shows pinned clusters/comment.
+  - `Blocked` metric count updates correctly.

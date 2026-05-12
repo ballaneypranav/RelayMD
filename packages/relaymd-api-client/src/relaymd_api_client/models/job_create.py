@@ -19,11 +19,15 @@ class JobCreate:
         title (str):
         input_bundle_path (str):
         id (None | Unset | UUID):
+        preferred_clusters (list[str] | Unset):
+        comment (None | Unset | str):
     """
 
     title: str
     input_bundle_path: str
     id: None | Unset | UUID = UNSET
+    preferred_clusters: list[str] | Unset = UNSET
+    comment: None | Unset | str = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +53,10 @@ class JobCreate:
         )
         if id is not UNSET:
             field_dict["id"] = id
+        if self.preferred_clusters is not UNSET:
+            field_dict["preferred_clusters"] = self.preferred_clusters
+        if self.comment is not UNSET:
+            field_dict["comment"] = self.comment
 
         return field_dict
 
@@ -75,11 +83,15 @@ class JobCreate:
             return cast(None | Unset | UUID, data)
 
         id = _parse_id(d.pop("id", UNSET))
+        preferred_clusters = cast(list[str] | Unset, d.pop("preferred_clusters", UNSET))
+        comment = cast(None | Unset | str, d.pop("comment", UNSET))
 
         job_create = cls(
             title=title,
             input_bundle_path=input_bundle_path,
             id=id,
+            preferred_clusters=preferred_clusters,
+            comment=comment,
         )
 
         job_create.additional_properties = d

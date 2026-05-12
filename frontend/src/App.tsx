@@ -231,6 +231,7 @@ export function App() {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
     return counts;
   }, {});
+  const blockedCount = jobs.filter((job) => job.status === "queued" && job.queue_blocked_reason).length;
 
   const activeWorkers = workers.filter((worker) => worker.status !== "queued").length;
   const provisioningWorkers = workers.filter((worker) => worker.status === "queued").length;
@@ -369,6 +370,7 @@ export function App() {
             ariaLabel="Job metrics"
             items={[
               { label: "Queued", value: statusCounts.queued ?? 0 },
+              { label: "Blocked", value: blockedCount, tone: "danger" },
               { label: "Running", value: statusCounts.running ?? 0, tone: "accent" },
               { label: "Completed", value: statusCounts.completed ?? 0, tone: "success" },
               { label: "Failed", value: statusCounts.failed ?? 0, tone: "danger" },

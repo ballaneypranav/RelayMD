@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -48,15 +50,52 @@ class AssignmentService:
     async def _is_worker_busy(self, worker_id: UUID) -> bool:
         return worker_id in await self._busy_worker_ids()
 
-    async def _next_queued_job_id(self) -> UUID | None:
-        return (
+    @staticmethod
+    def _worker_cluster_name(worker: Worker) -> str | None:
+        if not worker.provider_id or ":" not in worker.provider_id:
+            return None
+        cluster, _ = worker.provider_id.split(":", 1)
+        return cluster.strip() or None
+
+    @staticmethod
+    def _job_preferred_clusters(job: Job) -> list[str]:
+        if not job.preferred_clusters_json:
+            return []
+        try:
+            parsed = json.loads(job.preferred_clusters_json)
+        except Exception:
+            return []
+        if not isinstance(parsed, list):
+            return []
+        return [name for item in parsed if (name := str(item).strip())]
+
+    def _worker_can_run_job(self, *, worker_cluster: str | None, job: Job) -> bool:
+        preferred_clusters = self._job_preferred_clusters(job)
+        if not preferred_clusters:
+            return True
+        if worker_cluster is None:
+            return False
+        return worker_cluster in preferred_clusters
+
+    async def _next_queued_job_id_for_worker(self, *, worker_cluster: str | None) -> UUID | None:
+        queued_jobs = (
             await self._session.exec(
-                select(Job.id)
-                .where(Job.status == JobStatus.queued)
+                select(Job)
+                .where(col(Job.status) == JobStatus.queued)
                 .order_by(col(Job.created_at).asc())
-                .limit(1)
             )
-        ).first()
+        ).all()
+        return self._next_queued_job_id_for_worker_from_jobs(
+            queued_jobs=queued_jobs, worker_cluster=worker_cluster
+        )
+
+    def _next_queued_job_id_for_worker_from_jobs(
+        self, *, queued_jobs: Sequence[Job], worker_cluster: str | None
+    ) -> UUID | None:
+        for job in queued_jobs:
+            if self._worker_can_run_job(worker_cluster=worker_cluster, job=job):
+                return job.id
+        return None
 
     async def _claim_queued_job(self, *, job_id: UUID, worker_id: UUID) -> Job | None:
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -96,9 +135,11 @@ class AssignmentService:
         await self._session.commit()
         return await self._session.get(Job, job_id)
 
-    async def _claim_next_queued_job_for_worker(self, *, worker_id: UUID) -> Job | None:
+    async def _claim_next_queued_job_for_worker(
+        self, *, worker_id: UUID, worker_cluster: str | None
+    ) -> Job | None:
         for _attempt in range(CLAIM_RETRY_LIMIT):
-            job_id = await self._next_queued_job_id()
+            job_id = await self._next_queued_job_id_for_worker(worker_cluster=worker_cluster)
             if job_id is None:
                 return None
 
@@ -122,6 +163,7 @@ class AssignmentService:
             return None
         worker_id = worker.id
         worker_provider_id = worker.provider_id
+        worker_cluster = self._worker_cluster_name(worker)
 
         # Ensure worker is not stale
         stale_cutoff = self._stale_cutoff()
@@ -132,7 +174,9 @@ class AssignmentService:
         if await self._is_worker_busy(worker_id):
             return None
 
-        queued_job = await self._claim_next_queued_job_for_worker(worker_id=worker_id)
+        queued_job = await self._claim_next_queued_job_for_worker(
+            worker_id=worker_id, worker_cluster=worker_cluster
+        )
         if queued_job is None:
             return None
 
@@ -147,16 +191,19 @@ class AssignmentService:
 
     async def assign_next_job(self) -> tuple[Job, Worker] | None:
         """Find the next queued job and assign it to the first available worker."""
-        queued_job_id = await self._next_queued_job_id()
-        if queued_job_id is None:
-            return None
-
-        logger.info(
-            "job_assignment_started", assignment_mode="scheduled", job_id=str(queued_job_id)
-        )
+        logger.info("job_assignment_started", assignment_mode="scheduled")
 
         busy_worker_ids = await self._busy_worker_ids()
         stale_cutoff = self._stale_cutoff()
+        queued_jobs = (
+            await self._session.exec(
+                select(Job)
+                .where(col(Job.status) == JobStatus.queued)
+                .order_by(col(Job.created_at).asc())
+            )
+        ).all()
+        if not queued_jobs:
+            return None
 
         # Find any fresh, non-placeholder worker that is not busy
         workers = (
@@ -177,7 +224,6 @@ class AssignmentService:
             logger.info(
                 "job_assignment_skipped_no_idle_workers",
                 assignment_mode="scheduled",
-                job_id=str(queued_job_id),
                 busy_worker_count=len(busy_worker_ids),
                 fresh_worker_count=len(workers),
             )
@@ -186,9 +232,23 @@ class AssignmentService:
         queued_job: Job | None = None
         selected_worker: Worker | None = None
         for worker in available_workers:
-            queued_job = await self._claim_next_queued_job_for_worker(worker_id=worker.id)
+            worker_cluster = self._worker_cluster_name(worker)
+            for _attempt in range(CLAIM_RETRY_LIMIT):
+                job_id = self._next_queued_job_id_for_worker_from_jobs(
+                    queued_jobs=queued_jobs,
+                    worker_cluster=worker_cluster,
+                )
+                if job_id is None:
+                    break
+                queued_jobs = [job for job in queued_jobs if job.id != job_id]
+                claimed_job = await self._claim_queued_job(job_id=job_id, worker_id=worker.id)
+                if claimed_job is not None:
+                    queued_job = claimed_job
+                    selected_worker = worker
+                    break
+                if await self._is_worker_busy(worker.id):
+                    break
             if queued_job is not None:
-                selected_worker = worker
                 break
 
         if queued_job is None or selected_worker is None:

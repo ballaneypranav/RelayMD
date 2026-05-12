@@ -56,6 +56,9 @@ class SubmitService:
             f"Missing required {provider_name} storage settings for submit: {details}.{hint}"
         )
 
+    def known_cluster_names(self) -> set[str]:
+        return {cluster.name for cluster in self._context.settings.slurm_cluster_configs}
+
     def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
         self._validate_storage_settings()
         self._context.storage_client().upload_file(local_archive, b2_key)
@@ -64,6 +67,49 @@ class SubmitService:
         try:
             with self._context.api_client() as client:
                 body = JobCreate(id=job_id, title=title, input_bundle_path=b2_key)
+                response = create_job_jobs_post.sync(
+                    client=client,
+                    body=body,
+                    x_api_token=self._context.settings.api_token,
+                )
+        except UnexpectedStatus as exc:
+            if exc.status_code == 404:
+                orchestrator_url = self._context.settings.orchestrator_url.rstrip("/")
+                raise RuntimeError(
+                    "Job registration failed: POST /jobs returned 404 from "
+                    f"{orchestrator_url}. This usually means the CLI is pointing at the wrong "
+                    "orchestrator URL/port, or the running orchestrator is an older build that "
+                    "does not expose job creation. Check 'orchestrator_url' and restart the "
+                    "orchestrator from this checkout."
+                ) from exc
+            raise
+
+        if isinstance(response, JobCreateConflict):
+            raise RuntimeError(response.message)
+        if isinstance(response, HTTPValidationError):
+            raise RuntimeError(str(response.to_dict()))
+        if response is None or not isinstance(response, JobRead):
+            raise RuntimeError("Failed to parse create job response")
+        return response
+
+    def register_job_with_metadata(
+        self,
+        *,
+        job_id: UUID,
+        title: str,
+        b2_key: str,
+        preferred_clusters: list[str],
+        comment: str | None,
+    ) -> JobRead:
+        try:
+            with self._context.api_client() as client:
+                body = JobCreate(
+                    id=job_id,
+                    title=title,
+                    input_bundle_path=b2_key,
+                    preferred_clusters=preferred_clusters,
+                    comment=comment,
+                )
                 response = create_job_jobs_post.sync(
                     client=client,
                     body=body,

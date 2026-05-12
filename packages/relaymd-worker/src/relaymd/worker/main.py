@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType, ModuleType
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
@@ -29,7 +29,7 @@ from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.config import WorkerRuntimeSettings
 from relaymd.worker.context import WorkerContext
 from relaymd.worker.gateway import ApiOrchestratorGateway
-from relaymd.worker.heartbeat import HeartbeatThread
+from relaymd.worker.heartbeat import HeartbeatHealthSnapshot, HeartbeatThread
 from relaymd.worker.job_execution import JobExecution
 from relaymd.worker.logging import get_logger
 
@@ -732,6 +732,14 @@ def _run_assigned_job(
         try:
             execution.start()
             context.gateway.start_job(job_id=assignment.job_id)
+            degraded_mode_active = False
+            degraded_mode_grace_logged = False
+            heartbeat_grace_seconds = max(
+                float(
+                    context.heartbeat_failure_grace_multiplier * context.heartbeat_interval_seconds
+                ),
+                float(context.heartbeat_failure_grace_floor_seconds),
+            )
 
             effective_checkpoint_poll_interval_seconds = (
                 execution_config.checkpoint_poll_interval_seconds
@@ -748,7 +756,9 @@ def _run_assigned_job(
                 ),
             )
             checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
+            checkpoint_health_threshold_seconds = max(0.0, checkpoint_poll_interval_seconds * 3.0)
             next_checkpoint_poll_time = time.monotonic()
+            last_checkpoint_report_success_at: float | None = None
             latest_progress = 0.0
             latest_progress_codes = [PROGRESS_MISSING]
             while True:
@@ -790,6 +800,106 @@ def _run_assigned_job(
                     return
 
                 now = time.monotonic()
+
+                if context.heartbeat_thread is not None:
+                    snapshot_method = getattr(context.heartbeat_thread, "health_snapshot", None)
+                    raw_snapshot = snapshot_method() if callable(snapshot_method) else None
+                    snapshot = (
+                        cast(HeartbeatHealthSnapshot, raw_snapshot)
+                        if isinstance(raw_snapshot, HeartbeatHealthSnapshot)
+                        else None
+                    )
+                    degraded_since = snapshot.degraded_since if snapshot is not None else None
+                    is_degraded = bool(snapshot.is_degraded) if snapshot is not None else False
+                    if is_degraded and isinstance(degraded_since, int | float):
+                        outage_duration_seconds = max(0.0, now - float(degraded_since))
+                        checkpoint_report_age_seconds = (
+                            None
+                            if last_checkpoint_report_success_at is None
+                            else max(0.0, now - last_checkpoint_report_success_at)
+                        )
+                        checkpoint_healthy = (
+                            checkpoint_report_age_seconds is not None
+                            and checkpoint_report_age_seconds <= checkpoint_health_threshold_seconds
+                        )
+                        if not degraded_mode_active:
+                            degraded_mode_active = True
+                            degraded_mode_grace_logged = False
+                            job_log.warning(
+                                "heartbeat_degraded_mode_entered",
+                                outage_duration_seconds=outage_duration_seconds,
+                                grace_limit_seconds=heartbeat_grace_seconds,
+                                checkpoint_report_age_seconds=checkpoint_report_age_seconds,
+                                checkpoint_health_threshold_seconds=checkpoint_health_threshold_seconds,
+                                consecutive_failures=getattr(snapshot, "consecutive_failures", 0),
+                            )
+                        if checkpoint_healthy and not degraded_mode_grace_logged:
+                            degraded_mode_grace_logged = True
+                            job_log.info(
+                                "heartbeat_degraded_mode_grace_extended_by_checkpoint_health",
+                                outage_duration_seconds=outage_duration_seconds,
+                                grace_limit_seconds=heartbeat_grace_seconds,
+                                checkpoint_report_age_seconds=checkpoint_report_age_seconds,
+                                checkpoint_health_threshold_seconds=checkpoint_health_threshold_seconds,
+                            )
+                        if (
+                            outage_duration_seconds > heartbeat_grace_seconds
+                            and not checkpoint_healthy
+                        ):
+                            job_log.warning(
+                                "heartbeat_degraded_mode_shutdown_triggered",
+                                outage_duration_seconds=outage_duration_seconds,
+                                grace_limit_seconds=heartbeat_grace_seconds,
+                                checkpoint_report_age_seconds=checkpoint_report_age_seconds,
+                                checkpoint_health_threshold_seconds=checkpoint_health_threshold_seconds,
+                            )
+                            execution.request_terminate()
+                            checkpoint_manifest, manifest_uploaded = (
+                                _sync_checkpoint_manifest_cycle(
+                                    context=context,
+                                    logger=job_log,
+                                    job_id=assignment.job_id,
+                                    bundle_root=bundle_root,
+                                    workdir=workdir,
+                                    watch_paths=execution_config.checkpoint_watch_paths,
+                                    manifest=checkpoint_manifest,
+                                )
+                            )
+                            if manifest_uploaded:
+                                checkpoint_cycle_status, checkpoint_cycle_failures = (
+                                    _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                                )
+                                context.gateway.report_checkpoint(
+                                    job_id=assignment.job_id,
+                                    checkpoint_path=checkpoint_manifest_key,
+                                    progress=latest_progress,
+                                    progress_codes=latest_progress_codes,
+                                    checkpoint_cycle_status=checkpoint_cycle_status,
+                                    checkpoint_cycle_failures=checkpoint_cycle_failures,
+                                )
+                                last_checkpoint_report_success_at = time.monotonic()
+                            execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
+                            return
+                    elif degraded_mode_active and snapshot is not None:
+                        degraded_mode_active = False
+                        degraded_mode_grace_logged = False
+                        heartbeat_recovered_age_seconds = (
+                            None
+                            if snapshot.last_success_at is None
+                            else max(0.0, now - snapshot.last_success_at)
+                        )
+                        job_log.info(
+                            "heartbeat_degraded_mode_recovered",
+                            outage_duration_seconds=0.0,
+                            grace_limit_seconds=heartbeat_grace_seconds,
+                            checkpoint_report_age_seconds=(
+                                None
+                                if last_checkpoint_report_success_at is None
+                                else max(0.0, now - last_checkpoint_report_success_at)
+                            ),
+                            heartbeat_recovered_age_seconds=heartbeat_recovered_age_seconds,
+                        )
+
                 if now >= next_checkpoint_poll_time:
                     checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
                         context=context,
@@ -812,6 +922,7 @@ def _run_assigned_job(
                             checkpoint_cycle_status=checkpoint_cycle_status,
                             checkpoint_cycle_failures=checkpoint_cycle_failures,
                         )
+                        last_checkpoint_report_success_at = time.monotonic()
                     if checkpoint_poll_interval_seconds > 0:
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
                     else:
@@ -863,6 +974,7 @@ def _run_assigned_job(
                                 checkpoint_cycle_status=checkpoint_cycle_status,
                                 checkpoint_cycle_failures=checkpoint_cycle_failures,
                             )
+                            last_checkpoint_report_success_at = time.monotonic()
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
 
@@ -901,6 +1013,7 @@ def _run_assigned_job(
                     checkpoint_cycle_status=checkpoint_cycle_status,
                     checkpoint_cycle_failures=checkpoint_cycle_failures,
                 )
+                last_checkpoint_report_success_at = time.monotonic()
 
             result = execution.result()
             if result.status == "completed":
@@ -1016,6 +1129,17 @@ def run_worker(config: WorkerConfig) -> None:
                 sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
                 logger=worker_log,
                 openmm_platforms=openmm_platforms,
+                heartbeat_interval_seconds=runtime_settings.heartbeat_interval_seconds,
+                heartbeat_failure_grace_multiplier=getattr(
+                    runtime_settings,
+                    "heartbeat_failure_grace_multiplier",
+                    15,
+                ),
+                heartbeat_failure_grace_floor_seconds=getattr(
+                    runtime_settings,
+                    "heartbeat_failure_grace_floor_seconds",
+                    900,
+                ),
                 heartbeat_thread=heartbeat_thread,
             )
 

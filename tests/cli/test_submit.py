@@ -80,11 +80,24 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
                 assert worker_json is not None
                 uploaded["worker_config"] = json.loads(worker_json.read().decode("utf-8"))
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(
+            self,
+            *,
+            job_id: uuid.UUID,
+            title: str,
+            b2_key: str,
+            preferred_clusters: list[str],
+            comment: str | None,
+        ):
             assert isinstance(job_id, uuid.UUID)
             assert title == "test-job"
             assert b2_key.startswith("jobs/")
             assert b2_key.endswith("/input/bundle.tar.gz")
+            assert preferred_clusters == []
+            assert comment is None
             created_job.id = job_id
             return created_job
 
@@ -142,8 +155,11 @@ def test_submit_escapes_exception_messages_for_rich_markup(monkeypatch, tmp_path
             _ = (local_archive, b2_key)
             raise RuntimeError("bad markup token [/:] from upstream")
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
-            _ = (title, b2_key)
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(self, **kwargs):
+            _ = kwargs
             raise AssertionError("register_job should not be called after upload failure")
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
@@ -195,7 +211,11 @@ def test_submit_json_missing_checkpoint_glob_emits_json_error_only(
         def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
             _ = (local_archive, b2_key)
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(self, **kwargs):
+            _ = kwargs
             raise AssertionError("register_job should not be reached")
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
@@ -261,8 +281,11 @@ def test_submit_json_upload_failed_emits_json_error_only(monkeypatch, tmp_path: 
             _ = (local_archive, b2_key)
             raise RuntimeError("upload boom")
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
-            _ = (job_id, title, b2_key)
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(self, **kwargs):
+            _ = kwargs
             raise AssertionError("register_job should not be reached")
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
@@ -289,8 +312,11 @@ def test_submit_json_registration_failed_emits_json_error_only(monkeypatch, tmp_
         def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
             _ = (local_archive, b2_key)
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
-            _ = (job_id, title, b2_key)
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(self, **kwargs):
+            _ = kwargs
             raise RuntimeError("register boom")
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FailingSubmitService)
@@ -319,7 +345,11 @@ def test_submit_json_invalid_checkpoint_poll_interval_emits_json_error_only(
         def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
             _ = (local_archive, b2_key)
 
-        def register_job(self, *, job_id: uuid.UUID, title: str, b2_key: str):
+        def known_cluster_names(self) -> set[str]:
+            return set()
+
+        def register_job_with_metadata(self, **kwargs):
+            _ = kwargs
             raise AssertionError("register_job should not be reached")
 
     monkeypatch.setattr(submit_cmd, "SubmitService", FakeSubmitService)
@@ -343,3 +373,22 @@ def test_submit_json_invalid_checkpoint_poll_interval_emits_json_error_only(
     assert result.exit_code == 1
     payload = json.loads(result.stdout)
     assert payload["error"]["code"] == "invalid_checkpoint_poll_interval"
+
+
+def test_normalize_submit_clusters_dedupes_preserving_order() -> None:
+    normalized = submit_cmd.normalize_submit_clusters(
+        [" gilbreth ", "anvil", "gilbreth"],
+        {"gilbreth", "anvil"},
+    )
+    assert normalized == ["gilbreth", "anvil"]
+
+
+def test_normalize_submit_clusters_rejects_unknown() -> None:
+    with pytest.raises(submit_cmd.SubmitCommandError) as exc:
+        submit_cmd.normalize_submit_clusters(["unknown"], {"gilbreth"})
+    assert exc.value.code == "unknown_cluster"
+
+
+def test_normalize_submit_comment_trims_and_normalizes_blank() -> None:
+    assert submit_cmd.normalize_submit_comment("  note  ") == "note"
+    assert submit_cmd.normalize_submit_comment("   \n\t ") is None

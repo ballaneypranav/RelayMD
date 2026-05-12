@@ -57,6 +57,17 @@ async def _assign(
         ).assign_job_for_requesting_worker(requesting_worker_id=worker_id)
 
 
+async def _assign_next(
+    maker: async_sessionmaker[AsyncSession],
+) -> tuple[Job, Worker] | None:
+    async with maker() as session:
+        return await AssignmentService(
+            session,
+            heartbeat_interval_seconds=10,
+            heartbeat_timeout_multiplier=3,
+        ).assign_next_job()
+
+
 @pytest.mark.asyncio
 async def test_concurrent_workers_cannot_claim_same_queued_job(tmp_path: Path) -> None:
     async with _sessionmaker(tmp_path) as maker:
@@ -155,3 +166,53 @@ async def test_concurrent_requests_from_same_worker_claim_only_one_job(tmp_path:
         assert assigned[0].id in job_ids
         assert assigned[0].assigned_worker_id == worker_id
         assert len(queued) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_only_claims_job_matching_pinned_cluster(tmp_path: Path) -> None:
+    async with _sessionmaker(tmp_path) as maker:
+        async with maker() as session:
+            worker = _worker(gpu_model="A100")
+            worker.provider_id = "gilbreth:12345"
+            pinned_job = _job(title="pinned")
+            pinned_job.preferred_clusters_json = '["anvil"]'
+            unpinned_job = _job(title="unpinned")
+            session.add_all([worker, pinned_job, unpinned_job])
+            await session.commit()
+            await session.refresh(worker)
+
+            worker_id = worker.id
+            pinned_job_id = pinned_job.id
+            unpinned_job_id = unpinned_job.id
+
+        claimed = await _assign(maker, worker_id=worker_id)
+        assert claimed is not None
+        assert claimed.id == unpinned_job_id
+
+        async with maker() as session:
+            pinned = await session.get(Job, pinned_job_id)
+            assert pinned is not None
+            assert pinned.status == JobStatus.queued
+
+
+@pytest.mark.asyncio
+async def test_assign_next_job_respects_cluster_pinning_across_workers(tmp_path: Path) -> None:
+    async with _sessionmaker(tmp_path) as maker:
+        async with maker() as session:
+            worker_1 = _worker(gpu_model="A100")
+            worker_1.provider_id = "gilbreth:11111"
+            worker_2 = _worker(gpu_model="A100")
+            worker_2.provider_id = "anvil:22222"
+            pinned_job = _job(title="anvil-pinned")
+            pinned_job.preferred_clusters_json = '["anvil"]'
+            session.add_all([worker_1, worker_2, pinned_job])
+            await session.commit()
+            await session.refresh(worker_2)
+            pinned_job_id = pinned_job.id
+            expected_worker_id = worker_2.id
+
+        assignment = await _assign_next(maker)
+        assert assignment is not None
+        assigned_job, selected_worker = assignment
+        assert assigned_job.id == pinned_job_id
+        assert selected_worker.id == expected_worker_id

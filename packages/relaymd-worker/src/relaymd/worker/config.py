@@ -13,6 +13,8 @@ from relaymd.runtime_defaults import (
     DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS,
     DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS,
     DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
+    DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS,
+    DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER,
     DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
 )
 
@@ -32,6 +34,22 @@ class WorkerRuntimeSettings(BaseSettings):
             "heartbeat_interval_seconds",
             "HEARTBEAT_INTERVAL_SECONDS",
             "RELAYMD_WORKER_HEARTBEAT_INTERVAL_SECONDS",
+        ),
+    )
+    heartbeat_failure_grace_multiplier: int = Field(
+        default=DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER,
+        validation_alias=AliasChoices(
+            "heartbeat_failure_grace_multiplier",
+            "HEARTBEAT_FAILURE_GRACE_MULTIPLIER",
+            "RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER",
+        ),
+    )
+    heartbeat_failure_grace_floor_seconds: int = Field(
+        default=DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS,
+        validation_alias=AliasChoices(
+            "heartbeat_failure_grace_floor_seconds",
+            "HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS",
+            "RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS",
         ),
     )
     checkpoint_poll_interval_seconds: int = Field(
