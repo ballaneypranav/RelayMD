@@ -24,6 +24,7 @@ from relaymd.worker.main import (
     BundleExecutionConfig,
     _build_storage_client,
     _extract_input_bundle,
+    _hydrate_checkpoint_files_from_manifest,
     _load_bundle_execution_config,
     _read_progress,
     _required_openmm_platform,
@@ -355,8 +356,6 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     def download_side_effect(b2_key: str, local_path: Path) -> None:
         if b2_key == "jobs/job-1/input/bundle.tar.gz":
             _write_bundle_tar(local_path)
-        elif b2_key == "jobs/job-1/checkpoints/latest":
-            local_path.write_bytes(b"prior-checkpoint")
         else:
             raise AssertionError(f"Unexpected download key: {b2_key}")
 
@@ -459,7 +458,6 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     run_worker(config)
 
     storage.download_file.assert_any_call("jobs/job-1/input/bundle.tar.gz", ANY)
-    storage.download_file.assert_any_call("jobs/job-1/checkpoints/latest", ANY)
     storage.upload_file.assert_any_call(
         ANY,
         "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/manifest.json",
@@ -1154,6 +1152,222 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
     )
     gateway.complete_job.assert_not_called()
     gateway.fail_job.assert_not_called()
+
+
+def test_hydrate_checkpoint_files_from_manifest_downloads_to_manifest_relative_paths(
+    tmp_path: Path,
+) -> None:
+    bundle_root = tmp_path / "bundle"
+    bundle_root.mkdir()
+    (bundle_root / "r0").mkdir()
+    (bundle_root / "input.txt").write_text("input", encoding="utf-8")
+
+    storage = Mock()
+
+    def _download(remote: str, local: Path) -> None:
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.write_text(remote, encoding="utf-8")
+
+    storage.download_file.side_effect = _download
+    context = Mock(storage=storage)
+    logger = Mock()
+
+    manifest = {
+        "files": {
+            "checkpoint.chk": {"remote_key": "jobs/x/checkpoints/files/checkpoint.chk"},
+            "r0/FOL_APT.out": {"remote_key": "jobs/x/checkpoints/files/r0/FOL_APT.out"},
+        }
+    }
+    _hydrate_checkpoint_files_from_manifest(
+        context=context,
+        logger=logger,
+        job_id=uuid4(),
+        bundle_root=bundle_root,
+        manifest=manifest,
+    )
+
+    assert (bundle_root / "input.txt").read_text(encoding="utf-8") == "input"
+    assert (bundle_root / "checkpoint.chk").read_text(encoding="utf-8").endswith("checkpoint.chk")
+    assert (bundle_root / "r0" / "FOL_APT.out").read_text(encoding="utf-8").endswith("FOL_APT.out")
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "file_entry"),
+    [
+        ("/abs/path.chk", {"remote_key": "k"}),
+        ("../escape.chk", {"remote_key": "k"}),
+        ("valid.chk", {"remote_key": None}),
+        ("valid.chk", {"remote_key": 123}),
+    ],
+)
+def test_hydrate_checkpoint_files_from_manifest_rejects_invalid_entries(
+    tmp_path: Path, relative_path: str, file_entry: dict[str, object]
+) -> None:
+    bundle_root = tmp_path / "bundle"
+    bundle_root.mkdir()
+
+    with pytest.raises(RuntimeError):
+        _hydrate_checkpoint_files_from_manifest(
+            context=Mock(storage=Mock()),
+            logger=Mock(),
+            job_id=uuid4(),
+            bundle_root=bundle_root,
+            manifest={"files": {relative_path: file_entry}},
+        )
+
+
+def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
+        }
+    )
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+    )
+
+    monkeypatch.setattr(
+        "relaymd.worker.main._hydrate_checkpoint_files_from_manifest",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
+        ),
+    )
+    job_execution = Mock()
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", job_execution)
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.start_job.assert_not_called()
+    job_execution.assert_not_called()
+
+
+def test_first_checkpoint_cycle_after_hydration_keeps_manifest_entries(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            self._running = True
+            _ = kwargs
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            self._running = False
+            return 0
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            return None
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
+        ),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_persisted_manifest",
+        lambda **_kwargs: {
+            "files": {
+                "hydrated-only.bin": {
+                    "remote_key": "jobs/x/checkpoints/files/hydrated-only.bin",
+                    "size_bytes": 1,
+                    "mtime_ns": 1,
+                }
+            }
+        },
+    )
+
+    storage = Mock()
+    uploaded_manifests: list[dict[str, object]] = []
+
+    def _download_file(_remote: str, local: Path) -> None:
+        local.write_bytes(b"bundle-data")
+
+    def _upload_file(local: Path, remote: str) -> None:
+        if remote == f"jobs/{assignment.job_id}/checkpoints/manifest.json":
+            uploaded_manifests.append(json.loads(local.read_text(encoding="utf-8")))
+
+    storage.download_file.side_effect = _download_file
+    storage.upload_file.side_effect = _upload_file
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.return_value = False
+    logger = Mock()
+    logger.bind.return_value = Mock()
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    assert uploaded_manifests
+    assert "hydrated-only.bin" in uploaded_manifests[0]["files"]
 
 
 def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_path: Path) -> None:
