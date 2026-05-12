@@ -17,6 +17,7 @@ import pytest
 from relaymd.worker.bootstrap import WorkerConfig
 from relaymd.worker.config import WorkerRuntimeSettings
 from relaymd.worker.context import WorkerContext
+from relaymd.worker.heartbeat import HeartbeatHealthSnapshot, HeartbeatThread
 from relaymd.worker.main import (
     PROGRESS_INVALID_FORMAT,
     PROGRESS_MISSING,
@@ -1247,6 +1248,253 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
     assert execution.request_terminate_calls == 1
     assert execution.wait_calls == 1
     assert execution.kill_calls == 0
+
+
+def test_run_assigned_job_heartbeat_degraded_healthy_checkpoint_keeps_running(
+    monkeypatch,
+) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-healthy/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+            self._poll_calls = 0
+            self._running = True
+            self.terminate_calls = 0
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            self._poll_calls += 1
+            if self._poll_calls < 4:
+                return None
+            self._running = False
+            return 0
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            self.terminate_calls += 1
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    class _FakeHeartbeatThread:
+        def __init__(self) -> None:
+            self._snapshot = HeartbeatHealthSnapshot(
+                consecutive_failures=2,
+                degraded_since=0.0,
+                last_success_at=None,
+            )
+
+        def health_snapshot(self):
+            return self._snapshot
+
+        def set_job_progress(self, **kwargs) -> None:
+            _ = kwargs
+
+    current_time = 0.0
+
+    def _monotonic() -> float:
+        return current_time
+
+    def _wait(*, timeout: float) -> bool:
+        nonlocal current_time
+        current_time += timeout
+        return False
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", _monotonic)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
+            checkpoint_poll_interval_seconds=2,
+        ),
+    )
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.side_effect = _wait
+    logger = Mock()
+    logger.bind.return_value = logger
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+        heartbeat_interval_seconds=1,
+        heartbeat_failure_grace_multiplier=1,
+        heartbeat_failure_grace_floor_seconds=3,
+        heartbeat_thread=cast(HeartbeatThread, _FakeHeartbeatThread()),
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    gateway.complete_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.fail_job.assert_not_called()
+    logger.warning.assert_any_call(
+        "heartbeat_degraded_mode_entered",
+        outage_duration_seconds=0.0,
+        grace_limit_seconds=3.0,
+        checkpoint_report_age_seconds=None,
+        checkpoint_health_threshold_seconds=6.0,
+        consecutive_failures=2,
+    )
+    logger.info.assert_any_call(
+        "heartbeat_degraded_mode_grace_extended_by_checkpoint_health",
+        outage_duration_seconds=2.0,
+        grace_limit_seconds=3.0,
+        checkpoint_report_age_seconds=2.0,
+        checkpoint_health_threshold_seconds=6.0,
+    )
+    shutdown_logs = [
+        args
+        for args, _kwargs in logger.warning.call_args_list
+        if args and args[0] == "heartbeat_degraded_mode_shutdown_triggered"
+    ]
+    assert not shutdown_logs
+
+
+def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
+            "latest_checkpoint_path": None,
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+            self._running = True
+            self.terminate_calls = 0
+            self.wait_calls = 0
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            return None
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            self.terminate_calls += 1
+            self._running = False
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            self.wait_calls += 1
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    class _FakeHeartbeatThread:
+        def health_snapshot(self):
+            return HeartbeatHealthSnapshot(
+                consecutive_failures=5,
+                degraded_since=0.0,
+                last_success_at=None,
+            )
+
+        def set_job_progress(self, **kwargs) -> None:
+            _ = kwargs
+
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", lambda: 5.0)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            progress_file_path="progress.txt",
+            checkpoint_poll_interval_seconds=2,
+        ),
+    )
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.return_value = False
+    logger = Mock()
+    logger.bind.return_value = logger
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+        heartbeat_interval_seconds=1,
+        heartbeat_failure_grace_multiplier=1,
+        heartbeat_failure_grace_floor_seconds=3,
+        heartbeat_thread=cast(HeartbeatThread, _FakeHeartbeatThread()),
+    )
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    gateway.complete_job.assert_not_called()
+    gateway.fail_job.assert_not_called()
+    logger.warning.assert_any_call(
+        "heartbeat_degraded_mode_shutdown_triggered",
+        outage_duration_seconds=5.0,
+        grace_limit_seconds=3.0,
+        checkpoint_report_age_seconds=None,
+        checkpoint_health_threshold_seconds=6.0,
+    )
 
 
 def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:

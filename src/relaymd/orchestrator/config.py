@@ -25,6 +25,8 @@ from relaymd.runtime_defaults import (
     DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS,
     DEFAULT_SLURM_SIGTERM_MARGIN_SECONDS,
     DEFAULT_STALE_WORKER_REAPER_INTERVAL_SECONDS,
+    DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS,
+    DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER,
 )
 from relaymd.settings_sources import relaymd_config_paths, relaymd_settings_sources
 
@@ -133,6 +135,12 @@ class OrchestratorSettings(BaseSettings):
     worker_sigterm_checkpoint_wait_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS
     worker_sigterm_checkpoint_poll_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS
     worker_sigterm_process_wait_seconds: int = DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS
+    worker_heartbeat_failure_grace_multiplier: int = (
+        DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER
+    )
+    worker_heartbeat_failure_grace_floor_seconds: int = (
+        DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS
+    )
     worker_idle_strategy: Literal["immediate_exit", "poll_then_exit"] = "immediate_exit"
     worker_idle_poll_interval_seconds: int = 30
     worker_idle_poll_max_seconds: int = 600

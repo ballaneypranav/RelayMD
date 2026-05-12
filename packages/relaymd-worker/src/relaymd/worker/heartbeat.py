@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import threading
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -34,6 +36,17 @@ def _is_retryable_heartbeat_error(exception: BaseException) -> bool:
     return isinstance(exception, (httpx.NetworkError, httpx.TimeoutException))
 
 
+@dataclass(frozen=True)
+class HeartbeatHealthSnapshot:
+    consecutive_failures: int
+    degraded_since: float | None
+    last_success_at: float | None
+
+    @property
+    def is_degraded(self) -> bool:
+        return self.degraded_since is not None
+
+
 class HeartbeatThread(threading.Thread):
     def __init__(
         self,
@@ -55,6 +68,10 @@ class HeartbeatThread(threading.Thread):
         self._job_id: str | None = None
         self._progress: float | None = None
         self._progress_codes: list[str] = []
+        now = time.monotonic()
+        self._consecutive_failures = 0
+        self._degraded_since: float | None = None
+        self._last_success_at: float | None = now
 
     @staticmethod
     def _should_use_tailscale_userspace_proxy() -> bool:
@@ -84,7 +101,9 @@ class HeartbeatThread(threading.Thread):
             while not self._stop_event.is_set():
                 try:
                     self._send(client)
+                    self._mark_success()
                 except (httpx.HTTPError, api_errors.UnexpectedStatus):
+                    self._mark_failure()
                     LOG.warning(
                         "heartbeat_send_failed",
                         worker_id=str(self._worker_id),
@@ -124,3 +143,23 @@ class HeartbeatThread(threading.Thread):
             self._job_id = str(job_id) if job_id is not None else None
             self._progress = progress
             self._progress_codes = list(progress_codes or [])
+
+    def health_snapshot(self) -> HeartbeatHealthSnapshot:
+        with self._state_lock:
+            return HeartbeatHealthSnapshot(
+                consecutive_failures=self._consecutive_failures,
+                degraded_since=self._degraded_since,
+                last_success_at=self._last_success_at,
+            )
+
+    def _mark_success(self) -> None:
+        with self._state_lock:
+            self._consecutive_failures = 0
+            self._degraded_since = None
+            self._last_success_at = time.monotonic()
+
+    def _mark_failure(self) -> None:
+        with self._state_lock:
+            self._consecutive_failures += 1
+            if self._degraded_since is None:
+                self._degraded_since = time.monotonic()
