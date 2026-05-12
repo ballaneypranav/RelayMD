@@ -42,7 +42,7 @@ async def reap_stale_workers(settings: OrchestratorSettings) -> int:
     stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
 
     async with sessionmaker() as session:
-        service = WorkerLifecycleService(session)
+        service = WorkerLifecycleService(session, settings=settings)
         return await service.reap_stale_workers(stale_cutoff=stale_cutoff)
 
 

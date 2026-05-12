@@ -12,6 +12,7 @@ from pydantic_settings.sources import PydanticBaseSettingsSource
 
 from relaymd.core_secret_management import MissingRequiredSecretsError, OrchestratorSecretManager
 from relaymd.runtime_defaults import (
+    DEFAULT_CF_WORKER_URL,
     DEFAULT_CHECKPOINT_POLL_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
     DEFAULT_HEARTBEAT_TIMEOUT_MULTIPLIER,
@@ -121,6 +122,27 @@ class OrchestratorSettings(BaseSettings):
     api_token: str = Field(
         default="",
         validation_alias=AliasChoices("api_token"),
+    )
+    b2_endpoint_url: str = Field(default="", validation_alias=AliasChoices("b2_endpoint_url"))
+    b2_bucket_name: str = Field(default="", validation_alias=AliasChoices("b2_bucket_name"))
+    b2_access_key_id: str = Field(default="", validation_alias=AliasChoices("b2_access_key_id"))
+    b2_secret_access_key: str = Field(
+        default="", validation_alias=AliasChoices("b2_secret_access_key")
+    )
+    cf_worker_url: str = Field(
+        default=DEFAULT_CF_WORKER_URL,
+        validation_alias=AliasChoices("cf_worker_url", "CF_WORKER_URL"),
+    )
+    cf_bearer_token: str = Field(default="", validation_alias=AliasChoices("cf_bearer_token"))
+    purdue_s3_endpoint: str = Field(default="", validation_alias=AliasChoices("purdue_s3_endpoint"))
+    purdue_s3_bucket_name: str = Field(
+        default="", validation_alias=AliasChoices("purdue_s3_bucket_name")
+    )
+    purdue_s3_access_key: str = Field(
+        default="", validation_alias=AliasChoices("purdue_s3_access_key")
+    )
+    purdue_s3_secret_key: str = Field(
+        default="", validation_alias=AliasChoices("purdue_s3_secret_key")
     )
     heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS
     heartbeat_timeout_multiplier: float = DEFAULT_HEARTBEAT_TIMEOUT_MULTIPLIER

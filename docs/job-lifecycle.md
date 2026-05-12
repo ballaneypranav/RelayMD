@@ -63,13 +63,18 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
 If the worker dies without reporting:
 
 ```
-Orchestrator detects stale heartbeat (`last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`, default `60 × 2 = 120s`)
+Orchestrator detects stale API heartbeat (`last_heartbeat > heartbeat_interval_seconds × heartbeat_timeout_multiplier`, default `60 × 2 = 120s`)
          │
          ▼
-Job re-enters "queued" state with latest_checkpoint_path preserved
+Read storage-backed liveness `jobs/<job_id>/checkpoints/status.json`
+and (for HPC workers) query SLURM allocation state
          │
-         ▼
-Next available worker resumes from that checkpoint
+         ├── `status.json` fresh OR SLURM allocation still alive:
+         │       keep job `running` and keep worker/job assignment
+         │
+         └── provider gone (or no provider and storage status stale):
+                 requeue job with latest_checkpoint_path preserved
+                 next available worker resumes from that checkpoint
 ```
 
 If a queued job has affinity that cannot currently run, status remains `queued`

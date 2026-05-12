@@ -36,6 +36,7 @@ from relaymd.worker.logging import get_logger
 LOG = get_logger(__name__)
 PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
 CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1
+CHECKPOINT_STATUS_SCHEMA_VERSION = 1
 CHECKPOINT_WATCH_FILE_CAP = 250
 PROGRESS_MISSING = "progress_missing"
 PROGRESS_EMPTY = "progress_empty"
@@ -286,6 +287,10 @@ def _checkpoint_manifest_key(job_id: UUID) -> str:
 
 def _checkpoint_file_key(job_id: UUID, relative_path: str) -> str:
     return f"jobs/{job_id}/checkpoints/files/{relative_path}"
+
+
+def _checkpoint_status_key(job_id: UUID) -> str:
+    return f"jobs/{job_id}/checkpoints/status.json"
 
 
 def _parse_bundle_config(path: Path) -> dict[str, Any] | None:
@@ -667,6 +672,69 @@ def _checkpoint_diagnostics_from_manifest(
     return status, failures
 
 
+def _upload_checkpoint_status(
+    *,
+    context: WorkerContext,
+    assignment: ApiJobAssigned,
+    workdir: Path,
+    checkpoint_manifest_key: str,
+    checkpoint_poll_interval_seconds: int,
+    progress: float,
+    progress_codes: list[str],
+    checkpoint_cycle_status: str,
+) -> bool:
+    payload = {
+        "schema_version": CHECKPOINT_STATUS_SCHEMA_VERSION,
+        "job_id": str(assignment.job_id),
+        "worker_id": str(context.worker_id) if context.worker_id is not None else None,
+        "provider_id": context.provider_id,
+        "updated_at": _utc_now_iso(),
+        "checkpoint_manifest_path": checkpoint_manifest_key,
+        "checkpoint_poll_interval_seconds": checkpoint_poll_interval_seconds,
+        "progress": progress,
+        "progress_codes": progress_codes,
+        "checkpoint_cycle_status": checkpoint_cycle_status,
+    }
+    status_path = workdir / "relaymd-checkpoint-status.json"
+    _atomic_write_json(status_path, payload)
+    try:
+        context.storage.upload_file(status_path, _checkpoint_status_key(assignment.job_id))
+    except Exception:
+        context.logger.warning(
+            "checkpoint_status_upload_failed",
+            job_id=str(assignment.job_id),
+        )
+        return False
+    return True
+
+
+def _report_checkpoint_best_effort(
+    *,
+    context: WorkerContext,
+    assignment: ApiJobAssigned,
+    checkpoint_manifest_key: str,
+    progress: float,
+    progress_codes: list[str],
+    checkpoint_cycle_status: str | None,
+    checkpoint_cycle_failures: list[dict[str, str]],
+) -> None:
+    try:
+        context.gateway.report_checkpoint(
+            job_id=assignment.job_id,
+            checkpoint_path=checkpoint_manifest_key,
+            progress=progress,
+            progress_codes=progress_codes,
+            checkpoint_cycle_status=checkpoint_cycle_status,
+            checkpoint_cycle_failures=checkpoint_cycle_failures,
+        )
+    except Exception:
+        context.logger.warning(
+            "checkpoint_report_api_failed_continuing",
+            job_id=str(assignment.job_id),
+            checkpoint_path=checkpoint_manifest_key,
+        )
+
+
 def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConfig) -> Path | None:
     if execution_config.fatal_log_path is None:
         return None
@@ -758,7 +826,7 @@ def _run_assigned_job(
             checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
             checkpoint_health_threshold_seconds = max(0.0, checkpoint_poll_interval_seconds * 3.0)
             next_checkpoint_poll_time = time.monotonic()
-            last_checkpoint_report_success_at: float | None = None
+            last_checkpoint_storage_success_at: float | None = None
             latest_progress = 0.0
             latest_progress_codes = [PROGRESS_MISSING]
             while True:
@@ -788,14 +856,27 @@ def _run_assigned_job(
                         checkpoint_cycle_status, checkpoint_cycle_failures = (
                             _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
                         )
-                        context.gateway.report_checkpoint(
-                            job_id=assignment.job_id,
-                            checkpoint_path=checkpoint_manifest_key,
+                        status_uploaded = _upload_checkpoint_status(
+                            context=context,
+                            assignment=assignment,
+                            workdir=workdir,
+                            checkpoint_manifest_key=checkpoint_manifest_key,
+                            checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                        )
+                        _report_checkpoint_best_effort(
+                            context=context,
+                            assignment=assignment,
+                            checkpoint_manifest_key=checkpoint_manifest_key,
                             progress=latest_progress,
                             progress_codes=latest_progress_codes,
                             checkpoint_cycle_status=checkpoint_cycle_status,
                             checkpoint_cycle_failures=checkpoint_cycle_failures,
                         )
+                        if status_uploaded:
+                            last_checkpoint_storage_success_at = time.monotonic()
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                     return
 
@@ -815,8 +896,8 @@ def _run_assigned_job(
                         outage_duration_seconds = max(0.0, now - float(degraded_since))
                         checkpoint_report_age_seconds = (
                             None
-                            if last_checkpoint_report_success_at is None
-                            else max(0.0, now - last_checkpoint_report_success_at)
+                            if last_checkpoint_storage_success_at is None
+                            else max(0.0, now - last_checkpoint_storage_success_at)
                         )
                         checkpoint_healthy = (
                             checkpoint_report_age_seconds is not None
@@ -869,15 +950,27 @@ def _run_assigned_job(
                                 checkpoint_cycle_status, checkpoint_cycle_failures = (
                                     _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
                                 )
-                                context.gateway.report_checkpoint(
-                                    job_id=assignment.job_id,
-                                    checkpoint_path=checkpoint_manifest_key,
+                                status_uploaded = _upload_checkpoint_status(
+                                    context=context,
+                                    assignment=assignment,
+                                    workdir=workdir,
+                                    checkpoint_manifest_key=checkpoint_manifest_key,
+                                    checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                                    progress=latest_progress,
+                                    progress_codes=latest_progress_codes,
+                                    checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                                )
+                                _report_checkpoint_best_effort(
+                                    context=context,
+                                    assignment=assignment,
+                                    checkpoint_manifest_key=checkpoint_manifest_key,
                                     progress=latest_progress,
                                     progress_codes=latest_progress_codes,
                                     checkpoint_cycle_status=checkpoint_cycle_status,
                                     checkpoint_cycle_failures=checkpoint_cycle_failures,
                                 )
-                                last_checkpoint_report_success_at = time.monotonic()
+                                if status_uploaded:
+                                    last_checkpoint_storage_success_at = time.monotonic()
                             execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
                             return
                     elif degraded_mode_active and snapshot is not None:
@@ -894,8 +987,8 @@ def _run_assigned_job(
                             grace_limit_seconds=heartbeat_grace_seconds,
                             checkpoint_report_age_seconds=(
                                 None
-                                if last_checkpoint_report_success_at is None
-                                else max(0.0, now - last_checkpoint_report_success_at)
+                                if last_checkpoint_storage_success_at is None
+                                else max(0.0, now - last_checkpoint_storage_success_at)
                             ),
                             heartbeat_recovered_age_seconds=heartbeat_recovered_age_seconds,
                         )
@@ -914,15 +1007,27 @@ def _run_assigned_job(
                         checkpoint_cycle_status, checkpoint_cycle_failures = (
                             _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
                         )
-                        context.gateway.report_checkpoint(
-                            job_id=assignment.job_id,
-                            checkpoint_path=checkpoint_manifest_key,
+                        status_uploaded = _upload_checkpoint_status(
+                            context=context,
+                            assignment=assignment,
+                            workdir=workdir,
+                            checkpoint_manifest_key=checkpoint_manifest_key,
+                            checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                        )
+                        _report_checkpoint_best_effort(
+                            context=context,
+                            assignment=assignment,
+                            checkpoint_manifest_key=checkpoint_manifest_key,
                             progress=latest_progress,
                             progress_codes=latest_progress_codes,
                             checkpoint_cycle_status=checkpoint_cycle_status,
                             checkpoint_cycle_failures=checkpoint_cycle_failures,
                         )
-                        last_checkpoint_report_success_at = time.monotonic()
+                        if status_uploaded:
+                            last_checkpoint_storage_success_at = time.monotonic()
                     if checkpoint_poll_interval_seconds > 0:
                         next_checkpoint_poll_time = now + checkpoint_poll_interval_seconds
                     else:
@@ -966,15 +1071,27 @@ def _run_assigned_job(
                             checkpoint_cycle_status, checkpoint_cycle_failures = (
                                 _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
                             )
-                            context.gateway.report_checkpoint(
-                                job_id=assignment.job_id,
-                                checkpoint_path=checkpoint_manifest_key,
+                            status_uploaded = _upload_checkpoint_status(
+                                context=context,
+                                assignment=assignment,
+                                workdir=workdir,
+                                checkpoint_manifest_key=checkpoint_manifest_key,
+                                checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                                progress=latest_progress,
+                                progress_codes=latest_progress_codes,
+                                checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                            )
+                            _report_checkpoint_best_effort(
+                                context=context,
+                                assignment=assignment,
+                                checkpoint_manifest_key=checkpoint_manifest_key,
                                 progress=latest_progress,
                                 progress_codes=latest_progress_codes,
                                 checkpoint_cycle_status=checkpoint_cycle_status,
                                 checkpoint_cycle_failures=checkpoint_cycle_failures,
                             )
-                            last_checkpoint_report_success_at = time.monotonic()
+                            if status_uploaded:
+                                last_checkpoint_storage_success_at = time.monotonic()
                         context.gateway.fail_job(job_id=assignment.job_id)
                         return
 
@@ -1005,15 +1122,25 @@ def _run_assigned_job(
                 checkpoint_cycle_status, checkpoint_cycle_failures = (
                     _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
                 )
-                context.gateway.report_checkpoint(
-                    job_id=assignment.job_id,
-                    checkpoint_path=checkpoint_manifest_key,
+                _upload_checkpoint_status(
+                    context=context,
+                    assignment=assignment,
+                    workdir=workdir,
+                    checkpoint_manifest_key=checkpoint_manifest_key,
+                    checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                    progress=latest_progress,
+                    progress_codes=latest_progress_codes,
+                    checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                )
+                _report_checkpoint_best_effort(
+                    context=context,
+                    assignment=assignment,
+                    checkpoint_manifest_key=checkpoint_manifest_key,
                     progress=latest_progress,
                     progress_codes=latest_progress_codes,
                     checkpoint_cycle_status=checkpoint_cycle_status,
                     checkpoint_cycle_failures=checkpoint_cycle_failures,
                 )
-                last_checkpoint_report_success_at = time.monotonic()
 
             result = execution.result()
             if result.status == "completed":
@@ -1128,6 +1255,8 @@ def run_worker(config: WorkerConfig) -> None:
                 sigterm_checkpoint_poll_seconds=runtime_settings.sigterm_checkpoint_poll_seconds,
                 sigterm_process_wait_seconds=runtime_settings.sigterm_process_wait_seconds,
                 logger=worker_log,
+                worker_id=worker_id,
+                provider_id=provider_id,
                 openmm_platforms=openmm_platforms,
                 heartbeat_interval_seconds=runtime_settings.heartbeat_interval_seconds,
                 heartbeat_failure_grace_multiplier=getattr(
