@@ -92,9 +92,9 @@ class WorkerLifecycleService:
         if not isinstance(updated_at_raw, str) or not updated_at_raw:
             return False
         try:
-            updated_at = datetime.fromisoformat(
-                updated_at_raw.replace("Z", "+00:00")
-            ).astimezone(UTC)
+            updated_at = datetime.fromisoformat(updated_at_raw.replace("Z", "+00:00")).astimezone(
+                UTC
+            )
         except ValueError:
             return False
 
