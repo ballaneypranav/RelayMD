@@ -460,9 +460,13 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
 
     storage.download_file.assert_any_call("jobs/job-1/input/bundle.tar.gz", ANY)
     storage.download_file.assert_any_call("jobs/job-1/checkpoints/latest", ANY)
-    storage.upload_file.assert_called_with(
+    storage.upload_file.assert_any_call(
         ANY,
         "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/manifest.json",
+    )
+    storage.upload_file.assert_any_call(
+        ANY,
+        "jobs/6bd48968-0ecf-4205-9f59-091ec74e7f79/checkpoints/status.json",
     )
 
     assert api_calls[0:3] == [
@@ -936,9 +940,10 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
     execution = execution_holder["execution"]
     assert execution.request_terminate_calls == 1
     assert execution.kill_calls == 1
-    assert storage.upload_file.call_count == 2
-    assert cast(Path, uploaded["path"]).name == "relaymd-checkpoint-manifest.json"
-    assert uploaded["key"] == f"jobs/{assignment.job_id}/checkpoints/manifest.json"
+    assert storage.upload_file.call_count == 4
+    uploaded_keys = [call_args.args[1] for call_args in storage.upload_file.call_args_list]
+    assert f"jobs/{assignment.job_id}/checkpoints/manifest.json" in uploaded_keys
+    assert f"jobs/{assignment.job_id}/checkpoints/status.json" in uploaded_keys
     report_calls = [
         method_call for method_call in gateway.method_calls if method_call[0] == "report_checkpoint"
     ]

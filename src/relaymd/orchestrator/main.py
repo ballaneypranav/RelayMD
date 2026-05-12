@@ -322,7 +322,7 @@ async def app_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         has_provisioning = False
 
     tailscaled_proc: asyncio.subprocess.Process | None = None
-    if has_provisioning:
+    if has_provisioning and app.state.start_background_tasks:
         tailscaled_proc = await _ensure_tailscale_running(settings)
 
     init_engine(settings.database_url)

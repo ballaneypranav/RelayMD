@@ -107,6 +107,31 @@ def test_secret_yaml_values_are_ignored(monkeypatch, tmp_path) -> None:
     assert settings.tailscale_auth_key == ""
 
 
+def test_storage_secret_yaml_values_are_ignored(monkeypatch, tmp_path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "b2_access_key_id: yaml-b2-access",
+                "b2_secret_access_key: yaml-b2-secret",
+                "cf_bearer_token: yaml-cf-token",
+                "purdue_s3_access_key: yaml-purdue-access",
+                "purdue_s3_secret_key: yaml-purdue-secret",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RELAYMD_CONFIG", str(config_path))
+
+    settings = OrchestratorSettings(axiom_token="test")
+
+    assert settings.b2_access_key_id == ""
+    assert settings.b2_secret_access_key == ""
+    assert settings.cf_bearer_token == ""
+    assert settings.purdue_s3_access_key == ""
+    assert settings.purdue_s3_secret_key == ""
+
+
 def test_unregistered_env_and_yaml_alias_keys_are_ignored(monkeypatch, tmp_path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("RELAYMD_API_TOKEN: yaml-token\n", encoding="utf-8")

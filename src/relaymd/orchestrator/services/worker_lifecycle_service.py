@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 import structlog
@@ -9,6 +11,11 @@ from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import Job, JobStatus, Worker, WorkerRegister, WorkerStatus
+from relaymd.orchestrator.config import OrchestratorSettings
+from relaymd.orchestrator.services.slurm_provisioning_service import (
+    _query_live_slurm_job_statuses,
+)
+from relaymd.storage import StorageClient
 
 from .job_history_service import append_job_event
 from .job_transitions import JobTransitionService
@@ -21,9 +28,85 @@ def _utcnow_naive() -> datetime:
 
 
 class WorkerLifecycleService:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self, session: AsyncSession, *, settings: OrchestratorSettings | None = None
+    ) -> None:
         self._session = session
         self._transitions = JobTransitionService()
+        self._settings = settings
+
+    def _build_storage_client(self) -> StorageClient | None:
+        if self._settings is None:
+            return None
+        if self._settings.storage_provider == "purdue":
+            if not (
+                self._settings.purdue_s3_endpoint
+                and self._settings.purdue_s3_bucket_name
+                and self._settings.purdue_s3_access_key
+                and self._settings.purdue_s3_secret_key
+            ):
+                return None
+            return StorageClient(
+                storage_provider="purdue",
+                b2_endpoint_url=self._settings.purdue_s3_endpoint,
+                b2_bucket_name=self._settings.purdue_s3_bucket_name,
+                b2_access_key_id=self._settings.purdue_s3_access_key,
+                b2_secret_access_key=self._settings.purdue_s3_secret_key,
+                cf_worker_url=self._settings.cf_worker_url,
+                cf_bearer_token="",
+                s3_region_name="us-east-1",
+            )
+
+        if not (
+            self._settings.b2_endpoint_url
+            and self._settings.b2_bucket_name
+            and self._settings.b2_access_key_id
+            and self._settings.b2_secret_access_key
+        ):
+            return None
+        return StorageClient(
+            storage_provider="cloudflare_backblaze",
+            b2_endpoint_url=self._settings.b2_endpoint_url,
+            b2_bucket_name=self._settings.b2_bucket_name,
+            b2_access_key_id=self._settings.b2_access_key_id,
+            b2_secret_access_key=self._settings.b2_secret_access_key,
+            cf_worker_url=self._settings.cf_worker_url,
+            cf_bearer_token=self._settings.cf_bearer_token,
+            s3_region_name=None,
+        )
+
+    async def _status_is_fresh(self, *, storage: StorageClient | None, job_id: UUID) -> bool:
+        if storage is None or self._settings is None:
+            return False
+        key = f"jobs/{job_id}/checkpoints/status.json"
+        with tempfile.TemporaryDirectory(prefix=f"relaymd-status-{job_id}-") as tmpdir:
+            path = Path(tmpdir) / "status.json"
+            try:
+                storage.download_file(key, path)
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                return False
+        if not isinstance(payload, dict):
+            return False
+        updated_at_raw = payload.get("updated_at")
+        if not isinstance(updated_at_raw, str) or not updated_at_raw:
+            return False
+        try:
+            updated_at = datetime.fromisoformat(updated_at_raw.replace("Z", "+00:00")).astimezone(
+                UTC
+            )
+        except ValueError:
+            return False
+
+        interval_raw = payload.get("checkpoint_poll_interval_seconds")
+        interval_seconds = (
+            int(interval_raw)
+            if isinstance(interval_raw, int) and interval_raw > 0
+            else self._settings.worker_checkpoint_poll_interval_seconds
+        )
+        stale_threshold_seconds = interval_seconds * 6
+        age_seconds = (datetime.now(UTC) - updated_at).total_seconds()
+        return age_seconds <= stale_threshold_seconds
 
     async def register_worker(self, payload: WorkerRegister) -> Worker:
         """Register a worker, activating an existing queued placeholder if one matches.
@@ -150,6 +233,7 @@ class WorkerLifecycleService:
         return True
 
     async def reap_stale_workers(self, *, stale_cutoff: datetime) -> int:
+        storage = self._build_storage_client()
         stale_workers = (
             await self._session.exec(
                 select(Worker).where(
@@ -164,6 +248,117 @@ class WorkerLifecycleService:
             await self._session.commit()
             return 0
 
+        stale_worker_ids = [worker.id for worker in stale_workers]
+        jobs_by_worker: dict[UUID, list[Job]] = {}
+        jobs_to_evaluate = (
+            await self._session.exec(
+                select(Job).where(
+                    col(Job.assigned_worker_id).in_(stale_worker_ids),
+                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
+                )
+            )
+        ).all()
+        for job in jobs_to_evaluate:
+            if job.assigned_worker_id is None:
+                continue
+            jobs_by_worker.setdefault(job.assigned_worker_id, []).append(job)
+
+        now = _utcnow_naive()
+        slurm_clusters = {
+            cluster.name: cluster
+            for cluster in (self._settings.slurm_cluster_configs if self._settings else [])
+        }
+        provider_check_interval_seconds = 120
+        if self._settings is not None:
+            provider_check_interval_seconds = int(
+                self._settings.heartbeat_interval_seconds
+                * self._settings.heartbeat_timeout_multiplier
+            )
+
+        workers_to_delete: list[Worker] = []
+        for worker in stale_workers:
+            assigned_jobs = jobs_by_worker.get(worker.id, [])
+            status_fresh = False
+            if assigned_jobs:
+                status_fresh = await self._status_is_fresh(
+                    storage=storage,
+                    job_id=assigned_jobs[0].id,
+                )
+
+            provider_alive = False
+            if worker.platform.value == "hpc" and worker.provider_id and ":" in worker.provider_id:
+                cluster_name, raw_job_id = worker.provider_id.split(":", 1)
+                cluster = slurm_clusters.get(cluster_name)
+                should_query = (
+                    worker.provider_last_checked_at is None
+                    or (now - worker.provider_last_checked_at).total_seconds()
+                    >= provider_check_interval_seconds
+                )
+                if cluster is not None and should_query:
+                    statuses = await _query_live_slurm_job_statuses(cluster, [raw_job_id])
+                    if statuses is None:
+                        # SLURM query can fail transiently; do not treat unknown as dead.
+                        provider_alive = True
+                    else:
+                        status = statuses.get(raw_job_id)
+                        if status is None:
+                            worker.provider_state = "gone"
+                            worker.provider_state_raw = "GONE"
+                            worker.provider_reason = None
+                        else:
+                            worker.provider_state = status.provider_state
+                            worker.provider_state_raw = status.provider_state_raw
+                            worker.provider_reason = status.provider_reason
+                            provider_alive = status.provider_state in {
+                                "pending",
+                                "running",
+                                "completing",
+                            }
+                        worker.provider_last_checked_at = now
+                        self._session.add(worker)
+                elif worker.provider_state in {"pending", "running", "completing"}:
+                    provider_alive = True
+
+            if status_fresh or provider_alive:
+                if not status_fresh and provider_alive and assigned_jobs:
+                    logger.warning(
+                        "stale_worker_progress_status_stale_provider_running",
+                        worker_id=str(worker.id),
+                        provider_id=worker.provider_id,
+                        job_id=str(assigned_jobs[0].id),
+                    )
+                continue
+
+            for job in assigned_jobs:
+                previous_status = job.status
+                previous_worker_id = job.assigned_worker_id
+                self._transitions.requeue_in_place(job)
+                self._session.add(job)
+                await append_job_event(
+                    self._session,
+                    job_id=job.id,
+                    event_type="worker_deregistered_requeue",
+                    worker_id=previous_worker_id,
+                    status_from=previous_status,
+                    status_to=JobStatus.queued,
+                )
+            workers_to_delete.append(worker)
+
+        for worker in workers_to_delete:
+            await self._session.delete(worker)
+
+        await self._session.commit()
+        return len(workers_to_delete)
+
+    async def _legacy_reap_stale_workers(self, *, stale_cutoff: datetime) -> int:
+        stale_workers = (
+            await self._session.exec(
+                select(Worker).where(
+                    col(Worker.last_heartbeat) < stale_cutoff,
+                    Worker.status == WorkerStatus.active,
+                )
+            )
+        ).all()
         stale_worker_ids = [worker.id for worker in stale_workers]
         jobs_to_requeue = (
             await self._session.exec(

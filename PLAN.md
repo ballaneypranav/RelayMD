@@ -1,168 +1,176 @@
-### Worker Heartbeat Degraded-Mode Resilience Plan
+# Storage-Backed Worker Liveness Plan
 
-### Summary
-Implement degraded-mode handling in the worker so transient heartbeat failures do not immediately cascade into job termination when checkpoint reporting remains healthy. The worker will continue job execution through temporary control-plane outages, and only trigger shutdown after a bounded grace policy is exceeded.
+## Problem
 
-### Implementation Changes
-- Add a heartbeat degradation state machine in worker runtime:
-  - Enter degraded mode on consecutive heartbeat send failures.
-  - Track `degraded_since`, `last_heartbeat_success_at`, and `last_checkpoint_report_success_at`.
-  - Exit degraded mode immediately when heartbeat succeeds again.
-- Add configurable grace policy (adaptive):
-  - New settings using multiplier + floor:
-    - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER`
-    - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS`
-  - Effective grace window: `max(multiplier * heartbeat_interval_seconds, floor_seconds)`.
-- Add checkpoint-health gating during degraded mode:
-  - Define “checkpoint healthy” as last successful checkpoint *report* within `3x checkpoint_poll_interval_seconds`.
-  - While within grace and checkpoint is healthy, keep job running and keep retrying heartbeat as normal.
-- Add bounded shutdown decision:
-  - If heartbeat remains failed beyond grace window and checkpoint is no longer healthy, trigger existing graceful cleanup path (`SIGTERM`, final checkpoint attempt, existing termination behavior).
-  - Preserve current behavior for non-transient fatal errors (e.g., explicit job/process failure paths).
-- Improve observability:
-  - Add structured logs/events for:
-    - `heartbeat_degraded_mode_entered`
-    - `heartbeat_degraded_mode_recovered`
-    - `heartbeat_degraded_mode_grace_extended_by_checkpoint_health`
-    - `heartbeat_degraded_mode_shutdown_triggered`
-  - Include elapsed outage duration, grace limit, and last checkpoint report age in log fields.
+RelayMD currently treats a missing worker heartbeat as evidence that the worker
+has died. That is too aggressive for long-running HPC jobs. If Tailscale is
+disrupted, the orchestrator host goes offline, or the worker cannot reach the
+orchestrator API, the worker may still be running and producing useful
+checkpoints. Requeueing in that case wastes compute and can create duplicate
+execution.
 
-### Public Interfaces / Config Additions
-- Worker runtime config additions (env aliases + defaults in worker settings):
-  - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER` (default chosen below)
-  - `RELAYMD_WORKER_HEARTBEAT_FAILURE_GRACE_FLOOR_SECONDS` (default chosen below)
-- No orchestrator API contract changes.
+The design goal is to separate control-plane reachability from job progress
+liveness.
 
-### Test Plan
-- Unit tests for degraded-mode policy:
-  - Heartbeat fails transiently, checkpoint reports remain fresh -> worker does not terminate.
-  - Heartbeat recovers before grace expiry -> degraded mode clears, no shutdown.
-  - Heartbeat fails past grace and checkpoint freshness expires -> graceful termination path invoked.
-- Timing-policy tests:
-  - Verify `max(multiplier * heartbeat_interval, floor)` calculation.
-  - Verify checkpoint freshness threshold of `3x checkpoint_poll_interval`.
-- Regression tests:
-  - Existing cleanup behavior still occurs when shutdown is triggered.
-  - Existing success path unchanged when heartbeats are healthy.
-- Logging assertions:
-  - Degraded-mode lifecycle events emitted with expected fields.
+## Current Defaults To Reuse
 
-### Assumptions and Defaults
-- Default grace config:
-  - `heartbeat_failure_grace_multiplier = 15`
-  - `heartbeat_failure_grace_floor_seconds = 900`
-  - With default 60s heartbeat interval, this yields a 15-minute grace.
-- “Checkpoint healthy” is based on successful checkpoint **report RPC** recency (not local file writes).
-- Post-grace action remains graceful termination (not indefinite run, not immediate hard fail).
+Use existing settings where possible instead of introducing new knobs.
 
----
+- API heartbeat interval: `heartbeat_interval_seconds = 60`
+- API heartbeat stale threshold: `heartbeat_interval_seconds * heartbeat_timeout_multiplier`
+- API heartbeat stale threshold with defaults: `60 * 2.0 = 120s`
+- Stale worker reaper interval: `stale_worker_reaper_interval_seconds = 60`
+- SLURM scheduler interval: `sbatch_submission_interval_seconds = 60`
+- Worker checkpoint poll interval: `worker_checkpoint_poll_interval_seconds = 300`
+- Proposed storage status stale threshold: `worker_checkpoint_poll_interval_seconds * 6`
+- Proposed storage status stale threshold with defaults: `300 * 6 = 1800s`
 
-### Cluster-Affinity Submit + Queue Blocking Visibility Plan
+If a bundle overrides `checkpoint_poll_interval_seconds`, the worker should
+write the resolved interval into `status.json`. The orchestrator should prefer
+that value for the stale calculation and fall back to
+`settings.worker_checkpoint_poll_interval_seconds`.
 
-### Summary
-Add per-job cluster affinity to `relaymd submit`, allowing one job to target one or more named SLURM cluster configs (for example `anvil-gpu`, `gilbreth-a30`) with strict no-fallback behavior. Add optional job comments captured at submit time and shown in frontend job details. Preserve lifecycle status semantics (`queued` stays `queued`) and expose explicit queue blocking reasons when affinity cannot currently run.
+## Design
 
-### Agreed Product Decisions
-- Affinity policy:
-  - No fallback to non-pinned clusters.
-  - Affinity accepts exact cluster `name` values only.
-  - Multiple clusters allowed via repeatable `--cluster`.
-  - Duplicate `--cluster` values are deduplicated preserving first-seen order.
-- Validation:
-  - CLI validates names using existing settings resolution precedence.
-  - Orchestrator re-validates as source of truth.
-  - Fail fast in CLI (before bundle archive/upload) if provided names are unknown.
-- Comment support:
-  - New optional `--comment`.
-  - Trimmed string with max length `2000`.
-  - Whitespace-only normalizes to `null`.
-  - Immutable after submit for now.
-- Queue blocking semantics:
-  - Persist job lifecycle status as `queued`; do not add a new lifecycle enum for blocked.
-  - Add machine-readable reason field: `queue_blocked_reason`.
-  - Initial codes:
-    - `no_enabled_pinned_clusters`
-    - `no_matching_pinned_clusters`
-  - Frontend maps codes to operator-friendly labels.
-- Requeue:
-  - Requeue clone copies affinity and comment.
-- Frontend display:
-  - Jobs list keeps primary status `queued`; show blocked indicator as secondary text/badge.
-  - Add `Blocked` overview metric tile.
-  - Selected job detail panel shows `Pinned Clusters` and `Comment`.
+Workers should continue writing checkpoint artifacts to storage as they do
+today, but each successful checkpoint/status cycle should also update a small
+structured status object:
 
-### Backend / Data Model Changes
-- `packages/relaymd-core` (`Job`, `JobCreate`, `JobRead`):
-  - Add nullable persisted fields:
-    - `preferred_clusters_json: str | None`
-    - `comment: str | None`
-    - `queue_blocked_reason: str | None`
-  - Expose parsed `preferred_clusters: list[str]` in `JobRead`.
-  - Keep backward compatibility for existing rows (`null` defaults).
-- Orchestrator jobs router (`src/relaymd/orchestrator/routers/jobs_operator.py`):
-  - Accept `preferred_clusters` and `comment` in create payload.
-  - Validate against configured cluster names.
-  - Normalize/trim/dedupe affinity list and comment.
-  - Populate persisted fields and return in `JobRead`.
-- Scheduler/provisioning paths:
-  - Filter job eligibility and cluster submission decisions using job affinity.
-  - Compute and persist `queue_blocked_reason` for queued jobs when affinity is unschedulable due to:
-    - all pinned clusters disabled
-    - pinned clusters no longer present in runtime config
-  - Clear `queue_blocked_reason` when job becomes schedulable or transitions out of queued.
-- Requeue path:
-  - Copy `preferred_clusters_json`, `comment`, and reset `queue_blocked_reason` based on current eligibility.
+```text
+jobs/<job_id>/checkpoints/status.json
+```
 
-### CLI Changes (`relaymd submit`)
-- Add repeatable option:
-  - `--cluster <name>` (multiple allowed).
-- Add optional:
-  - `--comment <text>`.
-- Submit flow updates:
-  - Resolve known cluster names from loaded settings.
-  - Validate/dedupe clusters before archive/upload.
-  - Normalize comment (`trim`, length check, empty -> `null`).
-  - Send new fields in `JobCreate`.
-- JSON output updates:
-  - Include `preferred_clusters`, `comment`, and `queue_blocked_reason` in `--json` output.
+The current manifest remains the source of checkpoint file inventory:
 
-### Frontend Changes
-- Types/API:
-  - Extend `JobRead` type with `preferred_clusters`, `comment`, `queue_blocked_reason`.
-- Jobs view:
-  - Show secondary blocked indicator when `status=queued` + `queue_blocked_reason` set.
-  - Add readable mapping for blocking reason codes.
-  - In selected job details, render:
-    - `Pinned Clusters` (comma-separated or `-`)
-    - `Comment` (preserve line breaks; show `-` when null)
-- Metrics:
-  - Add `Blocked` tile counting queued jobs with non-null `queue_blocked_reason`.
+```text
+jobs/<job_id>/checkpoints/manifest.json
+```
 
-### Migration / Compatibility
-- Add DB migration for new nullable columns on `job` table:
-  - `preferred_clusters_json`
-  - `comment`
-  - `queue_blocked_reason`
-- Backfill existing rows as `NULL`.
-- Keep existing status enum unchanged to avoid transition/contract breakage.
+`status.json` is the storage-backed liveness signal. The orchestrator should use
+it as evidence that useful job progress may still be happening even when the
+worker API heartbeat is stale.
 
-### Test Plan
-- CLI tests:
-  - Accept multiple `--cluster`; dedupe duplicates.
-  - Unknown clusters fail fast pre-upload with useful error.
-  - `--comment` trim, max length enforcement, whitespace normalization.
-- Orchestrator API tests:
-  - Create job with valid affinity/comment persists and round-trips via `JobRead`.
-  - Invalid affinity names rejected by API.
-  - Create job with no affinity remains current behavior.
-- Scheduling/provisioning tests:
-  - Jobs only considered by pinned clusters.
-  - `queue_blocked_reason=no_enabled_pinned_clusters` when all pinned disabled.
-  - `queue_blocked_reason=no_matching_pinned_clusters` when config drift removes pinned names.
-  - Reason clears when constraints become satisfiable.
-- Requeue tests:
-  - Requeued job copies affinity/comment and has correct initial blocking reason.
-- Frontend tests:
-  - Blocked indicator rendering and code-to-label mapping.
-  - Details panel shows pinned clusters/comment.
-  - `Blocked` metric count updates correctly.
+Example shape:
+
+```json
+{
+  "schema_version": 1,
+  "job_id": "00000000-0000-0000-0000-000000000000",
+  "worker_id": "00000000-0000-0000-0000-000000000000",
+  "provider_id": "gilbreth:123456",
+  "updated_at": "2026-05-12T00:00:00Z",
+  "checkpoint_manifest_path": "jobs/<job_id>/checkpoints/manifest.json",
+  "checkpoint_poll_interval_seconds": 300,
+  "progress": 0.42,
+  "progress_codes": ["running"],
+  "checkpoint_cycle_status": "success"
+}
+```
+
+## Orchestrator Behavior
+
+When the worker API heartbeat is fresh, behavior remains unchanged.
+
+When the worker API heartbeat is stale:
+
+1. Do not immediately delete the worker row.
+2. Do not immediately requeue assigned or running jobs.
+3. If the worker is an HPC worker with a SLURM `provider_id`, query SLURM status
+   using the existing `squeue` path.
+4. Throttle SLURM status queries using existing `provider_last_checked_at`; a
+   reasonable target is the existing API stale threshold, currently about
+   `120s`.
+5. If SLURM reports the allocation is still running, keep the job status as
+   `running` and keep the job assigned to that worker.
+6. Read `status.json` from storage when deciding whether job progress is fresh,
+   stale, or unknown.
+7. If `status.json` is fresh, treat the job as still alive even if API heartbeat
+   is stale.
+8. If `status.json` is stale but SLURM still reports running, keep the job
+   assigned and mark it as progress-stale/unreachable for operator visibility.
+9. Requeue only when scheduler/provider state says the allocation is gone,
+   failed, cancelled, completed, or otherwise no longer running.
+
+For non-HPC workers, provider state may not be available. In that case,
+`status.json` freshness should protect against premature requeue while it is
+fresh. Once both API heartbeat and storage status are stale, the existing requeue
+behavior can apply.
+
+## SLURM Running But Status Stale
+
+If the API heartbeat is missing, `status.json` has not updated for 30 minutes,
+and SLURM reports the allocation is still running:
+
+- Keep the job in `running`.
+- Keep the worker/job assigned.
+- Mark the condition visibly as progress stale.
+- Do not start another worker for the job.
+- Do not run `scancel` automatically by default.
+
+Automatic `scancel` is risky because the worker may still be computing useful
+state that has not reached storage. The default policy should prefer avoiding
+duplicate execution and accidental kills. Add an explicit operator action for
+canceling the SLURM allocation, and consider a future opt-in auto-cancel policy
+with a much longer timeout.
+
+## Worker Behavior
+
+When the worker cannot reach the orchestrator API:
+
+1. Continue running the assigned job.
+2. Continue writing checkpoint files and `manifest.json`.
+3. Continue writing `status.json` to storage.
+4. Do not terminate the job solely because the orchestrator API heartbeat is
+   degraded, provided storage checkpoint/status updates are succeeding.
+5. When API connectivity recovers, resume normal heartbeat and checkpoint
+   reporting.
+
+The existing worker degraded-mode shutdown should be adjusted so storage-backed
+status/checkpoint success keeps the worker alive during orchestrator API outages.
+
+## Data Model Notes
+
+The current `Worker` model already has provider status fields:
+
+- `provider_state`
+- `provider_state_raw`
+- `provider_reason`
+- `provider_last_checked_at`
+
+Reuse these for SLURM status checks instead of adding a parallel polling model.
+
+We may need new worker/job visibility states later, but the first pass can avoid
+schema churn by logging and surfacing derived status in API responses. If a
+persistent operator-facing state is needed, add it deliberately after the
+reaper behavior is correct.
+
+## Implementation Steps
+
+1. Add worker-side `status.json` generation next to checkpoint manifest upload.
+2. Include resolved checkpoint poll interval, worker ID, provider ID, progress,
+   progress codes, and checkpoint cycle status in `status.json`.
+3. Add storage read support in the orchestrator path that evaluates stale
+   workers.
+4. Rework stale worker reaping so active HPC workers with running SLURM
+   allocations are not deleted and their jobs are not requeued.
+5. Reuse the existing SLURM `squeue` helper for active workers, not only queued
+   placeholders.
+6. Update provider status fields from the SLURM query.
+7. Requeue assigned/running jobs only when the provider allocation is no longer
+   alive, or when no provider exists and both API heartbeat and `status.json`
+   are stale.
+8. Adjust worker degraded-mode shutdown so successful storage status/checkpoint
+   writes extend the grace period during API outages.
+9. Add tests for stale heartbeat with fresh `status.json`, stale heartbeat with
+   stale `status.json` but running SLURM job, and stale heartbeat with exited
+   SLURM job.
+10. Document the failure semantics and operator action for manual cancellation.
+
+## Non-Goals
+
+- Do not make the orchestrator scan arbitrary checkpoint files to infer liveness.
+- Do not requeue a SLURM-backed job while SLURM reports the allocation is
+  running.
+- Do not automatically `scancel` progress-stale allocations by default.
+- Do not replace the existing checkpoint manifest contract.
+

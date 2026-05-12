@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import UUID
 
 from relaymd.runtime_defaults import (
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -24,6 +25,8 @@ class WorkerContext:
     sigterm_checkpoint_poll_seconds: int
     sigterm_process_wait_seconds: int
     logger: Any
+    worker_id: UUID | None = None
+    provider_id: str | None = None
     openmm_platforms: list[str] = field(default_factory=list)
     heartbeat_interval_seconds: int = DEFAULT_HEARTBEAT_INTERVAL_SECONDS
     heartbeat_failure_grace_multiplier: int = DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER
