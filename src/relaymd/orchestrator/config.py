@@ -331,8 +331,13 @@ class OrchestratorSettings(BaseSettings):
             config_paths=cls.config_paths(),
             yaml_env_only_fields={
                 "api_token",
+                "b2_access_key_id",
+                "b2_secret_access_key",
+                "cf_bearer_token",
                 "axiom_token",
                 "infisical_token",
+                "purdue_s3_access_key",
+                "purdue_s3_secret_key",
                 "tailscale_auth_key",
             },
         )
