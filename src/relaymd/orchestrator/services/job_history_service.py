@@ -34,7 +34,11 @@ JobEventType = Literal[
 
 TERMINAL_EVENT_TYPES = {"completed", "failed", "cancelled"}
 SEGMENT_CLOSING_EVENT_TYPES = TERMINAL_EVENT_TYPES | {"worker_deregistered_requeue"}
-_job_event_seq_locks: dict[UUID, asyncio.Lock] = {}
+# Use a fixed-size striped lock pool to avoid unbounded per-job lock growth.
+_JOB_EVENT_SEQ_LOCK_STRIPES = 256
+_job_event_seq_locks: tuple[asyncio.Lock, ...] = tuple(
+    asyncio.Lock() for _ in range(_JOB_EVENT_SEQ_LOCK_STRIPES)
+)
 
 
 async def append_job_event(
@@ -49,7 +53,7 @@ async def append_job_event(
     occurred_at: datetime | None = None,
 ) -> JobEvent:
     seq_stmt = select(func.max(JobEvent.event_seq)).where(JobEvent.job_id == job_id)
-    lock = _job_event_seq_locks.setdefault(job_id, asyncio.Lock())
+    lock = _job_event_seq_locks[hash(job_id) % _JOB_EVENT_SEQ_LOCK_STRIPES]
     async with lock:
         with session.no_autoflush:
             max_seq = (await session.exec(seq_stmt)).one_or_none()
