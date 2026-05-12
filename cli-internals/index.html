@@ -1269,10 +1269,11 @@
 <p>The <code>submit</code> command is the most complex component of the CLI. It does:</p>
 <ol>
 <li>Validates the input directory and ensures <code>relaymd-worker.json</code> or <code>.toml</code> exists (or writes it when <code>--command</code> is provided).</li>
+<li>Resolves configured SLURM cluster names from settings, validates repeatable <code>--cluster</code> values, dedupes them preserving first-seen order, and normalizes <code>--comment</code> (trim, blank→null, max 2000 chars).</li>
 <li>Generates one canonical <code>UUIDv4</code> for the job.</li>
 <li>Streams the input directory into a <code>/tmp</code> gzip tarball using <code>tarfile</code>.</li>
 <li>Uploads the tarball directly to B2 via <code>StorageClient</code> at <code>jobs/{job_id}/input/bundle.tar.gz</code>.</li>
-<li>Registers the job with the orchestrator via <code>POST /jobs</code> with the same <code>id={job_id}</code>.</li>
+<li>Registers the job with the orchestrator via <code>POST /jobs</code> with the same <code>id={job_id}</code>, plus optional <code>preferred_clusters</code> and <code>comment</code>.</li>
 </ol>
 <p>Because the upload goes directly to B2, there is no file upload proxying through the orchestrator. The CLI just tells the orchestrator where the file is.</p>
 <p>JSON mode (<code>--json</code>) is supported for automation-facing commands. In JSON mode, stdout is reserved for JSON payloads.</p>

@@ -1140,8 +1140,19 @@
 <p>The orchestrator schedules a 60-second sbatch submission job. Each cycle runs as two phases:</p>
 <ol>
 <li><strong>Dead-placeholder reap</strong>: all pending placeholder workers are checked against <code>squeue</code>. Any whose SLURM job is no longer alive (failed or cancelled before the worker started) are deleted, freeing up the <code>max_pending_jobs</code> slot.</li>
-<li><strong>New submission</strong>: for each configured cluster, if there are queued jobs and no active/pending HPC workers for that cluster, a new SLURM job is rendered and submitted. The returned job ID is stored in the DB as a placeholder worker record (<code>slurm_job_id = "&lt;cluster&gt;:&lt;id&gt;"</code>) to prevent duplicate submissions during the SLURM pending window.</li>
+<li><strong>New submission</strong>: for each configured cluster, if there are affinity-compatible queued jobs and no active/pending HPC workers for that cluster, a new SLURM job is rendered and submitted. The returned job ID is stored in the DB as a placeholder worker record (<code>provider_id = "&lt;cluster&gt;:&lt;id&gt;"</code>) to prevent duplicate submissions during the SLURM pending window.</li>
 </ol>
+<p>Per-job cluster affinity:
+- Jobs may include <code>preferred_clusters</code> (exact cluster <code>name</code> values).
+- No fallback: pinned jobs are considered only for listed clusters.
+- Unpinned jobs are eligible for any cluster.
+- Assignment also enforces affinity when workers poll for work.</p>
+<p>Queue blocking visibility:
+- Job lifecycle status remains <code>queued</code> (no new enum).
+- When a pinned job cannot currently run, <code>queue_blocked_reason</code> is populated:
+  - <code>no_enabled_pinned_clusters</code>
+  - <code>no_matching_pinned_clusters</code>
+- The reason is cleared when the job becomes schedulable or leaves queued state.</p>
 <p>When the SLURM job starts, the worker registers itself with the orchestrator and includes <code>$SLURM_JOB_ID</code> in the registration payload. The orchestrator uses this to locate and atomically delete the placeholder row, so only the real worker row remains visible in the UI.</p>
 <hr />
 <h2 id="target-hpc-clusters">Target HPC Clusters</h2>
