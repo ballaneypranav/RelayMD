@@ -133,13 +133,14 @@ class WorkerLifecycleService:
         ).all()
         for job in jobs:
             previous_status = job.status
+            previous_worker_id = job.assigned_worker_id
             self._transitions.requeue_in_place(job)
             self._session.add(job)
             await append_job_event(
                 self._session,
                 job_id=job.id,
                 event_type="worker_deregistered_requeue",
-                worker_id=worker_id,
+                worker_id=previous_worker_id,
                 status_from=previous_status,
                 status_to=JobStatus.queued,
             )
@@ -174,13 +175,14 @@ class WorkerLifecycleService:
         ).all()
         for job in jobs_to_requeue:
             previous_status = job.status
+            previous_worker_id = job.assigned_worker_id
             self._transitions.requeue_in_place(job)
             self._session.add(job)
             await append_job_event(
                 self._session,
                 job_id=job.id,
                 event_type="worker_deregistered_requeue",
-                worker_id=job.assigned_worker_id,
+                worker_id=previous_worker_id,
                 status_from=previous_status,
                 status_to=JobStatus.queued,
             )
@@ -206,13 +208,14 @@ class WorkerLifecycleService:
         for job in assigned_jobs:
             if job.assigned_worker_id not in worker_ids:
                 previous_status = job.status
+                previous_worker_id = job.assigned_worker_id
                 self._transitions.requeue_in_place(job)
                 self._session.add(job)
                 await append_job_event(
                     self._session,
                     job_id=job.id,
                     event_type="worker_deregistered_requeue",
-                    worker_id=job.assigned_worker_id,
+                    worker_id=previous_worker_id,
                     status_from=previous_status,
                     status_to=JobStatus.queued,
                 )

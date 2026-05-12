@@ -256,7 +256,13 @@ export function JobsView({
               </div>
               <div>
                 <dt>History Source</dt>
-                <dd>{selectedJobHistory?.derived ? "Derived fallback" : "Persisted events"}</dd>
+                <dd>
+                  {!selectedJobHistory
+                    ? "Unavailable"
+                    : selectedJobHistory.derived
+                      ? "Derived fallback"
+                      : "Persisted events"}
+                </dd>
               </div>
               <div>
                 <dt>Checkpoint Age</dt>

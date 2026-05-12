@@ -224,6 +224,7 @@ async def cancel_job(
     transitions = JobTransitionService()
     try:
         previous_status = job.status
+        cancelled_worker_id = job.assigned_worker_id
         transitions.cancel_job(job)
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
@@ -233,7 +234,7 @@ async def cancel_job(
         session,
         job_id=job.id,
         event_type="cancelled",
-        worker_id=job.assigned_worker_id,
+        worker_id=cancelled_worker_id,
         status_from=previous_status,
         status_to=JobStatus.cancelled,
     )

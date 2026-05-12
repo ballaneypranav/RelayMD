@@ -140,6 +140,15 @@ async def report_checkpoint(
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    event_payload: dict[str, object] = {"checkpoint_path": payload.checkpoint_path}
+    for field_name in (
+        "progress",
+        "progress_codes",
+        "checkpoint_cycle_status",
+        "checkpoint_cycle_failures",
+    ):
+        if field_name in payload.model_fields_set:
+            event_payload[field_name] = getattr(payload, field_name)
     await append_job_event(
         session,
         job_id=job.id,
@@ -147,13 +156,7 @@ async def report_checkpoint(
         worker_id=job.assigned_worker_id,
         status_from=job.status,
         status_to=job.status,
-        payload={
-            "checkpoint_path": payload.checkpoint_path,
-            "progress": payload.progress,
-            "progress_codes": payload.progress_codes,
-            "checkpoint_cycle_status": payload.checkpoint_cycle_status,
-            "checkpoint_cycle_failures": payload.checkpoint_cycle_failures,
-        },
+        payload=event_payload,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

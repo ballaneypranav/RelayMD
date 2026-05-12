@@ -66,7 +66,7 @@ class CheckpointReport(SQLModel):
 
 class JobEvent(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    job_id: uuid.UUID
+    job_id: uuid.UUID = Field(foreign_key="job.id")
     occurred_at: datetime = Field(default_factory=utcnow_naive)
     event_seq: int
     event_type: str

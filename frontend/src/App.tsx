@@ -137,6 +137,7 @@ export function App() {
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
   const [saveClusterEditsInFlight, setSaveClusterEditsInFlight] = useState(false);
   const [selectedJobHistory, setSelectedJobHistory] = useState<JobHistoryRead | null>(null);
+  const historyRequestSeqRef = useRef(0);
 
   const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
     useDashboardData(config);
@@ -205,12 +206,25 @@ export function App() {
 
   useEffect(() => {
     if (!config || !selectedJobId) {
+      historyRequestSeqRef.current += 1;
       setSelectedJobHistory(null);
       return;
     }
+    const requestSeq = historyRequestSeqRef.current + 1;
+    historyRequestSeqRef.current = requestSeq;
     void fetchJobHistory(config.api_base_url, selectedJobId)
-      .then(setSelectedJobHistory)
-      .catch(() => setSelectedJobHistory(null));
+      .then((history) => {
+        if (historyRequestSeqRef.current !== requestSeq) {
+          return;
+        }
+        setSelectedJobHistory(history);
+      })
+      .catch(() => {
+        if (historyRequestSeqRef.current !== requestSeq) {
+          return;
+        }
+        setSelectedJobHistory(null);
+      });
   }, [config, selectedJobId, jobs]);
 
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {

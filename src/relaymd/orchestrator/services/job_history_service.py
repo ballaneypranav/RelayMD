@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -32,6 +33,8 @@ JobEventType = Literal[
 ]
 
 TERMINAL_EVENT_TYPES = {"completed", "failed", "cancelled"}
+SEGMENT_CLOSING_EVENT_TYPES = TERMINAL_EVENT_TYPES | {"worker_deregistered_requeue"}
+_job_event_seq_locks: dict[UUID, asyncio.Lock] = {}
 
 
 async def append_job_event(
@@ -46,20 +49,22 @@ async def append_job_event(
     occurred_at: datetime | None = None,
 ) -> JobEvent:
     seq_stmt = select(func.max(JobEvent.event_seq)).where(JobEvent.job_id == job_id)
-    with session.no_autoflush:
-        max_seq = (await session.exec(seq_stmt)).one_or_none()
-    event = JobEvent(
-        job_id=job_id,
-        event_seq=(int(max_seq) + 1) if max_seq is not None else 1,
-        event_type=event_type,
-        worker_id=worker_id,
-        status_from=status_from,
-        status_to=status_to,
-        payload_json=json.dumps(payload) if payload is not None else None,
-        occurred_at=(occurred_at or datetime.now(UTC).replace(tzinfo=None)),
-    )
-    session.add(event)
-    return event
+    lock = _job_event_seq_locks.setdefault(job_id, asyncio.Lock())
+    async with lock:
+        with session.no_autoflush:
+            max_seq = (await session.exec(seq_stmt)).one_or_none()
+        event = JobEvent(
+            job_id=job_id,
+            event_seq=(int(max_seq) + 1) if max_seq is not None else 1,
+            event_type=event_type,
+            worker_id=worker_id,
+            status_from=status_from,
+            status_to=status_to,
+            payload_json=json.dumps(payload) if payload is not None else None,
+            occurred_at=(occurred_at or datetime.now(UTC).replace(tzinfo=None)),
+        )
+        session.add(event)
+        return event
 
 
 async def load_job_history_events(
@@ -165,6 +170,7 @@ def build_worker_runtime(
     segments: list[JobWorkerSegmentRead] = []
     current_worker: UUID | None = None
     segment_start: datetime | None = None
+    segment_from_running = False
 
     for event in events:
         if event.event_type in {"assigned", "running"}:
@@ -184,11 +190,24 @@ def build_worker_runtime(
                         open=False,
                     )
                 )
+                current_worker = None
                 segment_start = None
-            if segment_start is None:
+                segment_from_running = False
+
+            if event.event_type == "running":
+                if current_worker == worker_id and segment_start is not None:
+                    if not segment_from_running:
+                        segment_start = event.occurred_at
+                    segment_from_running = True
+                else:
+                    current_worker = worker_id
+                    segment_start = event.occurred_at
+                    segment_from_running = True
+            elif segment_start is None:
                 current_worker = worker_id
                 segment_start = event.occurred_at
-        elif event.event_type in TERMINAL_EVENT_TYPES:
+                segment_from_running = False
+        elif event.event_type in SEGMENT_CLOSING_EVENT_TYPES:
             if current_worker is not None and segment_start is not None:
                 duration = max(0.0, (event.occurred_at - segment_start).total_seconds())
                 segments.append(
@@ -202,6 +221,7 @@ def build_worker_runtime(
                 )
             current_worker = None
             segment_start = None
+            segment_from_running = False
 
     if current_worker is not None and segment_start is not None:
         duration = max(0.0, (now - segment_start).total_seconds())
