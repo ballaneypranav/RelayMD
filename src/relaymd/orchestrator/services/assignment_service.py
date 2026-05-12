@@ -240,14 +240,15 @@ class AssignmentService:
                 )
                 if job_id is None:
                     break
-                queued_jobs = [job for job in queued_jobs if job.id != job_id]
                 claimed_job = await self._claim_queued_job(job_id=job_id, worker_id=worker.id)
                 if claimed_job is not None:
+                    queued_jobs = [job for job in queued_jobs if job.id != job_id]
                     queued_job = claimed_job
                     selected_worker = worker
                     break
                 if await self._is_worker_busy(worker.id):
                     break
+                queued_jobs = [job for job in queued_jobs if job.id != job_id]
             if queued_job is not None:
                 break
 

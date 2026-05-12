@@ -216,3 +216,4 @@ async def test_assign_next_job_respects_cluster_pinning_across_workers(tmp_path:
         assigned_job, selected_worker = assignment
         assert assigned_job.id == pinned_job_id
         assert selected_worker.id == expected_worker_id
+
