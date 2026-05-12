@@ -3,11 +3,10 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
+from alembic import context
 from relaymd.models import Job, Worker
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
-
-from alembic import context
 
 config = context.config
 
@@ -16,12 +15,12 @@ if config.config_file_name is not None:
 
 
 def _get_database_url() -> str:
-    database_url = os.getenv("DATABASE_URL")
+    # When called programmatically from db.py, the URL is set on the config object
+    # directly. Fall back to DATABASE_URL env var for CLI usage.
+    database_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     if not database_url:
-        raise RuntimeError("DATABASE_URL is required for Alembic migrations")
-    if "+aiosqlite" in database_url:
-        return database_url.replace("+aiosqlite", "")
-    return database_url
+        raise RuntimeError("DATABASE_URL env var or sqlalchemy.url config option is required")
+    return database_url.replace("+aiosqlite", "")
 
 
 # Ensure SQLModel metadata includes all mapped tables used by the orchestrator.

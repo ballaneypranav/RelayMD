@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
-from sqlalchemy import inspect, text
-from sqlalchemy.engine import Connection
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
@@ -13,6 +14,9 @@ from relaymd.models import ClusterProvisioningState, Job, JobEvent, Worker
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
+_database_url: str | None = None
+
+_ALEMBIC_DIR = Path(__file__).parent.parent / "alembic"
 
 
 def _connect_args_for_url(database_url: str) -> dict[str, bool]:
@@ -22,7 +26,7 @@ def _connect_args_for_url(database_url: str) -> dict[str, bool]:
 
 
 def init_engine(database_url: str) -> None:
-    global _engine, _sessionmaker
+    global _engine, _sessionmaker, _database_url
 
     engine_kwargs: dict[str, object] = {
         "connect_args": _connect_args_for_url(database_url),
@@ -33,6 +37,7 @@ def init_engine(database_url: str) -> None:
 
     _engine = create_async_engine(database_url, **engine_kwargs)
     _sessionmaker = async_sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
+    _database_url = database_url
 
     # Ensure SQLModel metadata includes all mapped tables used by the orchestrator.
     _ = (Job, JobEvent, Worker, ClusterProvisioningState)
@@ -57,90 +62,29 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def create_db_and_tables() -> None:
-    engine = get_engine()
-    async with engine.begin() as connection:
-        await connection.run_sync(SQLModel.metadata.create_all)
-    async with engine.begin() as connection:
-        await connection.run_sync(_ensure_job_lifecycle_columns)
-    async with engine.begin() as connection:
-        await connection.run_sync(_ensure_job_event_indexes)
-
-
-def _ensure_job_lifecycle_columns(connection: Connection) -> None:
-    if connection.dialect.name == "sqlite":
-        table_exists = connection.exec_driver_sql(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'job'"
-        ).first()
-        if table_exists is None:
-            return
-        existing_columns = {
-            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(job)").all()
-        }
+    if _database_url is None:
+        raise RuntimeError("Database engine has not been initialized")
+    if ":memory:" in _database_url:
+        # Alembic can't migrate in-memory SQLite (each connection is a separate DB).
+        engine = get_engine()
+        async with engine.begin() as connection:
+            await connection.run_sync(SQLModel.metadata.create_all)
     else:
-        inspector = inspect(connection)
-        if "job" not in inspector.get_table_names():
-            return
-        existing_columns = {column["name"] for column in inspector.get_columns("job")}
-
-    missing_columns = {
-        "assigned_at": "DATETIME",
-        "started_at": "DATETIME",
-        "status_changed_at": "DATETIME",
-        "progress": "FLOAT",
-        "progress_codes_json": "TEXT",
-        "checkpoint_cycle_status": "TEXT",
-        "checkpoint_cycle_failures_json": "TEXT",
-    }.items()
-    for column_name, column_type in missing_columns:
-        if column_name not in existing_columns:
-            connection.execute(text(f"ALTER TABLE job ADD COLUMN {column_name} {column_type}"))
-
-    connection.execute(
-        text("UPDATE job SET status_changed_at = updated_at WHERE status_changed_at IS NULL")
-    )
-    connection.execute(
-        text(
-            "UPDATE job SET assigned_at = updated_at "
-            "WHERE assigned_at IS NULL AND status IN ('assigned', 'running')"
-        )
-    )
+        _run_migrations(_database_url)
 
 
-def _ensure_job_event_indexes(connection: Connection) -> None:
-    if connection.dialect.name == "sqlite":
-        table_exists = connection.exec_driver_sql(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'jobevent'"
-        ).first()
-        if table_exists is None:
-            return
-        connection.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_jobevent_job_id ON jobevent (job_id)"
-        )
-        connection.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_jobevent_occurred_at ON jobevent (occurred_at)"
-        )
-        connection.exec_driver_sql(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)"
-        )
-        return
-
-    inspector = inspect(connection)
-    if "jobevent" not in inspector.get_table_names():
-        return
-    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobevent_job_id ON jobevent (job_id)"))
-    connection.execute(
-        text("CREATE INDEX IF NOT EXISTS ix_jobevent_occurred_at ON jobevent (occurred_at)")
-    )
-    connection.execute(
-        text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_jobevent_job_seq ON jobevent (job_id, event_seq)"
-        )
-    )
+def _run_migrations(database_url: str) -> None:
+    sync_url = database_url.replace("+aiosqlite", "")
+    cfg = Config()
+    cfg.set_main_option("script_location", str(_ALEMBIC_DIR))
+    cfg.set_main_option("sqlalchemy.url", sync_url)
+    command.upgrade(cfg, "head")
 
 
 async def dispose_engine() -> None:
-    global _engine, _sessionmaker
+    global _engine, _sessionmaker, _database_url
     if _engine is not None:
         await _engine.dispose()
     _engine = None
     _sessionmaker = None
+    _database_url = None
