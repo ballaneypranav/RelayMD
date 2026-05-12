@@ -778,6 +778,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#heartbeat-degraded-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heartbeat Degraded Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#runtime-seams" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1314,6 +1325,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#heartbeat-degraded-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Heartbeat Degraded Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#runtime-seams" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1440,6 +1462,33 @@ Per-job bundle config can override this default using <code>checkpoint_poll_inte
 <p><code>pynvml</code> (NVIDIA Python bindings for NVML). Used at startup to detect GPU count, model name, and VRAM. Falls back gracefully if no GPU is present (for local testing).</p>
 <h3 id="heartbeat-thread">Heartbeat Thread</h3>
 <p>A <code>threading.Thread</code> (daemon=True). The main loop is synchronous (it blocks on a subprocess). The heartbeat runs in a separate OS thread. A <code>threading.Event</code> stops it cleanly when the main loop exits.</p>
+<h3 id="heartbeat-degraded-mode">Heartbeat Degraded Mode</h3>
+<p>If heartbeats to the orchestrator fail, the worker enters degraded mode and keeps the payload running while checkpoint health remains good.</p>
+<p>Shutdown is triggered only when both conditions are true:</p>
+<ul>
+<li><code>outage_duration_seconds &gt; heartbeat_grace_seconds</code></li>
+<li>checkpoint reporting is unhealthy (<code>checkpoint_report_age_seconds &gt; checkpoint_health_threshold_seconds</code>)</li>
+</ul>
+<p>Formulas:</p>
+<ul>
+<li><code>heartbeat_grace_seconds = max(heartbeat_failure_grace_multiplier * heartbeat_interval_seconds, heartbeat_failure_grace_floor_seconds)</code></li>
+<li><code>checkpoint_health_threshold_seconds = 3 * checkpoint_poll_interval_seconds</code></li>
+</ul>
+<p>Default behavior with stock settings:</p>
+<ul>
+<li><code>heartbeat_interval_seconds = 60</code></li>
+<li><code>heartbeat_failure_grace_multiplier = 15</code></li>
+<li><code>heartbeat_failure_grace_floor_seconds = 900</code></li>
+<li>effective grace = <code>max(15*60, 900) = 900</code> seconds (15 minutes)</li>
+<li>default <code>checkpoint_poll_interval_seconds = 300</code>, so checkpoint health threshold is <code>900</code> seconds</li>
+</ul>
+<p>Operational events emitted by the worker:</p>
+<ul>
+<li><code>heartbeat_degraded_mode_entered</code></li>
+<li><code>heartbeat_degraded_mode_grace_extended_by_checkpoint_health</code></li>
+<li><code>heartbeat_degraded_mode_recovered</code></li>
+<li><code>heartbeat_degraded_mode_shutdown_triggered</code></li>
+</ul>
 <h3 id="runtime-seams">Runtime Seams</h3>
 <p>Worker control flow is implemented as one procedural loop with explicit seams:
 - <code>OrchestratorGateway</code> for API transport and conflict normalization
