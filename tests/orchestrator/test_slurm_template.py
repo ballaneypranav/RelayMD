@@ -100,6 +100,31 @@ def test_job_template_renders_registry_backed_image() -> None:
     assert "apptainer pull" in rendered
 
 
+def test_job_template_prepulls_oras_image() -> None:
+    rendered = _render_template(
+        {
+            "cluster_name": "anvil",
+            "partition": "ai",
+            "account": "proj-999",
+            "gpu_type": "a100",
+            "gpu_count": 1,
+            "apptainer_image": "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234",
+            "infisical_token": "client-id:client-secret",
+        }
+    )
+
+    assert (
+        '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]'
+        in rendered
+    )
+    assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
+    assert "flock -x 200" in rendered
+    assert 'export APPTAINER_CACHEDIR="${_APPTAINER_CACHEDIR}"' in rendered
+    assert 'export SINGULARITY_CACHEDIR="${APPTAINER_CACHEDIR}"' in rendered
+    assert 'apptainer pull "${_SIF_TMP}" "${_APPTAINER_IMAGE}"' in rendered
+    assert 'apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc' in rendered
+
+
 def test_job_template_uses_cluster_specific_sif_cache_dir() -> None:
     rendered = _render_template(
         {
