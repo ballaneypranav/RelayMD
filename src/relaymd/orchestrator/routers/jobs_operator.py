@@ -122,7 +122,9 @@ def _job_to_read(job: Job) -> JobRead:
         try:
             parsed_clusters = json.loads(job.preferred_clusters_json)
             if isinstance(parsed_clusters, list):
-                preferred_clusters = [str(item) for item in parsed_clusters if str(item).strip()]
+                preferred_clusters = [
+                    name for item in parsed_clusters if (name := str(item).strip())
+                ]
         except Exception:
             preferred_clusters = []
 
@@ -362,7 +364,7 @@ async def requeue_job(
         try:
             parsed = json.loads(requeued_job.preferred_clusters_json)
             if isinstance(parsed, list):
-                preferred_clusters = [str(item) for item in parsed if str(item).strip()]
+                preferred_clusters = [name for item in parsed if (name := str(item).strip())]
         except Exception:
             preferred_clusters = []
     enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(

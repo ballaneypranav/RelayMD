@@ -312,6 +312,36 @@ async def test_create_job_rejects_unknown_affinity_cluster() -> None:
 
 
 @pytest.mark.asyncio
+async def test_requeue_trims_preferred_clusters_for_blocked_reason() -> None:
+    headers = {"X-API-Token": "test-token"}
+    async with app_client(make_slurm_settings()) as (_app, client):
+        create_response = await client.post(
+            "/jobs",
+            headers=headers,
+            json={
+                "title": "trim-requeue",
+                "input_bundle_path": "jobs/trim/input/bundle.tar.gz",
+            },
+        )
+        assert create_response.status_code == 200
+        job_id = create_response.json()["id"]
+
+        async with get_sessionmaker()() as session:
+            job = await session.get(Job, UUID(job_id))
+            assert job is not None
+            job.status = JobStatus.failed
+            job.preferred_clusters_json = '[" gilbreth "]'
+            session.add(job)
+            await session.commit()
+
+        requeue_response = await client.post(f"/jobs/{job_id}/requeue", headers=headers)
+        assert requeue_response.status_code == 200
+        payload = requeue_response.json()
+        assert payload["preferred_clusters"] == ["gilbreth"]
+        assert payload["queue_blocked_reason"] is None
+
+
+@pytest.mark.asyncio
 async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
     headers = {"X-API-Token": "test-token"}
     old = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=60)

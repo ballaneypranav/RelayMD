@@ -1432,7 +1432,10 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
         ],
     )
 
-    async def fake_submit_cluster_if_needed(self, *, cluster: ClusterConfig) -> bool:
+    async def fake_submit_cluster_if_needed(
+        self, *, cluster: ClusterConfig, queued_jobs: list[Job]
+    ) -> bool:
+        assert queued_jobs
         now = datetime.now(UTC).replace(tzinfo=None)
         if cluster.name == "gilbreth":
             self._session.add(
