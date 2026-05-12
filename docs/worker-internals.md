@@ -81,6 +81,35 @@ No Python SDK — the binary is included in the container image. Userspace netwo
 
 A `threading.Thread` (daemon=True). The main loop is synchronous (it blocks on a subprocess). The heartbeat runs in a separate OS thread. A `threading.Event` stops it cleanly when the main loop exits.
 
+### Heartbeat Degraded Mode
+
+If heartbeats to the orchestrator fail, the worker enters degraded mode and keeps the payload running while checkpoint health remains good.
+
+Shutdown is triggered only when both conditions are true:
+
+- `outage_duration_seconds > heartbeat_grace_seconds`
+- checkpoint reporting is unhealthy (`checkpoint_report_age_seconds > checkpoint_health_threshold_seconds`)
+
+Formulas:
+
+- `heartbeat_grace_seconds = max(heartbeat_failure_grace_multiplier * heartbeat_interval_seconds, heartbeat_failure_grace_floor_seconds)`
+- `checkpoint_health_threshold_seconds = 3 * checkpoint_poll_interval_seconds`
+
+Default behavior with stock settings:
+
+- `heartbeat_interval_seconds = 60`
+- `heartbeat_failure_grace_multiplier = 15`
+- `heartbeat_failure_grace_floor_seconds = 900`
+- effective grace = `max(15*60, 900) = 900` seconds (15 minutes)
+- default `checkpoint_poll_interval_seconds = 300`, so checkpoint health threshold is `900` seconds
+
+Operational events emitted by the worker:
+
+- `heartbeat_degraded_mode_entered`
+- `heartbeat_degraded_mode_grace_extended_by_checkpoint_health`
+- `heartbeat_degraded_mode_recovered`
+- `heartbeat_degraded_mode_shutdown_triggered`
+
 ### Runtime Seams
 
 Worker control flow is implemented as one procedural loop with explicit seams:

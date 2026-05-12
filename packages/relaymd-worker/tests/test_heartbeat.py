@@ -83,6 +83,22 @@ def test_heartbeat_http_failure_logs_warning_and_continues(monkeypatch) -> None:
 
     assert warning.call_count == 2
     assert send.call_count == 6
+    warning.assert_has_calls(
+        [
+            call(
+                "heartbeat_send_failed",
+                worker_id=str(thread._worker_id),  # noqa: SLF001
+                error_type="ReadTimeout",
+                error="heartbeat failed",
+            ),
+            call(
+                "heartbeat_send_failed",
+                worker_id=str(thread._worker_id),  # noqa: SLF001
+                error_type="ReadTimeout",
+                error="heartbeat failed",
+            ),
+        ]
+    )
 
 
 def test_heartbeat_retries_on_transient_failure_then_succeeds(monkeypatch) -> None:
@@ -133,6 +149,12 @@ def test_heartbeat_unexpected_status_logs_warning_and_continues(monkeypatch) -> 
     thread.run()
 
     assert warning.call_count == 2
+    for warning_call in warning.call_args_list:
+        args, kwargs = warning_call
+        assert args == ("heartbeat_send_failed",)
+        assert kwargs["worker_id"] == str(thread._worker_id)  # noqa: SLF001
+        assert kwargs["error_type"] == "UnexpectedStatus"
+        assert kwargs["error"].startswith("Unexpected status code: 500")
 
 
 def test_heartbeat_stops_when_stop_event_is_set(monkeypatch) -> None:
