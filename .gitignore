@@ -31,6 +31,7 @@ env/
 !.env.orchestrator.example
 !.env.worker.example
 env*
+!src/relaymd/alembic/env.py
 
 # Local databases
 relaymd.db
