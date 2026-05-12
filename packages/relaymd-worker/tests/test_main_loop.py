@@ -1367,7 +1367,8 @@ def test_first_checkpoint_cycle_after_hydration_keeps_manifest_entries(monkeypat
     _run_assigned_job(context=context, assignment=assignment)
 
     assert uploaded_manifests
-    assert "hydrated-only.bin" in uploaded_manifests[0]["files"]
+    files = cast(dict[str, object], uploaded_manifests[0]["files"])
+    assert "hydrated-only.bin" in files
 
 
 def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_path: Path) -> None:
