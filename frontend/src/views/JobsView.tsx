@@ -230,6 +230,11 @@ function JobsToolbar({
   const bulkCancelEnabled = hasSelection && selectedJobs.every(canCancel);
   const bulkRequeueEnabled = hasSelection && selectedJobs.every(canRequeue);
 
+  const exportRows = context.table
+    .getFilteredRowModel()
+    .rows.map((row) => row.original)
+    .map(({ job, latest_checkpoint, runtime, ...rest }) => rest);
+
   return (
     <>
       <button
@@ -255,16 +260,16 @@ function JobsToolbar({
         <div className="table-menu-panel">
           <button
             className="secondary"
-            disabled={filteredRows.length === 0}
-            onClick={() => onCopyExport(toDelimited(filteredRows))}
+            disabled={exportRows.length === 0}
+            onClick={() => onCopyExport(toDelimited(exportRows))}
             type="button"
           >
             Copy TSV
           </button>
           <button
             className="secondary"
-            disabled={filteredRows.length === 0}
-            onClick={() => onDownloadExport("relaymd-jobs.csv", toCsv(filteredRows), "text/csv")}
+            disabled={exportRows.length === 0}
+            onClick={() => onDownloadExport("relaymd-jobs.csv", toCsv(exportRows), "text/csv")}
             type="button"
           >
             Download CSV

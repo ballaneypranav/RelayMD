@@ -117,7 +117,7 @@ export function WorkersView({
   const filteredRows =
     selectedStatuses.length > 0
       ? rows.filter((row) => selectedStatuses.includes(row.status))
-      : rows;
+      : [];
 
   const tableRows = useMemo<WorkerTableRow[]>(
     () => filteredRows.map((row) => ({ ...row, worker: workerById.get(row.id) ?? null })),

@@ -243,13 +243,29 @@ export function App() {
       return;
     }
     try {
-      await Promise.all(jobsToCancel.map((job) => cancelJob(config.api_base_url, job.id)));
-      setActionMessage(jobsToCancel.length === 1 ? "Job cancelled" : `${jobsToCancel.length} jobs cancelled`);
-      setActionError("");
-      setPendingCancelJobs([]);
-      setError("");
-      const payload = await fetchDashboardData(config.api_base_url);
-      setData(payload);
+      const results = await Promise.allSettled(jobsToCancel.map((job) => cancelJob(config.api_base_url, job.id)));
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (succeeded > 0) {
+        setActionMessage(succeeded === 1 ? "Job cancelled" : `${succeeded} jobs cancelled`);
+        setPendingCancelJobs([]);
+        setError("");
+      } else {
+        setActionMessage("");
+      }
+
+      if (failed.length > 0) {
+        const firstError = failed[0].reason;
+        setActionError(firstError instanceof Error ? firstError.message : String(firstError));
+      } else {
+        setActionError("");
+      }
+
+      if (succeeded > 0) {
+        const payload = await fetchDashboardData(config.api_base_url);
+        setData(payload);
+      }
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
       setActionMessage("");
@@ -261,15 +277,31 @@ export function App() {
       return;
     }
     try {
-      const newJobIds = await Promise.all(jobsToRequeue.map((job) => requeueJob(config.api_base_url, job.id)));
-      setActionMessage(
-        jobsToRequeue.length === 1
-          ? `Re-queued as job ${newJobIds[0]}`
-          : `Re-queued ${jobsToRequeue.length} jobs`,
-      );
-      setActionError("");
-      const payload = await fetchDashboardData(config.api_base_url);
-      setData(payload);
+      const results = await Promise.allSettled(jobsToRequeue.map((job) => requeueJob(config.api_base_url, job.id)));
+      const successes = results.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<string>[];
+      const failures = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (successes.length > 0) {
+        setActionMessage(
+          successes.length === 1
+            ? `Re-queued as job ${successes[0].value}`
+            : `Re-queued ${successes.length} jobs`,
+        );
+      } else {
+        setActionMessage("");
+      }
+
+      if (failures.length > 0) {
+        const firstError = failures[0].reason;
+        setActionError(firstError instanceof Error ? firstError.message : String(firstError));
+      } else {
+        setActionError("");
+      }
+
+      if (successes.length > 0) {
+        const payload = await fetchDashboardData(config.api_base_url);
+        setData(payload);
+      }
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
       setActionMessage("");
