@@ -133,7 +133,7 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewName>(() => parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
-  const [pendingCancelJob, setPendingCancelJob] = useState<JobRead | null>(null);
+  const [pendingCancelJobs, setPendingCancelJobs] = useState<JobRead[]>([]);
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
@@ -238,16 +238,36 @@ export function App() {
   const activeWorkers = workers.filter((worker) => worker.status !== "queued").length;
   const provisioningWorkers = workers.filter((worker) => worker.status === "queued").length;
 
-  const handleCancel = async (job: JobRead) => {
+  const handleCancelJobs = async (jobsToCancel: JobRead[]) => {
     if (!config) {
       return;
     }
     try {
-      await cancelJob(config.api_base_url, job.id);
-      setActionMessage("Job cancelled");
+      await Promise.all(jobsToCancel.map((job) => cancelJob(config.api_base_url, job.id)));
+      setActionMessage(jobsToCancel.length === 1 ? "Job cancelled" : `${jobsToCancel.length} jobs cancelled`);
       setActionError("");
-      setPendingCancelJob(null);
+      setPendingCancelJobs([]);
       setError("");
+      const payload = await fetchDashboardData(config.api_base_url);
+      setData(payload);
+    } catch (actionFailure) {
+      setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
+      setActionMessage("");
+    }
+  };
+
+  const handleBulkRequeue = async (jobsToRequeue: JobRead[]) => {
+    if (!config) {
+      return;
+    }
+    try {
+      const newJobIds = await Promise.all(jobsToRequeue.map((job) => requeueJob(config.api_base_url, job.id)));
+      setActionMessage(
+        jobsToRequeue.length === 1
+          ? `Re-queued as job ${newJobIds[0]}`
+          : `Re-queued ${jobsToRequeue.length} jobs`,
+      );
+      setActionError("");
       const payload = await fetchDashboardData(config.api_base_url);
       setData(payload);
     } catch (actionFailure) {
@@ -413,22 +433,26 @@ export function App() {
       header={header}
       overview={overview}
     >
-      {pendingCancelJob ? (
+      {pendingCancelJobs.length > 0 ? (
         <section className="panel confirm-panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Confirmation Required</p>
-              <h2>Cancel {pendingCancelJob.title}?</h2>
+              <h2>
+                {pendingCancelJobs.length === 1
+                  ? `Cancel ${pendingCancelJobs[0].title}?`
+                  : `Cancel ${pendingCancelJobs.length} jobs?`}
+              </h2>
               <p className="panel-copy">
                 This cannot be undone. Workers will stop on their next poll cycle.
               </p>
             </div>
           </div>
           <div className="toolbar">
-            <button className="danger-ghost" onClick={() => void handleCancel(pendingCancelJob)}>
+            <button className="danger-ghost" onClick={() => void handleCancelJobs(pendingCancelJobs)}>
               Confirm cancellation
             </button>
-            <button className="secondary" onClick={() => setPendingCancelJob(null)}>
+            <button className="secondary" onClick={() => setPendingCancelJobs([])}>
               Abort
             </button>
           </div>
@@ -449,8 +473,10 @@ export function App() {
           }
           onCopyExport={copyText}
           onDownloadExport={downloadText}
-          onCancelJob={setPendingCancelJob}
+          onCancelJob={(job) => setPendingCancelJobs([job])}
+          onBulkCancelJobs={setPendingCancelJobs}
           onRequeueJob={(job) => void handleRequeue(job)}
+          onBulkRequeueJobs={(jobsToRequeue) => void handleBulkRequeue(jobsToRequeue)}
           loading={loading}
           selectedJobHistory={selectedJobHistory}
         />

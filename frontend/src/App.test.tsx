@@ -349,8 +349,172 @@ describe("App", () => {
 
     render(<App />);
 
+    await waitFor(() => expect(screen.getByRole("button", { name: /protein-folding/i })).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /protein-folding/i }));
+    });
+
     await waitFor(() => expect(screen.getByText("History Source")).toBeInTheDocument());
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  });
+
+  it("enables bulk cancel only for cancellable selected jobs", async () => {
+    const jobs = [
+      {
+        id: "job-1",
+        title: "queued-job",
+        status: "queued",
+        input_bundle_path: "/tmp/input",
+        preferred_clusters: [],
+        comment: null,
+        queue_blocked_reason: null,
+        assigned_at: null,
+        started_at: null,
+        status_changed_at: "2026-02-24T11:20:00Z",
+        latest_checkpoint_manifest_path: null,
+        latest_checkpoint_path: null,
+        last_checkpoint_at: null,
+        progress: 0,
+        progress_codes: [],
+        checkpoint_cycle_status: null,
+        checkpoint_cycle_failures: [],
+        assigned_worker_id: null,
+        created_at: "2026-02-24T11:00:00Z",
+        updated_at: "2026-02-24T11:50:00Z",
+      },
+      {
+        id: "job-2",
+        title: "failed-job",
+        status: "failed",
+        input_bundle_path: "/tmp/input2",
+        preferred_clusters: [],
+        comment: null,
+        queue_blocked_reason: null,
+        assigned_at: null,
+        started_at: null,
+        status_changed_at: "2026-02-24T11:20:00Z",
+        latest_checkpoint_manifest_path: null,
+        latest_checkpoint_path: null,
+        last_checkpoint_at: null,
+        progress: 0,
+        progress_codes: [],
+        checkpoint_cycle_status: null,
+        checkpoint_cycle_failures: [],
+        assigned_worker_id: null,
+        created_at: "2026-02-24T11:00:00Z",
+        updated_at: "2026-02-24T11:50:00Z",
+      },
+    ];
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify(jobs)),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /jobs/job-1/history": new Response(
+        JSON.stringify({ derived: true, worker_segments: [], worker_totals: [], events: [] }),
+      ),
+      "DELETE /jobs/job-1?force=true": new Response(null, { status: 204 }),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /queued-job/i })).toBeInTheDocument());
+    const bulkCancel = screen.getByRole("button", { name: "Bulk cancel selected jobs" });
+    expect(bulkCancel).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-1" }));
+    expect(bulkCancel).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-2" }));
+    expect(bulkCancel).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-2" }));
+    fireEvent.click(bulkCancel);
+
+    await waitFor(() => expect(screen.getByText("Cancel queued-job?")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cancellation" }));
+    await waitFor(() => expect(screen.getByText("Job cancelled")).toBeInTheDocument());
+  });
+
+  it("enables bulk requeue only for requeueable selected jobs", async () => {
+    const jobs = [
+      {
+        id: "job-1",
+        title: "failed-job",
+        status: "failed",
+        input_bundle_path: "/tmp/input",
+        preferred_clusters: [],
+        comment: null,
+        queue_blocked_reason: null,
+        assigned_at: null,
+        started_at: null,
+        status_changed_at: "2026-02-24T11:20:00Z",
+        latest_checkpoint_manifest_path: null,
+        latest_checkpoint_path: null,
+        last_checkpoint_at: null,
+        progress: 0,
+        progress_codes: [],
+        checkpoint_cycle_status: null,
+        checkpoint_cycle_failures: [],
+        assigned_worker_id: null,
+        created_at: "2026-02-24T11:00:00Z",
+        updated_at: "2026-02-24T11:50:00Z",
+      },
+      {
+        id: "job-2",
+        title: "running-job",
+        status: "running",
+        input_bundle_path: "/tmp/input2",
+        preferred_clusters: [],
+        comment: null,
+        queue_blocked_reason: null,
+        assigned_at: "2026-02-24T11:10:00Z",
+        started_at: "2026-02-24T11:20:00Z",
+        status_changed_at: "2026-02-24T11:20:00Z",
+        latest_checkpoint_manifest_path: null,
+        latest_checkpoint_path: null,
+        last_checkpoint_at: null,
+        progress: 0.1,
+        progress_codes: [],
+        checkpoint_cycle_status: null,
+        checkpoint_cycle_failures: [],
+        assigned_worker_id: null,
+        created_at: "2026-02-24T11:00:00Z",
+        updated_at: "2026-02-24T11:50:00Z",
+      },
+    ];
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify(jobs)),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /jobs/job-1/history": new Response(
+        JSON.stringify({ derived: true, worker_segments: [], worker_totals: [], events: [] }),
+      ),
+      "POST /jobs/job-1/requeue": new Response(JSON.stringify({ ...jobs[0], id: "job-3" })),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /failed-job/i })).toBeInTheDocument());
+    const bulkRequeue = screen.getByRole("button", { name: "Bulk requeue selected jobs" });
+    expect(bulkRequeue).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-1" }));
+    expect(bulkRequeue).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-2" }));
+    expect(bulkRequeue).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-2" }));
+    fireEvent.click(bulkRequeue);
+    await waitFor(() => expect(screen.getByText("Re-queued as job job-3")).toBeInTheDocument());
   });
 
   it("ignores stale job-history responses for previously selected jobs", async () => {

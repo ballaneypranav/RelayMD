@@ -610,9 +610,23 @@ dt {
   flex-wrap: wrap;
 }
 
+.cell-stack,
+.filter-stack {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cell-stack {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   border-radius: 999px;
   padding: 0.3rem 0.65rem;
   border: 1px solid transparent;
@@ -666,12 +680,17 @@ dt {
   }
 }
 
-.connection-pill::before {
+.status-pill::before {
   content: "";
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 0.45rem;
+  height: 0.45rem;
   border-radius: 999px;
   background: currentColor;
+}
+
+.connection-pill::before {
+  width: 0.6rem;
+  height: 0.6rem;
   box-shadow:
     0 0 0 0.24rem rgba(31, 182, 122, 0.16),
     0 0 16px rgba(31, 182, 122, 0.7);
@@ -679,23 +698,33 @@ dt {
 
 .status-pill.tone-queued,
 .status-pill.tone-assigned,
-.status-pill.tone-cancelled,
 .status-pill.tone-active {
   background: rgba(148, 163, 184, 0.12);
   border-color: rgba(148, 163, 184, 0.22);
 }
 
-.status-pill.tone-running,
 .status-pill.tone-cancelling,
 .status-pill.tone-provisioning {
   background: rgba(241, 184, 75, 0.14);
   border-color: rgba(241, 184, 75, 0.28);
 }
 
-.status-pill.tone-completed {
+.status-pill.tone-running {
   background: rgba(31, 182, 122, 0.14);
   border-color: rgba(31, 182, 122, 0.28);
   color: #b5f2d7;
+}
+
+.status-pill.tone-completed {
+  background: rgba(45, 212, 191, 0.14);
+  border-color: rgba(45, 212, 191, 0.28);
+  color: #a7fff1;
+}
+
+.status-pill.tone-cancelled {
+  background: rgba(168, 85, 247, 0.14);
+  border-color: rgba(168, 85, 247, 0.28);
+  color: #e8d2ff;
 }
 
 .status-pill.tone-failed,
@@ -768,6 +797,31 @@ dt {
 .detail-list dd {
   margin: 0.25rem 0 0;
   word-break: break-word;
+}
+
+.job-expanded-detail {
+  display: grid;
+  gap: 1rem;
+}
+
+.job-detail-grid,
+.job-history-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.job-history-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.job-history-grid h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.job-history-grid ul {
+  margin: 0;
+  padding-left: 1.1rem;
 }
 
 .detail-actions {

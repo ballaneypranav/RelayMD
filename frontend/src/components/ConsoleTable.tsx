@@ -45,6 +45,7 @@ export interface ConsoleTableProps<TData> {
   initialPageSize?: number;
   pageSizeOptions?: number[];
   enableSelection?: boolean;
+  onExpandedRowToggle?: (row: Row<TData>, nextExpanded: boolean) => void;
   renderExpandedRow?: (row: Row<TData>) => ReactNode;
 }
 
@@ -145,6 +146,7 @@ export function ConsoleTable<TData>({
   initialPageSize = 10,
   pageSizeOptions = [10, 25, 50],
   enableSelection = false,
+  onExpandedRowToggle,
   renderExpandedRow,
 }: ConsoleTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
@@ -188,7 +190,10 @@ export function ConsoleTable<TData>({
         row.getCanExpand() ? (
           <CompactIconButton
             label={row.getIsExpanded() ? "Collapse row" : "Expand row"}
-            onClick={() => row.toggleExpanded()}
+            onClick={() => {
+              onExpandedRowToggle?.(row, !row.getIsExpanded());
+              row.toggleExpanded();
+            }}
           >
             {row.getIsExpanded() ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </CompactIconButton>
@@ -203,7 +208,7 @@ export function ConsoleTable<TData>({
       ...(renderExpandedRow ? [expansionColumn] : []),
       ...columns,
     ];
-  }, [columns, enableSelection, renderExpandedRow]);
+  }, [columns, enableSelection, onExpandedRowToggle, renderExpandedRow]);
 
   const table = useReactTable({
     data,
