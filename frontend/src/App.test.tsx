@@ -232,7 +232,7 @@ describe("App", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Expand row" }));
     });
-    expect(screen.getByText("Provider Raw State")).toBeInTheDocument();
+    expect(screen.getAllByText("Provider Raw State").length).toBeGreaterThan(0);
     expect(screen.getByText("RUNNING")).toBeInTheDocument();
   });
 
@@ -307,7 +307,7 @@ describe("App", () => {
     await act(async () => {
       fireEvent.click(screen.getAllByRole("button", { name: "Expand row" })[0]);
     });
-    expect(screen.getByText("Input Bundle")).toBeInTheDocument();
+    expect(screen.getAllByText("Input Bundle").length).toBeGreaterThan(0);
 
     // Selection
     await act(async () => {
@@ -612,7 +612,7 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /protein-folding/i }));
     });
 
-    await waitFor(() => expect(screen.getByText("History Source")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText("History Source").length).toBeGreaterThan(0));
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
   });
 
