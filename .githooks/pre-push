@@ -2,6 +2,7 @@
 set -euo pipefail
 
 CODE_PATHS=(
+    "src/relaymd/"
     "packages/"
     "tests/"
     "frontend/"
