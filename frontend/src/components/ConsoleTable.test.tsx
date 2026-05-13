@@ -81,6 +81,28 @@ describe("ConsoleTable", () => {
     expect(within(table).queryByText("queued")).not.toBeInTheDocument();
   });
 
+  it("changes page size and exposes selected rows to toolbar actions", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      toolbarActions: ({ selectedRows }) => (
+        <button className="secondary" disabled={selectedRows.length === 0}>
+          Act on {selectedRows.map((row) => row.original.title).join(", ") || "none"}
+        </button>
+      ),
+    });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Rows per page" }), "10");
+    const table = screen.getByRole("table", { name: "Demo jobs" });
+    expect(within(table).getByText("Beta job")).toBeInTheDocument();
+    expect(screen.getByText("1-3 of 3")).toBeInTheDocument();
+
+    const action = screen.getByRole("button", { name: "Act on none" });
+    expect(action).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select row alpha" }));
+    expect(screen.getByRole("button", { name: "Act on Alpha job" })).toBeEnabled();
+  });
+
   it("supports selectable rows and expandable details", async () => {
     const user = userEvent.setup();
     renderTable();

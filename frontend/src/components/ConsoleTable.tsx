@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronLeft,
@@ -22,10 +22,16 @@ import {
   type Row,
   type RowSelectionState,
   type SortingState,
+  type Table,
   type VisibilityState,
 } from "@tanstack/react-table";
 
-interface ConsoleTableProps<TData> {
+export interface ConsoleTableToolbarContext<TData> {
+  selectedRows: Row<TData>[];
+  table: Table<TData>;
+}
+
+export interface ConsoleTableProps<TData> {
   ariaLabel: string;
   data: TData[];
   columns: ColumnDef<TData>[];
@@ -35,8 +41,9 @@ interface ConsoleTableProps<TData> {
   loading?: boolean;
   searchPlaceholder?: string;
   filterControls?: ReactNode;
-  toolbarActions?: ReactNode;
+  toolbarActions?: ReactNode | ((context: ConsoleTableToolbarContext<TData>) => ReactNode);
   initialPageSize?: number;
+  pageSizeOptions?: number[];
   enableSelection?: boolean;
   renderExpandedRow?: (row: Row<TData>) => ReactNode;
 }
@@ -48,6 +55,41 @@ interface CompactIconButtonProps {
   disabled?: boolean;
   onClick?: () => void;
   type?: "button" | "submit";
+}
+
+interface IndeterminateCheckboxProps {
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  indeterminate?: boolean;
+  onChange: () => void;
+}
+
+function IndeterminateCheckbox({
+  label,
+  checked,
+  disabled = false,
+  indeterminate = false,
+  onChange,
+}: IndeterminateCheckboxProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate]);
+
+  return (
+    <input
+      aria-label={label}
+      checked={checked}
+      disabled={disabled}
+      onChange={onChange}
+      ref={inputRef}
+      type="checkbox"
+    />
+  );
 }
 
 export function CompactIconButton({
@@ -101,6 +143,7 @@ export function ConsoleTable<TData>({
   filterControls,
   toolbarActions,
   initialPageSize = 10,
+  pageSizeOptions = [10, 25, 50],
   enableSelection = false,
   renderExpandedRow,
 }: ConsoleTableProps<TData>) {
@@ -118,20 +161,19 @@ export function ConsoleTable<TData>({
     const selectionColumn: ColumnDef<TData> = {
       id: "__select",
       header: ({ table }) => (
-        <input
-          aria-label="Select all rows"
+        <IndeterminateCheckbox
           checked={table.getIsAllPageRowsSelected()}
-          onChange={table.getToggleAllPageRowsSelectedHandler()}
-          type="checkbox"
+          indeterminate={table.getIsSomePageRowsSelected()}
+          label="Select all rows"
+          onChange={() => table.toggleAllPageRowsSelected()}
         />
       ),
       cell: ({ row }) => (
-        <input
-          aria-label={`Select row ${row.id}`}
+        <IndeterminateCheckbox
           checked={row.getIsSelected()}
           disabled={!row.getCanSelect()}
-          onChange={row.getToggleSelectedHandler()}
-          type="checkbox"
+          label={`Select row ${row.id}`}
+          onChange={() => row.toggleSelected()}
         />
       ),
       enableHiding: false,
@@ -192,10 +234,16 @@ export function ConsoleTable<TData>({
   });
 
   const visibleColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
-  const selectedCount = table.getSelectedRowModel().rows.length;
+  const selectedRows = table.getSelectedRowModel().rows;
+  const selectedCount = selectedRows.length;
   const totalRows = table.getFilteredRowModel().rows.length;
   const pageStart = totalRows === 0 ? 0 : pagination.pageIndex * pagination.pageSize + 1;
   const pageEnd = Math.min(totalRows, (pagination.pageIndex + 1) * pagination.pageSize);
+  const normalizedPageSizeOptions = Array.from(new Set([...pageSizeOptions, initialPageSize])).sort(
+    (left, right) => left - right,
+  );
+  const renderedToolbarActions =
+    typeof toolbarActions === "function" ? toolbarActions({ selectedRows, table }) : toolbarActions;
 
   return (
     <div className="console-table-surface">
@@ -245,7 +293,7 @@ export function ConsoleTable<TData>({
           </details>
 
           {enableSelection ? <span className="selection-count">{selectedCount} selected</span> : null}
-          {toolbarActions}
+          {renderedToolbarActions}
         </div>
       </div>
 
@@ -301,6 +349,20 @@ export function ConsoleTable<TData>({
           {pageStart}-{pageEnd} of {totalRows}
         </span>
         <div className="console-table-page-controls">
+          <label className="console-table-page-size">
+            Rows
+            <select
+              aria-label="Rows per page"
+              onChange={(event) => table.setPageSize(Number(event.target.value))}
+              value={pagination.pageSize}
+            >
+              {normalizedPageSizeOptions.map((pageSize) => (
+                <option key={pageSize} value={pageSize}>
+                  {pageSize}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="secondary" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
             <ChevronLeft aria-hidden="true" size={16} />
             Previous

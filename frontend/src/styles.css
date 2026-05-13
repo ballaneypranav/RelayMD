@@ -552,6 +552,20 @@ dt {
   padding: 0.42rem 0.7rem;
 }
 
+.console-table-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+}
+
+.console-table-page-size select {
+  width: auto;
+  min-width: 4.75rem;
+  border-radius: 8px;
+  padding: 0.42rem 0.6rem;
+}
+
 .icon-button {
   display: inline-grid;
   place-items: center;
