@@ -287,6 +287,7 @@ async def test_checkpoint_history_payload_includes_only_supplied_optional_fields
         ]
         assert len(checkpoint_events) == 1
         assert checkpoint_events[0]["payload"] == {
+            "checkpoint_manifest_path": "jobs/cp/checkpoints/latest",
             "checkpoint_path": "jobs/cp/checkpoints/latest",
             "progress": 0.75,
         }

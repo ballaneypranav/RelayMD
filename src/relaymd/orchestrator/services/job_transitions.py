@@ -21,6 +21,7 @@ TERMINAL_JOB_STATUSES = {
 ACTIVE_CHECKPOINT_JOB_STATUSES = {
     JobStatus.assigned,
     JobStatus.running,
+    JobStatus.cancelling,
 }
 
 ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
@@ -30,14 +31,17 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.completed,
         JobStatus.failed,
         JobStatus.cancelled,
+        JobStatus.cancelling,
         JobStatus.queued,
     },
     JobStatus.running: {
         JobStatus.completed,
         JobStatus.failed,
         JobStatus.cancelled,
+        JobStatus.cancelling,
         JobStatus.queued,
     },
+    JobStatus.cancelling: {JobStatus.cancelled},
     JobStatus.completed: set(),
     JobStatus.failed: set(),
     JobStatus.cancelled: set(),
@@ -107,6 +111,16 @@ class JobTransitionService:
         )
         return updated_job
 
+    def request_job_cancellation(self, job: Job) -> Job:
+        updated_job = self._transition(job, JobStatus.cancelling)
+        updated_job.cancellation_requested_at = updated_job.status_changed_at
+        logger.info(
+            "job_cancellation_requested",
+            job_id=str(job.id),
+            worker_id=str(job.assigned_worker_id) if job.assigned_worker_id is not None else None,
+        )
+        return updated_job
+
     def cancel_job(self, job: Job) -> Job:
         worker_id = str(job.assigned_worker_id) if job.assigned_worker_id is not None else None
         updated_job = self._transition(job, JobStatus.cancelled, clear_assigned_worker=True)
@@ -120,12 +134,21 @@ class JobTransitionService:
         self,
         job: Job,
         *,
-        checkpoint_path: str,
+        checkpoint_manifest_path: str | None = None,
+        checkpoint_path: str | None = None,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
         checkpoint_cycle_status: str | None = None,
         checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> Job:
+        resolved_checkpoint_manifest_path = checkpoint_manifest_path or checkpoint_path
+        if resolved_checkpoint_manifest_path is None:
+            raise JobTransitionConflictError(
+                message="Checkpoint path is required",
+                job_id=job.id,
+                current_status=job.status,
+                requested_status=None,
+            )
         if job.status not in ACTIVE_CHECKPOINT_JOB_STATUSES:
             raise JobTransitionConflictError(
                 message=(
@@ -137,7 +160,7 @@ class JobTransitionService:
             )
 
         now = utcnow_naive()
-        job.latest_checkpoint_path = checkpoint_path
+        job.latest_checkpoint_manifest_path = resolved_checkpoint_manifest_path
         job.last_checkpoint_at = now
         if progress is not None:
             job.progress = progress
@@ -152,7 +175,7 @@ class JobTransitionService:
             "checkpoint_recorded",
             job_id=str(job.id),
             worker_id=str(job.assigned_worker_id) if job.assigned_worker_id is not None else None,
-            latest_checkpoint_path=checkpoint_path,
+            latest_checkpoint_manifest_path=resolved_checkpoint_manifest_path,
             last_checkpoint_at=now.isoformat(),
         )
         return job
@@ -176,7 +199,7 @@ class JobTransitionService:
             comment=job.comment,
             queue_blocked_reason=None,
             status=JobStatus.queued,
-            latest_checkpoint_path=job.latest_checkpoint_path,
+            latest_checkpoint_manifest_path=job.latest_checkpoint_manifest_path,
             last_checkpoint_at=job.last_checkpoint_at,
             assigned_worker_id=None,
             created_at=now,

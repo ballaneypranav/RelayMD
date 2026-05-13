@@ -240,7 +240,11 @@ export function JobsView({
               </div>
               <div>
                 <dt>Pinned Clusters</dt>
-                <dd>{selectedJob.preferred_clusters.length > 0 ? selectedJob.preferred_clusters.join(", ") : "-"}</dd>
+                <dd>
+                  {(selectedJob.preferred_clusters ?? []).length > 0
+                    ? (selectedJob.preferred_clusters ?? []).join(", ")
+                    : "-"}
+                </dd>
               </div>
               <div>
                 <dt>Comment</dt>
@@ -260,11 +264,17 @@ export function JobsView({
               </div>
               <div>
                 <dt>Progress Codes</dt>
-                <dd>{selectedJob.progress_codes.length > 0 ? selectedJob.progress_codes.join(", ") : "-"}</dd>
+                <dd>
+                  {(selectedJob.progress_codes ?? []).length > 0
+                    ? (selectedJob.progress_codes ?? []).join(", ")
+                    : "-"}
+                </dd>
               </div>
               <div>
                 <dt>Latest Checkpoint</dt>
-                <dd>{selectedJob.latest_checkpoint_path || "-"}</dd>
+                <dd>
+                  {selectedJob.latest_checkpoint_manifest_path || selectedJob.latest_checkpoint_path || "-"}
+                </dd>
               </div>
               <div>
                 <dt>Checkpoint Cycle Status</dt>
@@ -273,8 +283,10 @@ export function JobsView({
               <div>
                 <dt>Checkpoint Failures</dt>
                 <dd>
-                  {selectedJob.checkpoint_cycle_failures.length > 0
-                    ? selectedJob.checkpoint_cycle_failures.map((failure) => `${failure.code}: ${failure.detail}`).join("; ")
+                  {(selectedJob.checkpoint_cycle_failures ?? []).length > 0
+                    ? (selectedJob.checkpoint_cycle_failures ?? [])
+                        .map((failure) => `${failure.code}: ${failure.detail}`)
+                        .join("; ")
                     : "-"}
                 </dd>
               </div>

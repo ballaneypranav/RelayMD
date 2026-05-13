@@ -787,6 +787,7 @@ def _report_checkpoint_best_effort(
     try:
         context.gateway.report_checkpoint(
             job_id=assignment.job_id,
+            checkpoint_manifest_path=checkpoint_manifest_key,
             checkpoint_path=checkpoint_manifest_key,
             progress=progress,
             progress_codes=progress_codes,
@@ -797,7 +798,7 @@ def _report_checkpoint_best_effort(
         context.logger.warning(
             "checkpoint_report_api_failed_continuing",
             job_id=str(assignment.job_id),
-            checkpoint_path=checkpoint_manifest_key,
+            checkpoint_manifest_path=checkpoint_manifest_key,
         )
 
 
@@ -833,7 +834,10 @@ def _run_assigned_job(
             job_id=assignment.job_id,
             workdir=workdir,
         )
-        if assignment.latest_checkpoint_path:
+        checkpoint_manifest_path = getattr(
+            assignment, "latest_checkpoint_manifest_path", None
+        ) or getattr(assignment, "latest_checkpoint_path", None)
+        if checkpoint_manifest_path:
             try:
                 _hydrate_checkpoint_files_from_manifest(
                     context=context,
@@ -1072,6 +1076,61 @@ def _run_assigned_job(
                         )
 
                 if now >= next_checkpoint_poll_time:
+                    cancellation_requested = False
+                    is_cancellation_requested = getattr(
+                        context.gateway, "is_cancellation_requested", None
+                    )
+                    if callable(is_cancellation_requested):
+                        try:
+                            raw_cancellation_requested = is_cancellation_requested(
+                                job_id=assignment.job_id
+                            )
+                            if isinstance(raw_cancellation_requested, bool):
+                                cancellation_requested = raw_cancellation_requested
+                        except Exception:
+                            cancellation_requested = False
+                    if cancellation_requested:
+                        job_log.info("job_cancellation_requested_by_control_plane")
+                        request_terminate = getattr(execution, "request_terminate", None)
+                        if callable(request_terminate):
+                            request_terminate()
+                            execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
+                            if execution.is_running():
+                                execution.kill()
+                                execution.wait(timeout_seconds=5)
+                        checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                            context=context,
+                            logger=job_log,
+                            job_id=assignment.job_id,
+                            bundle_root=bundle_root,
+                            workdir=workdir,
+                            watch_paths=execution_config.checkpoint_watch_paths,
+                            manifest=checkpoint_manifest,
+                        )
+                        if manifest_uploaded:
+                            checkpoint_cycle_status, checkpoint_cycle_failures = (
+                                _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                            )
+                            _upload_checkpoint_status(
+                                context=context,
+                                assignment=assignment,
+                                workdir=workdir,
+                                checkpoint_manifest_key=checkpoint_manifest_key,
+                                checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                                progress=latest_progress,
+                                progress_codes=latest_progress_codes,
+                                checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                            )
+                            _report_checkpoint_best_effort(
+                                context=context,
+                                assignment=assignment,
+                                checkpoint_manifest_key=checkpoint_manifest_key,
+                                progress=latest_progress,
+                                progress_codes=latest_progress_codes,
+                                checkpoint_cycle_status=checkpoint_cycle_status,
+                                checkpoint_cycle_failures=checkpoint_cycle_failures,
+                            )
+                        return
                     checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
                         context=context,
                         logger=job_log,

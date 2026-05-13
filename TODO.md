@@ -5,3 +5,6 @@
   - `potential_write_in_progress`
   - `file_disappeared`
   - `manifest_upload_failed`
+
+2026/05/12
+Remove latest_checkpoint_path from code once all running workers complete

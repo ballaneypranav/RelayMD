@@ -5,6 +5,7 @@ class JobStatus(StrEnum):
     queued = "queued"
     assigned = "assigned"
     running = "running"
+    cancelling = "cancelling"
     completed = "completed"
     failed = "failed"
     cancelled = "cancelled"

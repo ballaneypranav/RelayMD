@@ -456,6 +456,7 @@ dt,
 }
 
 .status-pill.tone-running,
+.status-pill.tone-cancelling,
 .status-pill.tone-provisioning {
   background: rgba(241, 184, 75, 0.14);
   border-color: rgba(241, 184, 75, 0.28);

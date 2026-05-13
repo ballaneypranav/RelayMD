@@ -18,14 +18,16 @@ class JobAssigned:
     Attributes:
         job_id (UUID):
         input_bundle_path (str):
-        latest_checkpoint_path (None | str):
+        latest_checkpoint_manifest_path (None | str):
         status (Literal['assigned'] | Unset):  Default: 'assigned'.
+        latest_checkpoint_path (None | str | Unset):
     """
 
     job_id: UUID
     input_bundle_path: str
-    latest_checkpoint_path: None | str
+    latest_checkpoint_manifest_path: None | str
     status: Literal["assigned"] | Unset = "assigned"
+    latest_checkpoint_path: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -33,10 +35,16 @@ class JobAssigned:
 
         input_bundle_path = self.input_bundle_path
 
-        latest_checkpoint_path: None | str
-        latest_checkpoint_path = self.latest_checkpoint_path
+        latest_checkpoint_manifest_path: None | str
+        latest_checkpoint_manifest_path = self.latest_checkpoint_manifest_path
 
         status = self.status
+
+        latest_checkpoint_path: None | str | Unset
+        if isinstance(self.latest_checkpoint_path, Unset):
+            latest_checkpoint_path = UNSET
+        else:
+            latest_checkpoint_path = self.latest_checkpoint_path
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -44,11 +52,13 @@ class JobAssigned:
             {
                 "job_id": job_id,
                 "input_bundle_path": input_bundle_path,
-                "latest_checkpoint_path": latest_checkpoint_path,
+                "latest_checkpoint_manifest_path": latest_checkpoint_manifest_path,
             }
         )
         if status is not UNSET:
             field_dict["status"] = status
+        if latest_checkpoint_path is not UNSET:
+            field_dict["latest_checkpoint_path"] = latest_checkpoint_path
 
         return field_dict
 
@@ -59,22 +69,36 @@ class JobAssigned:
 
         input_bundle_path = d.pop("input_bundle_path")
 
-        def _parse_latest_checkpoint_path(data: object) -> None | str:
+        def _parse_latest_checkpoint_manifest_path(data: object) -> None | str:
             if data is None:
                 return data
             return cast(None | str, data)
 
-        latest_checkpoint_path = _parse_latest_checkpoint_path(d.pop("latest_checkpoint_path"))
+        latest_checkpoint_manifest_path = _parse_latest_checkpoint_manifest_path(
+            d.pop("latest_checkpoint_manifest_path", d.get("latest_checkpoint_path"))
+        )
 
         status = cast(Literal["assigned"] | Unset, d.pop("status", UNSET))
         if status != "assigned" and not isinstance(status, Unset):
             raise ValueError(f"status must match const 'assigned', got '{status}'")
 
+        def _parse_latest_checkpoint_path(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        latest_checkpoint_path = _parse_latest_checkpoint_path(
+            d.pop("latest_checkpoint_path", UNSET)
+        )
+
         job_assigned = cls(
             job_id=job_id,
             input_bundle_path=input_bundle_path,
-            latest_checkpoint_path=latest_checkpoint_path,
+            latest_checkpoint_manifest_path=latest_checkpoint_manifest_path,
             status=status,
+            latest_checkpoint_path=latest_checkpoint_path,
         )
 
         job_assigned.additional_properties = d

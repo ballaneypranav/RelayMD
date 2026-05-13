@@ -17,7 +17,7 @@ from relaymd.orchestrator.services.job_history_service import append_job_event
 logger = structlog.get_logger(__name__)
 
 CLAIM_RETRY_LIMIT = 3
-ACTIVE_JOB_STATUSES = (JobStatus.assigned, JobStatus.running)
+ACTIVE_JOB_STATUSES = (JobStatus.assigned, JobStatus.running, JobStatus.cancelling)
 
 
 class AssignmentService:
@@ -169,6 +169,33 @@ class AssignmentService:
         stale_cutoff = self._stale_cutoff()
         if worker.last_heartbeat < stale_cutoff:
             return None
+
+        cancelling_jobs = (
+            await self._session.exec(
+                select(Job).where(
+                    col(Job.assigned_worker_id) == worker_id,
+                    col(Job.status) == JobStatus.cancelling,
+                )
+            )
+        ).all()
+        for job in cancelling_jobs:
+            now = datetime.now(UTC).replace(tzinfo=None)
+            job.status = JobStatus.cancelled
+            job.assigned_worker_id = None
+            job.status_changed_at = now
+            job.updated_at = now
+            self._session.add(job)
+            await append_job_event(
+                self._session,
+                job_id=job.id,
+                event_type="cancelled",
+                worker_id=worker_id,
+                status_from=JobStatus.cancelling,
+                status_to=JobStatus.cancelled,
+                occurred_at=now,
+            )
+        if cancelling_jobs:
+            await self._session.commit()
 
         # Ensure worker is not already busy
         if await self._is_worker_busy(worker_id):

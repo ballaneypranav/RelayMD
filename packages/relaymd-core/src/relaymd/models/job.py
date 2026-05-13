@@ -22,8 +22,9 @@ class Job(SQLModel, table=True):
     preferred_clusters_json: str | None = None
     comment: str | None = None
     queue_blocked_reason: str | None = None
-    latest_checkpoint_path: str | None = None
+    latest_checkpoint_manifest_path: str | None = None
     last_checkpoint_at: datetime | None = None
+    cancellation_requested_at: datetime | None = None
     progress: float | None = None
     progress_codes_json: str | None = None
     checkpoint_cycle_status: str | None = None
@@ -32,6 +33,14 @@ class Job(SQLModel, table=True):
     slurm_job_id: str | None = None
     created_at: datetime = Field(default_factory=utcnow_naive)
     updated_at: datetime = Field(default_factory=utcnow_naive)
+
+    @property
+    def latest_checkpoint_path(self) -> str | None:
+        return self.latest_checkpoint_manifest_path
+
+    @latest_checkpoint_path.setter
+    def latest_checkpoint_path(self, value: str | None) -> None:
+        self.latest_checkpoint_manifest_path = value
 
 
 class JobCreate(SQLModel):
@@ -53,7 +62,9 @@ class JobRead(SQLModel):
     assigned_at: datetime | None
     started_at: datetime | None
     status_changed_at: datetime
-    latest_checkpoint_path: str | None
+    latest_checkpoint_manifest_path: str | None
+    latest_checkpoint_path: str | None = None
+    cancellation_requested_at: datetime | None = None
     last_checkpoint_at: datetime | None
     progress: float | None = None
     progress_codes: list[str] = []
@@ -65,7 +76,8 @@ class JobRead(SQLModel):
 
 
 class CheckpointReport(SQLModel):
-    checkpoint_path: str
+    checkpoint_manifest_path: str | None = None
+    checkpoint_path: str | None = None
     progress: float | None = None
     progress_codes: list[str] = []
     checkpoint_cycle_status: str | None = None

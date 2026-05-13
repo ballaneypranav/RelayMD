@@ -210,22 +210,31 @@ class WorkerLifecycleService:
             await self._session.exec(
                 select(Job).where(
                     Job.assigned_worker_id == worker_id,
-                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
+                    col(Job.status).in_(
+                        [JobStatus.assigned, JobStatus.running, JobStatus.cancelling]
+                    ),
                 )
             )
         ).all()
         for job in jobs:
             previous_status = job.status
             previous_worker_id = job.assigned_worker_id
-            self._transitions.requeue_in_place(job)
+            if job.status == JobStatus.cancelling:
+                self._transitions.cancel_job(job)
+                event_type = "cancelled"
+                status_to = JobStatus.cancelled
+            else:
+                self._transitions.requeue_in_place(job)
+                event_type = "worker_deregistered_requeue"
+                status_to = JobStatus.queued
             self._session.add(job)
             await append_job_event(
                 self._session,
                 job_id=job.id,
-                event_type="worker_deregistered_requeue",
+                event_type=event_type,
                 worker_id=previous_worker_id,
                 status_from=previous_status,
-                status_to=JobStatus.queued,
+                status_to=status_to,
             )
 
         await self._session.delete(worker)
@@ -254,7 +263,9 @@ class WorkerLifecycleService:
             await self._session.exec(
                 select(Job).where(
                     col(Job.assigned_worker_id).in_(stale_worker_ids),
-                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
+                    col(Job.status).in_(
+                        [JobStatus.assigned, JobStatus.running, JobStatus.cancelling]
+                    ),
                 )
             )
         ).all()
@@ -332,15 +343,22 @@ class WorkerLifecycleService:
             for job in assigned_jobs:
                 previous_status = job.status
                 previous_worker_id = job.assigned_worker_id
-                self._transitions.requeue_in_place(job)
+                if job.status == JobStatus.cancelling:
+                    self._transitions.cancel_job(job)
+                    event_type = "cancelled"
+                    status_to = JobStatus.cancelled
+                else:
+                    self._transitions.requeue_in_place(job)
+                    event_type = "worker_deregistered_requeue"
+                    status_to = JobStatus.queued
                 self._session.add(job)
                 await append_job_event(
                     self._session,
                     job_id=job.id,
-                    event_type="worker_deregistered_requeue",
+                    event_type=event_type,
                     worker_id=previous_worker_id,
                     status_from=previous_status,
-                    status_to=JobStatus.queued,
+                    status_to=status_to,
                 )
             workers_to_delete.append(worker)
 
@@ -364,22 +382,31 @@ class WorkerLifecycleService:
             await self._session.exec(
                 select(Job).where(
                     col(Job.assigned_worker_id).in_(stale_worker_ids),
-                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
+                    col(Job.status).in_(
+                        [JobStatus.assigned, JobStatus.running, JobStatus.cancelling]
+                    ),
                 )
             )
         ).all()
         for job in jobs_to_requeue:
             previous_status = job.status
             previous_worker_id = job.assigned_worker_id
-            self._transitions.requeue_in_place(job)
+            if job.status == JobStatus.cancelling:
+                self._transitions.cancel_job(job)
+                event_type = "cancelled"
+                status_to = JobStatus.cancelled
+            else:
+                self._transitions.requeue_in_place(job)
+                event_type = "worker_deregistered_requeue"
+                status_to = JobStatus.queued
             self._session.add(job)
             await append_job_event(
                 self._session,
                 job_id=job.id,
-                event_type="worker_deregistered_requeue",
+                event_type=event_type,
                 worker_id=previous_worker_id,
                 status_from=previous_status,
-                status_to=JobStatus.queued,
+                status_to=status_to,
             )
 
         for worker in stale_workers:
@@ -394,7 +421,9 @@ class WorkerLifecycleService:
             await self._session.exec(
                 select(Job).where(
                     col(Job.assigned_worker_id).is_not(None),
-                    col(Job.status).in_([JobStatus.assigned, JobStatus.running]),
+                    col(Job.status).in_(
+                        [JobStatus.assigned, JobStatus.running, JobStatus.cancelling]
+                    ),
                 )
             )
         ).all()
@@ -404,15 +433,22 @@ class WorkerLifecycleService:
             if job.assigned_worker_id not in worker_ids:
                 previous_status = job.status
                 previous_worker_id = job.assigned_worker_id
-                self._transitions.requeue_in_place(job)
+                if job.status == JobStatus.cancelling:
+                    self._transitions.cancel_job(job)
+                    event_type = "cancelled"
+                    status_to = JobStatus.cancelled
+                else:
+                    self._transitions.requeue_in_place(job)
+                    event_type = "worker_deregistered_requeue"
+                    status_to = JobStatus.queued
                 self._session.add(job)
                 await append_job_event(
                     self._session,
                     job_id=job.id,
-                    event_type="worker_deregistered_requeue",
+                    event_type=event_type,
                     worker_id=previous_worker_id,
                     status_from=previous_status,
-                    status_to=JobStatus.queued,
+                    status_to=status_to,
                 )
                 requeued_count += 1
 

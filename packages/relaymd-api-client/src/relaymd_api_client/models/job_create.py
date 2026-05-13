@@ -20,14 +20,14 @@ class JobCreate:
         input_bundle_path (str):
         id (None | Unset | UUID):
         preferred_clusters (list[str] | Unset):
-        comment (None | Unset | str):
+        comment (None | str | Unset):
     """
 
     title: str
     input_bundle_path: str
     id: None | Unset | UUID = UNSET
     preferred_clusters: list[str] | Unset = UNSET
-    comment: None | Unset | str = UNSET
+    comment: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -43,6 +43,16 @@ class JobCreate:
         else:
             id = self.id
 
+        preferred_clusters: list[str] | Unset = UNSET
+        if not isinstance(self.preferred_clusters, Unset):
+            preferred_clusters = self.preferred_clusters
+
+        comment: None | str | Unset
+        if isinstance(self.comment, Unset):
+            comment = UNSET
+        else:
+            comment = self.comment
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -53,10 +63,10 @@ class JobCreate:
         )
         if id is not UNSET:
             field_dict["id"] = id
-        if self.preferred_clusters is not UNSET:
-            field_dict["preferred_clusters"] = self.preferred_clusters
-        if self.comment is not UNSET:
-            field_dict["comment"] = self.comment
+        if preferred_clusters is not UNSET:
+            field_dict["preferred_clusters"] = preferred_clusters
+        if comment is not UNSET:
+            field_dict["comment"] = comment
 
         return field_dict
 
@@ -83,8 +93,17 @@ class JobCreate:
             return cast(None | Unset | UUID, data)
 
         id = _parse_id(d.pop("id", UNSET))
-        preferred_clusters = cast(list[str] | Unset, d.pop("preferred_clusters", UNSET))
-        comment = cast(None | Unset | str, d.pop("comment", UNSET))
+
+        preferred_clusters = cast(list[str], d.pop("preferred_clusters", UNSET))
+
+        def _parse_comment(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        comment = _parse_comment(d.pop("comment", UNSET))
 
         job_create = cls(
             title=title,

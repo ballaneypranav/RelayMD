@@ -174,15 +174,17 @@ async def test_create_list_get_and_cancel_paths() -> None:
         history_response = await client.get(f"/jobs/{running_job_id}/history", headers=headers)
         assert history_response.status_code == 200
         history_events = history_response.json()["events"]
-        cancelled_events = [event for event in history_events if event["event_type"] == "cancelled"]
-        assert len(cancelled_events) == 1
-        assert cancelled_events[0]["worker_id"] == str(running_worker_id)
+        cancel_requested_events = [
+            event for event in history_events if event["event_type"] == "cancel_requested"
+        ]
+        assert len(cancel_requested_events) == 1
+        assert cancel_requested_events[0]["worker_id"] == str(running_worker_id)
 
         async with get_sessionmaker()() as session:
             cancelled_running_job = await session.get(Job, running_job_id)
             assert cancelled_running_job is not None
-            assert cancelled_running_job.status == JobStatus.cancelled
-            assert cancelled_running_job.assigned_worker_id is None
+            assert cancelled_running_job.status == JobStatus.cancelling
+            assert cancelled_running_job.assigned_worker_id == running_worker_id
 
 
 @pytest.mark.asyncio

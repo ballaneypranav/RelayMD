@@ -59,6 +59,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
             "assigned_at": None,
             "started_at": None,
             "status_changed_at": created_at.isoformat(),
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
             "last_checkpoint_at": None,
             "assigned_worker_id": None,

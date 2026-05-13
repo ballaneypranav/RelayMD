@@ -1,4 +1,11 @@
-from .api import JobAssigned, JobConflict, JobCreateConflict, JobRequestResponse, NoJobAvailable
+from .api import (
+    JobAssigned,
+    JobConflict,
+    JobControl,
+    JobCreateConflict,
+    JobRequestResponse,
+    NoJobAvailable,
+)
 from .cluster_provisioning_state import ClusterProvisioningState
 from .enums import JobStatus, Platform, WorkerStatus
 from .job import (
@@ -24,6 +31,7 @@ __all__ = [
     "Job",
     "JobAssigned",
     "JobConflict",
+    "JobControl",
     "JobCreateConflict",
     "JobCreate",
     "JobEvent",

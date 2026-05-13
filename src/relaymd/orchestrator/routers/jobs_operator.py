@@ -139,8 +139,10 @@ def _job_to_read(job: Job) -> JobRead:
         assigned_at=job.assigned_at,
         started_at=job.started_at,
         status_changed_at=job.status_changed_at,
-        latest_checkpoint_path=job.latest_checkpoint_path,
+        latest_checkpoint_manifest_path=job.latest_checkpoint_manifest_path,
+        latest_checkpoint_path=job.latest_checkpoint_manifest_path,
         last_checkpoint_at=job.last_checkpoint_at,
+        cancellation_requested_at=job.cancellation_requested_at,
         progress=job.progress,
         progress_codes=progress_codes,
         checkpoint_cycle_status=job.checkpoint_cycle_status,
@@ -307,7 +309,7 @@ async def cancel_job(
                 message="Running job requires force=true for cancellation",
                 job_id=job.id,
                 current_status=job.status,
-                requested_status=JobStatus.cancelled,
+                requested_status=JobStatus.cancelling,
             )
         )
 
@@ -315,7 +317,14 @@ async def cancel_job(
     try:
         previous_status = job.status
         cancelled_worker_id = job.assigned_worker_id
-        transitions.cancel_job(job)
+        if job.status == JobStatus.queued:
+            transitions.cancel_job(job)
+            event_type = "cancelled"
+            status_to = JobStatus.cancelled
+        else:
+            transitions.request_job_cancellation(job)
+            event_type = "cancel_requested"
+            status_to = JobStatus.cancelling
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
@@ -323,10 +332,10 @@ async def cancel_job(
     await append_job_event(
         session,
         job_id=job.id,
-        event_type="cancelled",
+        event_type=event_type,
         worker_id=cancelled_worker_id,
         status_from=previous_status,
-        status_to=JobStatus.cancelled,
+        status_to=status_to,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

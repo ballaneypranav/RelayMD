@@ -28,6 +28,7 @@ JobEventType = Literal[
     "requeued_from",
     "completed",
     "failed",
+    "cancel_requested",
     "cancelled",
     "worker_deregistered_requeue",
 ]
@@ -142,14 +143,18 @@ def derive_history_events(job: Job) -> list[JobHistoryEventRead]:
             )
         )
         seq += 1
-    if job.last_checkpoint_at is not None and job.latest_checkpoint_path:
+    if job.last_checkpoint_at is not None and job.latest_checkpoint_manifest_path:
         events.append(
             JobHistoryEventRead(
                 occurred_at=job.last_checkpoint_at,
                 event_seq=seq,
                 event_type="checkpoint",
                 worker_id=job.assigned_worker_id,
-                payload={"checkpoint_path": job.latest_checkpoint_path, "progress": job.progress},
+                payload={
+                    "checkpoint_manifest_path": job.latest_checkpoint_manifest_path,
+                    "checkpoint_path": job.latest_checkpoint_manifest_path,
+                    "progress": job.progress,
+                },
                 derived=True,
             )
         )

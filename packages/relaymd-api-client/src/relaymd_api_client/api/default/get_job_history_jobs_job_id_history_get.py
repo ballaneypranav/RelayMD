@@ -1,47 +1,31 @@
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.job_status import JobStatus
-from ...models.prune_jobs_jobs_delete_response_prune_jobs_jobs_delete import (
-    PruneJobsJobsDeleteResponsePruneJobsJobsDelete,
-)
+from ...models.job_history_read import JobHistoryRead
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
+    job_id: UUID,
     *,
-    status: list[JobStatus] | Unset = UNSET,
-    older_than_days: int | Unset = 30,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset) and x_api_token is not None:
+    if not isinstance(x_api_token, Unset):
         headers["X-API-Token"] = x_api_token
 
-    params: dict[str, Any] = {}
-
-    json_status: list[str] | Unset = UNSET
-    if not isinstance(status, Unset):
-        json_status = []
-        for status_item_data in status:
-            status_item = status_item_data.value
-            json_status.append(status_item)
-
-    params["status"] = json_status
-
-    params["older_than_days"] = older_than_days
-
-    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
-
     _kwargs: dict[str, Any] = {
-        "method": "delete",
-        "url": "/jobs",
-        "params": params,
+        "method": "get",
+        "url": "/jobs/{job_id}/history".format(
+            job_id=quote(str(job_id), safe=""),
+        ),
     }
 
     _kwargs["headers"] = headers
@@ -50,9 +34,9 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete | None:
+) -> HTTPValidationError | JobHistoryRead | None:
     if response.status_code == 200:
-        response_200 = PruneJobsJobsDeleteResponsePruneJobsJobsDelete.from_dict(response.json())
+        response_200 = JobHistoryRead.from_dict(response.json())
 
         return response_200
 
@@ -69,7 +53,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete]:
+) -> Response[HTTPValidationError | JobHistoryRead]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -79,19 +63,15 @@ def _build_response(
 
 
 def sync_detailed(
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    status: list[JobStatus] | Unset = UNSET,
-    older_than_days: int | Unset = 30,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete]:
-    """Prune Jobs
-
-     Hard-delete terminal-status jobs whose updated_at is older than N days.
+) -> Response[HTTPValidationError | JobHistoryRead]:
+    """Get Job History
 
     Args:
-        status (list[JobStatus] | Unset): Terminal statuses to prune.
-        older_than_days (int | Unset):  Default: 30.
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -99,12 +79,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete]
+        Response[HTTPValidationError | JobHistoryRead]
     """
 
     kwargs = _get_kwargs(
-        status=status,
-        older_than_days=older_than_days,
+        job_id=job_id,
         x_api_token=x_api_token,
     )
 
@@ -116,19 +95,15 @@ def sync_detailed(
 
 
 def sync(
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    status: list[JobStatus] | Unset = UNSET,
-    older_than_days: int | Unset = 30,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete | None:
-    """Prune Jobs
-
-     Hard-delete terminal-status jobs whose updated_at is older than N days.
+) -> HTTPValidationError | JobHistoryRead | None:
+    """Get Job History
 
     Args:
-        status (list[JobStatus] | Unset): Terminal statuses to prune.
-        older_than_days (int | Unset):  Default: 30.
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -136,31 +111,26 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete
+        HTTPValidationError | JobHistoryRead
     """
 
     return sync_detailed(
+        job_id=job_id,
         client=client,
-        status=status,
-        older_than_days=older_than_days,
         x_api_token=x_api_token,
     ).parsed
 
 
 async def asyncio_detailed(
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    status: list[JobStatus] | Unset = UNSET,
-    older_than_days: int | Unset = 30,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete]:
-    """Prune Jobs
-
-     Hard-delete terminal-status jobs whose updated_at is older than N days.
+) -> Response[HTTPValidationError | JobHistoryRead]:
+    """Get Job History
 
     Args:
-        status (list[JobStatus] | Unset): Terminal statuses to prune.
-        older_than_days (int | Unset):  Default: 30.
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -168,12 +138,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete]
+        Response[HTTPValidationError | JobHistoryRead]
     """
 
     kwargs = _get_kwargs(
-        status=status,
-        older_than_days=older_than_days,
+        job_id=job_id,
         x_api_token=x_api_token,
     )
 
@@ -183,19 +152,15 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    status: list[JobStatus] | Unset = UNSET,
-    older_than_days: int | Unset = 30,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete | None:
-    """Prune Jobs
-
-     Hard-delete terminal-status jobs whose updated_at is older than N days.
+) -> HTTPValidationError | JobHistoryRead | None:
+    """Get Job History
 
     Args:
-        status (list[JobStatus] | Unset): Terminal statuses to prune.
-        older_than_days (int | Unset):  Default: 30.
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -203,14 +168,13 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | PruneJobsJobsDeleteResponsePruneJobsJobsDelete
+        HTTPValidationError | JobHistoryRead
     """
 
     return (
         await asyncio_detailed(
+            job_id=job_id,
             client=client,
-            status=status,
-            older_than_days=older_than_days,
             x_api_token=x_api_token,
         )
     ).parsed
