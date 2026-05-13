@@ -24,8 +24,26 @@ const BULK_REQUEUE_STATUSES = new Set(["failed", "cancelled"]);
 
 interface JobTableRow extends JobRow {
   job: JobRead;
-  latest_checkpoint: string;
+  job_id_full: string;
+  assigned_worker_full: string;
+  created_at_iso: string;
+  assigned_at_iso: string;
+  started_at_iso: string;
+  status_changed_at_iso: string;
   runtime: string;
+  etc: string;
+  updated_at_iso: string;
+  input_bundle: string;
+  pinned_clusters: string;
+  comment_text: string;
+  queue_blocked: string;
+  progress_percent: string;
+  progress_codes_text: string;
+  latest_checkpoint: string;
+  checkpoint_cycle_status_text: string;
+  checkpoint_failures_text: string;
+  history_source: string;
+  checkpoint_age: string;
 }
 
 interface JobsViewProps {
@@ -102,7 +120,7 @@ function JobExpandedDetails({
           <dd>{formatDuration(runtimeSeconds)}</dd>
         </div>
         <div>
-          <dt>ETA</dt>
+          <dt>ETC</dt>
           <dd>{eta !== null ? formatDuration(eta) : "-"}</dd>
         </div>
         <div>
@@ -313,12 +331,47 @@ export function JobsView({
           {
             ...row,
             job,
+            job_id_full: job.id,
+            assigned_worker_full: job.assigned_worker_id || "-",
+            created_at_iso: parseDate(job.created_at)?.toISOString() ?? "-",
+            assigned_at_iso: parseDate(job.assigned_at)?.toISOString() ?? "-",
+            started_at_iso: parseDate(job.started_at)?.toISOString() ?? "-",
+            status_changed_at_iso: parseDate(job.status_changed_at)?.toISOString() ?? "-",
             latest_checkpoint: job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-",
             runtime: formatDuration(totalRuntimeSeconds(job, new Date())),
+            etc: (() => {
+              const estimate = etaSeconds(job, new Date());
+              return estimate !== null ? formatDuration(estimate) : "-";
+            })(),
+            updated_at_iso: parseDate(job.updated_at)?.toISOString() ?? "-",
+            input_bundle: job.input_bundle_path,
+            pinned_clusters:
+              (job.preferred_clusters ?? []).length > 0 ? (job.preferred_clusters ?? []).join(", ") : "-",
+            comment_text: job.comment || "-",
+            queue_blocked:
+              job.status === "queued" && job.queue_blocked_reason
+                ? (BLOCKED_REASON_LABELS[job.queue_blocked_reason] ?? job.queue_blocked_reason)
+                : "-",
+            progress_percent: `${Math.round(((job.progress ?? 0) * 100) * 10) / 10}%`,
+            progress_codes_text:
+              (job.progress_codes ?? []).length > 0 ? (job.progress_codes ?? []).join(", ") : "-",
+            checkpoint_cycle_status_text: job.checkpoint_cycle_status || "-",
+            checkpoint_failures_text:
+              (job.checkpoint_cycle_failures ?? []).length > 0
+                ? (job.checkpoint_cycle_failures ?? [])
+                    .map((failure) => `${failure.code}: ${failure.detail}`)
+                    .join("; ")
+                : "-",
+            history_source: selectedJobHistory
+              ? selectedJobHistory.derived
+                ? "Derived fallback"
+                : "Persisted events"
+              : "Unavailable",
+            checkpoint_age: formatCheckpointAge(job),
           },
         ];
       }),
-    [filteredRows, jobById],
+    [filteredRows, jobById, selectedJobHistory],
   );
 
   const columns = useMemo<ColumnDef<JobTableRow>[]>(
@@ -341,6 +394,10 @@ export function JobsView({
       },
       {
         accessorKey: "job_id",
+        header: "Job",
+      },
+      {
+        accessorKey: "job_id_full",
         header: "Job ID",
       },
       {
@@ -371,12 +428,84 @@ export function JobsView({
         header: "Worker",
       },
       {
+        accessorKey: "assigned_worker_full",
+        header: "Assigned Worker",
+      },
+      {
+        accessorKey: "created_at_iso",
+        header: "Created",
+      },
+      {
+        accessorKey: "assigned_at_iso",
+        header: "Assigned",
+      },
+      {
+        accessorKey: "started_at_iso",
+        header: "Started",
+      },
+      {
+        accessorKey: "status_changed_at_iso",
+        header: "Status Changed",
+      },
+      {
         accessorKey: "time_since_checkpoint",
         header: "Checkpoint",
       },
       {
         accessorKey: "runtime",
         header: "Runtime",
+      },
+      {
+        accessorKey: "etc",
+        header: "ETC",
+      },
+      {
+        accessorKey: "updated_at_iso",
+        header: "Updated",
+      },
+      {
+        accessorKey: "input_bundle",
+        header: "Input Bundle",
+      },
+      {
+        accessorKey: "pinned_clusters",
+        header: "Pinned Clusters",
+      },
+      {
+        accessorKey: "comment_text",
+        header: "Comment",
+      },
+      {
+        accessorKey: "queue_blocked",
+        header: "Queue Blocked",
+      },
+      {
+        accessorKey: "progress_percent",
+        header: "Progress",
+      },
+      {
+        accessorKey: "progress_codes_text",
+        header: "Progress Codes",
+      },
+      {
+        accessorKey: "latest_checkpoint",
+        header: "Latest Checkpoint",
+      },
+      {
+        accessorKey: "checkpoint_cycle_status_text",
+        header: "Checkpoint Cycle Status",
+      },
+      {
+        accessorKey: "checkpoint_failures_text",
+        header: "Checkpoint Failures",
+      },
+      {
+        accessorKey: "history_source",
+        header: "History Source",
+      },
+      {
+        accessorKey: "checkpoint_age",
+        header: "Checkpoint Age",
       },
       {
         id: "actions",
@@ -437,6 +566,27 @@ export function JobsView({
         }
         getRowId={(row) => row.id}
         initialPageSize={10}
+        initialColumnVisibility={{
+          assigned_worker_full: false,
+          job_id_full: false,
+          created_at_iso: false,
+          assigned_at_iso: false,
+          started_at_iso: false,
+          status_changed_at_iso: false,
+          etc: false,
+          updated_at_iso: false,
+          input_bundle: false,
+          pinned_clusters: false,
+          comment_text: false,
+          queue_blocked: false,
+          progress_percent: false,
+          progress_codes_text: false,
+          latest_checkpoint: false,
+          checkpoint_cycle_status_text: false,
+          checkpoint_failures_text: false,
+          history_source: false,
+          checkpoint_age: false,
+        }}
         loading={loading}
         onExpandedRowToggle={(row: Row<JobTableRow>, nextExpanded) => {
           if (nextExpanded) {

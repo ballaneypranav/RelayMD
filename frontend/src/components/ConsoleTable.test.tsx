@@ -81,6 +81,19 @@ describe("ConsoleTable", () => {
     expect(within(table).queryByText("queued")).not.toBeInTheDocument();
   });
 
+  it("supports fuzzy search across hidden columns", async () => {
+    const user = userEvent.setup();
+    renderTable({ initialColumnVisibility: { priority: false } });
+
+    const table = screen.getByRole("table", { name: "Demo jobs" });
+    await user.type(screen.getByRole("searchbox", { name: "Search table" }), "gmjb");
+    expect(within(table).getByText("Gamma job")).toBeInTheDocument();
+
+    await user.clear(screen.getByRole("searchbox", { name: "Search table" }));
+    await user.type(screen.getByRole("searchbox", { name: "Search table" }), "medium");
+    expect(within(table).getByText("Beta job")).toBeInTheDocument();
+  });
+
   it("changes page size and exposes selected rows to toolbar actions", async () => {
     const user = userEvent.setup();
     renderTable({

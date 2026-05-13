@@ -17,6 +17,12 @@ interface WorkersViewProps {
 
 interface WorkerTableRow extends WorkerRow {
   worker: WorkerRead | null;
+  worker_id_full: string;
+  provider_raw_state: string;
+  provider_reason: string;
+  provider_last_checked: string;
+  registered_at: string;
+  heartbeat_timestamp: string;
 }
 
 const STATUS_FILTERS = ["active", "provisioning", "stale"] as const;
@@ -120,7 +126,20 @@ export function WorkersView({
       : [];
 
   const tableRows = useMemo<WorkerTableRow[]>(
-    () => filteredRows.map((row) => ({ ...row, worker: workerById.get(row.id) ?? null })),
+    () =>
+      filteredRows.map((row) => {
+        const worker = workerById.get(row.id) ?? null;
+        return {
+          ...row,
+          worker,
+          worker_id_full: worker?.id ?? row.id,
+          provider_raw_state: worker?.provider_state_raw || "-",
+          provider_reason: worker?.provider_reason || "-",
+          provider_last_checked: parseDate(worker?.provider_last_checked_at)?.toISOString() ?? "-",
+          registered_at: parseDate(worker?.registered_at)?.toISOString() ?? "-",
+          heartbeat_timestamp: parseDate(worker?.last_heartbeat)?.toISOString() ?? "-",
+        };
+      }),
     [filteredRows, workerById],
   );
 
@@ -135,6 +154,7 @@ export function WorkersView({
           </button>
         ),
       },
+      { accessorKey: "worker_id_full", header: "Worker ID (Full)" },
       {
         accessorKey: "status",
         header: "Status",
@@ -148,6 +168,11 @@ export function WorkersView({
       { accessorKey: "gpu", header: "GPU" },
       { accessorKey: "provider_id", header: "Provider ID" },
       { accessorKey: "provider_state", header: "Provider State" },
+      { accessorKey: "provider_raw_state", header: "Provider Raw State" },
+      { accessorKey: "provider_reason", header: "Provider Reason" },
+      { accessorKey: "provider_last_checked", header: "Provider Last Checked" },
+      { accessorKey: "registered_at", header: "Registered" },
+      { accessorKey: "heartbeat_timestamp", header: "Heartbeat Timestamp" },
       { accessorKey: "current_job", header: "Current Job" },
       { accessorKey: "uptime", header: "Uptime" },
       { accessorKey: "last_heartbeat", header: "Last Heartbeat" },
@@ -193,6 +218,14 @@ export function WorkersView({
         }
         getRowId={(row) => row.id}
         initialPageSize={10}
+        initialColumnVisibility={{
+          worker_id_full: false,
+          provider_raw_state: false,
+          provider_reason: false,
+          provider_last_checked: false,
+          registered_at: false,
+          heartbeat_timestamp: false,
+        }}
         renderExpandedRow={(row: Row<WorkerTableRow>) => <WorkerExpandedDetails row={row.original} />}
         searchPlaceholder="Search workers"
         toolbarActions={(context) => (
