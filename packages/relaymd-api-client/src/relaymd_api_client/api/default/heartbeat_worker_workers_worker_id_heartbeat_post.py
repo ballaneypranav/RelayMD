@@ -19,7 +19,7 @@ def _get_kwargs(
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset):
+    if not isinstance(x_api_token, Unset) and x_api_token is not None:
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
@@ -29,10 +29,11 @@ def _get_kwargs(
         ),
     }
 
-    if isinstance(body, WorkerHeartbeat):
-        _kwargs["json"] = body.to_dict()
-    else:
-        _kwargs["json"] = body
+    if not isinstance(body, Unset):
+        if isinstance(body, WorkerHeartbeat):
+            _kwargs["json"] = body.to_dict()
+        else:
+            _kwargs["json"] = body
 
     headers["Content-Type"] = "application/json"
 

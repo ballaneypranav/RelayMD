@@ -75,7 +75,7 @@ class JobAssigned:
             return cast(None | str, data)
 
         latest_checkpoint_manifest_path = _parse_latest_checkpoint_manifest_path(
-            d.pop("latest_checkpoint_manifest_path")
+            d.pop("latest_checkpoint_manifest_path", d.get("latest_checkpoint_path"))
         )
 
         status = cast(Literal["assigned"] | Unset, d.pop("status", UNSET))

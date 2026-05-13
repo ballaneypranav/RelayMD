@@ -225,7 +225,7 @@ export function App() {
         }
         setSelectedJobHistory(null);
       });
-  }, [config, selectedJobId]);
+  }, [config, selectedJobId, jobs]);
 
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
