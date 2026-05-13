@@ -1,12 +1,9 @@
 :root {
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   color: #e6edf6;
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.2), transparent 35%),
-    radial-gradient(circle at right center, rgba(15, 118, 110, 0.18), transparent 35%),
-    linear-gradient(180deg, #08111f 0%, #0d1626 38%, #0f172a 100%);
+  background: linear-gradient(180deg, #08111f 0%, #0d1626 48%, #111827 100%);
   --bg-shell: #08111f;
-  --bg-sidebar: rgba(7, 14, 26, 0.88);
+  --bg-rail: rgba(7, 14, 26, 0.94);
   --bg-panel: rgba(10, 18, 31, 0.86);
   --bg-panel-strong: rgba(13, 23, 40, 0.96);
   --bg-panel-soft: rgba(255, 255, 255, 0.04);
@@ -89,13 +86,16 @@ td {
 
 .console-shell {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 76px minmax(0, 1fr);
   min-height: 100vh;
 }
 
-.console-sidebar {
-  padding: 1.5rem 1rem;
-  background: var(--bg-sidebar);
+.console-rail {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 1rem;
+  padding: 0.9rem 0.65rem;
+  background: var(--bg-rail);
   border-right: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -104,26 +104,68 @@ td {
 }
 
 .console-main {
-  padding: 1.5rem;
+  min-width: 0;
+  padding: 1rem 1.1rem 1.25rem;
 }
 
-.brand-block {
-  padding: 0.75rem;
-  margin-bottom: 1rem;
+.rail-brand {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(79, 140, 255, 0.14);
+  color: #dce8ff;
+  font-weight: 800;
 }
 
-.brand-block h1 {
-  margin: 0.25rem 0 0.6rem;
-  font-size: 2rem;
-  letter-spacing: -0.04em;
+.rail-nav {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
 }
 
-.sidebar-copy,
+.rail-nav-link {
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 60px;
+  width: 100%;
+  border-radius: 8px;
+  padding: 0.55rem 0.2rem;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  text-align: center;
+}
+
+.rail-nav-link span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.rail-nav-link.active {
+  background: rgba(79, 140, 255, 0.16);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.rail-nav-link:hover,
+.rail-nav-link:focus-visible {
+  border-color: rgba(120, 166, 255, 0.32);
+  color: var(--text);
+}
+
 .header-copy,
 .panel-copy,
 .muted,
-dt,
-.nav-link small {
+dt {
   color: var(--muted);
 }
 
@@ -133,26 +175,6 @@ dt,
   text-transform: uppercase;
   letter-spacing: 0.16em;
   color: var(--accent-strong);
-}
-
-.console-nav {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.nav-link {
-  display: grid;
-  text-align: left;
-  gap: 0.2rem;
-  border-radius: 16px;
-  padding: 0.9rem 1rem;
-  background: transparent;
-  border-color: transparent;
-}
-
-.nav-link.active {
-  background: linear-gradient(135deg, rgba(79, 140, 255, 0.2), rgba(31, 182, 122, 0.08));
-  border-color: var(--border-strong);
 }
 
 .console-header,
@@ -180,18 +202,35 @@ dt,
 .console-header,
 .panel,
 .banner {
-  padding: 1.1rem 1.2rem;
+  padding: 0.85rem 1rem;
 }
 
 .console-header {
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 0.7rem;
 }
 
 .console-header h2,
 .panel h2,
 .panel h3 {
   margin: 0.15rem 0;
+}
+
+.console-header h2 {
+  font-size: 1.35rem;
+}
+
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.header-title-row span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .console-header-actions {
@@ -205,11 +244,12 @@ dt,
 .meta-pill {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   justify-content: center;
-  min-height: 2.65rem;
+  min-height: 2.25rem;
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.5rem 0.9rem;
+  padding: 0.42rem 0.75rem;
   font-size: 0.8rem;
   background: rgba(255, 255, 255, 0.06);
   white-space: nowrap;
@@ -230,8 +270,11 @@ dt,
 }
 
 .header-action-button {
-  min-height: 2.65rem;
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.42rem 0.8rem;
 }
 
 .console-header-actions .secondary {
@@ -240,8 +283,8 @@ dt,
 
 .signal-strip {
   display: grid;
-  gap: 0.7rem;
-  margin-bottom: 1rem;
+  gap: 0.45rem;
+  margin-bottom: 0.7rem;
 }
 
 .overview-groups {
@@ -421,9 +464,9 @@ dt,
 }
 
 .connection-pill {
-  min-height: 2.65rem;
+  min-height: 2.25rem;
   justify-content: center;
-  padding: 0.55rem 1.05rem;
+  padding: 0.42rem 0.85rem;
   gap: 0.55rem;
   font-size: 0.78rem;
   font-weight: 700;
@@ -434,6 +477,16 @@ dt,
     transform 140ms ease,
     border-color 140ms ease,
     box-shadow 140ms ease;
+}
+
+.spin-icon {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .connection-pill::before {
@@ -595,9 +648,37 @@ pre {
     grid-template-columns: 1fr;
   }
 
-  .console-sidebar {
+  .console-rail {
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto;
+    align-items: center;
     position: static;
     height: auto;
+    padding: 0.55rem 0.7rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .rail-brand {
+    margin: 0;
+  }
+
+  .rail-nav {
+    display: flex;
+    gap: 0.4rem;
+    overflow-x: auto;
+  }
+
+  .rail-nav-link {
+    grid-template-columns: auto auto;
+    justify-content: center;
+    min-width: 7rem;
+    min-height: 44px;
+    padding: 0.45rem 0.65rem;
+  }
+
+  .rail-nav-link span {
+    font-size: 0.8rem;
   }
 
   .metric-strip {

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Boxes, BriefcaseBusiness, RefreshCw, Settings, Wifi, WifiOff } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { cancelJob, fetchDashboardData, fetchFrontendConfig, fetchJobHistory, requeueJob, updateClusterProvisioningEnabledMap } from "./api";
 import { AppShell } from "./components/AppShell";
@@ -302,16 +304,19 @@ export function App() {
   }
 
   const navigation = [
-    { id: "jobs", label: "Jobs", description: "Queue, detail, and actions" },
-    { id: "workers", label: "Workers", description: "Fleet health and assignments" },
-    { id: "clusters", label: "Clusters", description: "Provisioning targets" },
-    { id: "settings", label: "Settings", description: "Proxy auth and runtime config" },
-  ] satisfies Array<{ id: ViewName; label: string; description: string }>;
+    { id: "jobs", label: "Jobs", description: "Queue, detail, and actions", icon: BriefcaseBusiness },
+    { id: "workers", label: "Workers", description: "Fleet health and assignments", icon: Activity },
+    { id: "clusters", label: "Clusters", description: "Provisioning targets", icon: Boxes },
+    { id: "settings", label: "Settings", description: "Proxy auth and runtime config", icon: Settings },
+  ] satisfies Array<{ id: ViewName; label: string; description: string; icon: LucideIcon }>;
 
   const header = (
     <header className="console-header">
       <div>
-        <p className="eyebrow">Operational Console</p>
+        <div className="header-title-row">
+          <p className="eyebrow">RelayMD</p>
+          <span>Operator Console</span>
+        </div>
         <h2>{navigation.find((item) => item.id === activeView)?.label}</h2>
         <p className="header-copy">
           {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Last updated -"}
@@ -319,8 +324,12 @@ export function App() {
       </div>
       <div className="console-header-actions">
         <div className="meta-pill meta-pill-version">RelayMD v{health?.version ?? "-"}</div>
-        <div className={error ? "meta-pill meta-pill-error" : "meta-pill meta-pill-live"}>{error ? "Error" : "Live"}</div>
+        <div className={error ? "meta-pill meta-pill-error" : "meta-pill meta-pill-live"}>
+          {error ? <WifiOff aria-hidden="true" size={15} /> : <Wifi aria-hidden="true" size={15} />}
+          {error ? "Error" : "Live"}
+        </div>
         <button className="secondary header-action-button" onClick={() => void refreshData()} disabled={isRefreshing}>
+          <RefreshCw aria-hidden="true" size={16} className={isRefreshing ? "spin-icon" : undefined} />
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
         {health?.tailscale ? (

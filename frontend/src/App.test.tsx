@@ -123,6 +123,9 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Workers/i })).toBeInTheDocument(),
     );
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+    expect(screen.getByLabelText("RelayMD Operator Console")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Jobs" })).toHaveClass("active");
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Workers/i }));
