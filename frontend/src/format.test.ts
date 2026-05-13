@@ -74,6 +74,66 @@ describe("format helpers", () => {
     expect(buildWorkerRows(workers, now, jobs)[0].current_job).toContain("protein-folding");
   });
 
+  it("classifies worker statuses for active, provisioning, and stale", () => {
+    const now = new Date("2026-02-24T12:00:00Z");
+    const rows = buildWorkerRows(
+      [
+        {
+          id: "worker-active",
+          platform: "salad",
+          gpu_model: "NVIDIA A100",
+          gpu_count: 1,
+          vram_gb: 80,
+          status: "active",
+          provider_id: null,
+          provider_state: null,
+          provider_state_raw: null,
+          provider_reason: null,
+          provider_last_checked_at: null,
+          last_heartbeat: "2026-02-24T11:59:30Z",
+          registered_at: "2026-02-24T09:00:00Z",
+        },
+        {
+          id: "worker-queued",
+          platform: "hpc",
+          gpu_model: "NVIDIA A40",
+          gpu_count: 1,
+          vram_gb: 48,
+          status: "queued",
+          provider_id: null,
+          provider_state: "PENDING",
+          provider_state_raw: "PD",
+          provider_reason: null,
+          provider_last_checked_at: null,
+          last_heartbeat: "2026-02-24T11:55:00Z",
+          registered_at: "2026-02-24T11:40:00Z",
+        },
+        {
+          id: "worker-stale",
+          platform: "salad",
+          gpu_model: "NVIDIA A100",
+          gpu_count: 1,
+          vram_gb: 80,
+          status: "active",
+          provider_id: null,
+          provider_state: null,
+          provider_state_raw: null,
+          provider_reason: null,
+          provider_last_checked_at: null,
+          last_heartbeat: "2026-02-24T11:55:30Z",
+          registered_at: "2026-02-24T09:00:00Z",
+        },
+      ],
+      now,
+      [],
+    );
+
+    expect(rows.find((row) => row.id === "worker-active")?.status).toBe("active");
+    expect(rows.find((row) => row.id === "worker-queued")?.status).toBe("provisioning");
+    expect(rows.find((row) => row.id === "worker-stale")?.status).toBe("stale");
+    expect(rows.find((row) => row.id === "worker-active")?.last_heartbeat).toBe("11:59:30 UTC");
+  });
+
   it("uses status_changed_at rather than updated_at for time in status", () => {
     const now = new Date("2026-02-24T12:00:00Z");
     const jobs = [

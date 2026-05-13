@@ -148,6 +148,94 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders workers as a dense table with filters and expandable details", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(
+        JSON.stringify([
+          {
+            id: "job-1",
+            title: "protein-folding",
+            status: "running",
+            input_bundle_path: "/tmp/input",
+            assigned_at: "2026-02-24T11:10:00Z",
+            started_at: "2026-02-24T11:20:00Z",
+            status_changed_at: "2026-02-24T11:20:00Z",
+            latest_checkpoint_path: null,
+            latest_checkpoint_manifest_path: null,
+            last_checkpoint_at: null,
+            progress: 0.4,
+            progress_codes: [],
+            checkpoint_cycle_status: "success",
+            checkpoint_cycle_failures: [],
+            preferred_clusters: [],
+            comment: null,
+            queue_blocked_reason: null,
+            assigned_worker_id: "worker-1",
+            created_at: "2026-02-24T11:00:00Z",
+            updated_at: "2026-02-24T11:50:00Z",
+          },
+        ]),
+      ),
+      "GET /workers": new Response(
+        JSON.stringify([
+          {
+            id: "worker-1",
+            platform: "salad",
+            gpu_model: "NVIDIA A100",
+            gpu_count: 1,
+            vram_gb: 80,
+            status: "active",
+            provider_id: "provider-1",
+            provider_state: "running",
+            provider_state_raw: "RUNNING",
+            provider_reason: null,
+            provider_last_checked_at: "2026-02-24T11:59:00Z",
+            last_heartbeat: "2026-02-24T11:59:30Z",
+            registered_at: "2026-02-24T09:00:00Z",
+          },
+        ]),
+      ),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /jobs/job-1/history": new Response(
+        JSON.stringify({ derived: true, worker_segments: [], worker_totals: [], events: [] }),
+      ),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Workers/i })).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Workers/i }));
+    });
+
+    expect(screen.getByRole("table", { name: "Workers table" })).toBeInTheDocument();
+    expect(screen.getByText("worker-1")).toBeInTheDocument();
+    expect(screen.getByText("active")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Filters"));
+      fireEvent.click(screen.getByRole("checkbox", { name: "stale" }));
+    });
+    await waitFor(() =>
+      expect(screen.getByText("Worker data will appear here after the first worker registration heartbeat.")).toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: "stale" }));
+    });
+    await waitFor(() => expect(screen.getByText("worker-1")).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Expand row" }));
+    });
+    expect(screen.getByText("Provider Raw State")).toBeInTheDocument();
+    expect(screen.getByText("RUNNING")).toBeInTheDocument();
+  });
+
   it("hydrates active view from URL and keeps it on reload-like mount", async () => {
     window.history.replaceState(null, "", "/app/workers");
     mockFetch({

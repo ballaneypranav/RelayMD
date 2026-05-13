@@ -484,6 +484,7 @@ export function App() {
 
       {activeView === "workers" ? (
         <WorkersView
+          workers={workers}
           rows={workerRows}
           onCopyExport={copyText}
           onDownloadExport={downloadText}
