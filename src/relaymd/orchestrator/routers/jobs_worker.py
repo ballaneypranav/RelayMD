@@ -11,6 +11,7 @@ from relaymd.models import (
     Job,
     JobAssigned,
     JobConflict,
+    JobControl,
     JobStatus,
     NoJobAvailable,
 )
@@ -52,7 +53,23 @@ async def request_job(
     return JobAssigned(
         job_id=assigned_job.id,
         input_bundle_path=assigned_job.input_bundle_path,
-        latest_checkpoint_path=assigned_job.latest_checkpoint_path,
+        latest_checkpoint_manifest_path=assigned_job.latest_checkpoint_manifest_path,
+        latest_checkpoint_path=assigned_job.latest_checkpoint_manifest_path,
+    )
+
+
+@router.get("/{job_id}/control", response_model=JobControl)
+async def get_job_control(
+    job_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> JobControl:
+    job = await session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return JobControl(
+        job_id=job.id,
+        status=job.status,
+        cancellation_requested=job.status in {JobStatus.cancelling, JobStatus.cancelled},
     )
 
 
@@ -118,9 +135,15 @@ async def report_checkpoint(
 
     transitions = JobTransitionService()
     try:
+        checkpoint_manifest_path = payload.checkpoint_manifest_path or payload.checkpoint_path
+        if checkpoint_manifest_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="checkpoint_manifest_path is required",
+            )
         transitions.report_checkpoint(
             job,
-            checkpoint_path=payload.checkpoint_path,
+            checkpoint_manifest_path=checkpoint_manifest_path,
             progress=payload.progress if "progress" in payload.model_fields_set else None,
             progress_codes=(
                 payload.progress_codes if "progress_codes" in payload.model_fields_set else None
@@ -140,7 +163,10 @@ async def report_checkpoint(
         return job_transition_conflict_response(exc)
 
     session.add(job)
-    event_payload: dict[str, object] = {"checkpoint_path": payload.checkpoint_path}
+    event_payload: dict[str, object] = {
+        "checkpoint_manifest_path": checkpoint_manifest_path,
+        "checkpoint_path": checkpoint_manifest_path,
+    }
     for field_name in (
         "progress",
         "progress_codes",

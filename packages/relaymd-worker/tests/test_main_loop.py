@@ -404,6 +404,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
                     "status": "assigned",
                     "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
                     "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
+                    "latest_checkpoint_manifest_path": "jobs/job-1/checkpoints/latest",
                     "latest_checkpoint_path": "jobs/job-1/checkpoints/latest",
                 }
             ),
@@ -617,6 +618,7 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -721,6 +723,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-fast-exit/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -835,6 +838,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-supervision/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -963,6 +967,7 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": "jobs/job-shutdown/checkpoints/latest",
             "latest_checkpoint_path": "jobs/job-shutdown/checkpoints/latest",
         }
     )
@@ -1069,6 +1074,7 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
             "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
@@ -1222,6 +1228,7 @@ def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> 
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
             "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
@@ -1273,6 +1280,7 @@ def test_first_checkpoint_cycle_after_hydration_keeps_manifest_entries(monkeypat
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
             "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
@@ -1377,6 +1385,7 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-2/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -1478,6 +1487,7 @@ def test_run_assigned_job_heartbeat_degraded_healthy_checkpoint_keeps_running(
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-healthy/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -1615,6 +1625,7 @@ def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monk
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -1897,6 +1908,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
                 "status": "assigned",
                 "job_id": job_1_id,
                 "input_bundle_path": "a",
+                "latest_checkpoint_manifest_path": None,
                 "latest_checkpoint_path": None,
             }
         ),
@@ -1907,6 +1919,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
                 "status": "assigned",
                 "job_id": job_2_id,
                 "input_bundle_path": "a",
+                "latest_checkpoint_manifest_path": None,
                 "latest_checkpoint_path": None,
             }
         ),
@@ -2043,6 +2056,7 @@ def test_run_assigned_job_fails_fast_when_cuda_required_but_unavailable(
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )
@@ -2084,6 +2098,7 @@ def test_run_assigned_job_proceeds_when_cuda_required_and_available(
             "status": "assigned",
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
             "latest_checkpoint_path": None,
         }
     )

@@ -2,6 +2,7 @@ export type JobStatus =
   | "queued"
   | "assigned"
   | "running"
+  | "cancelling"
   | "completed"
   | "failed"
   | "cancelled";
@@ -17,6 +18,7 @@ export interface JobRead {
   assigned_at: string | null;
   started_at: string | null;
   status_changed_at: string;
+  latest_checkpoint_manifest_path: string | null;
   latest_checkpoint_path: string | null;
   last_checkpoint_at: string | null;
   progress: number | null;

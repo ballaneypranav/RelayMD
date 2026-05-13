@@ -56,7 +56,8 @@ class OrchestratorGateway(Protocol):
         self,
         *,
         job_id: UUID,
-        checkpoint_path: str,
+        checkpoint_manifest_path: str | None = None,
+        checkpoint_path: str | None = None,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
         checkpoint_cycle_status: str | None = None,
@@ -64,6 +65,8 @@ class OrchestratorGateway(Protocol):
     ) -> None: ...
 
     def start_job(self, *, job_id: UUID) -> None: ...
+
+    def is_cancellation_requested(self, *, job_id: UUID) -> bool: ...
 
     def complete_job(self, *, job_id: UUID) -> None: ...
 
@@ -94,25 +97,25 @@ class ApiOrchestratorGateway:
     def _should_use_tailscale_userspace_proxy() -> bool:
         return Path(worker_bootstrap.tailscale_socket_path()).exists()
 
-    def _build_httpx_args(self) -> dict[str, object]:
+    def _proxy_url(self) -> str | None:
         if not self._should_use_tailscale_userspace_proxy():
-            return {}
+            return None
 
-        return {"proxy": worker_bootstrap.tailscale_socks5_proxy_url()}
+        return worker_bootstrap.tailscale_socks5_proxy_url()
 
     def __enter__(self) -> ApiOrchestratorGateway:
-        httpx_args = self._build_httpx_args()
-        if httpx_args:
+        proxy_url = self._proxy_url()
+        if proxy_url is not None:
             self._logger.info(
                 "orchestrator_gateway_proxy_enabled",
-                proxy_url=worker_bootstrap.tailscale_socks5_proxy_url(),
+                proxy_url=proxy_url,
                 tailscale_socket=worker_bootstrap.tailscale_socket_path(),
             )
 
         self._client_context = RelaymdApiClient(
             base_url=self._orchestrator_url,
             timeout=httpx.Timeout(self._timeout_seconds),
-            httpx_args=httpx_args,
+            httpx_args={"proxy": proxy_url} if proxy_url is not None else {},
             raise_on_unexpected_status=True,
         )
         self._client = self._client_context.__enter__()
@@ -279,13 +282,18 @@ class ApiOrchestratorGateway:
         self,
         *,
         job_id: UUID,
-        checkpoint_path: str,
+        checkpoint_manifest_path: str | None = None,
+        checkpoint_path: str | None = None,
         progress: float | None = None,
         progress_codes: list[str] | None = None,
         checkpoint_cycle_status: str | None = None,
         checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> None:
-        body = ApiCheckpointReport(checkpoint_path=checkpoint_path)
+        resolved_checkpoint_manifest_path = checkpoint_manifest_path or checkpoint_path
+        if resolved_checkpoint_manifest_path is None:
+            raise RuntimeError("checkpoint path is required")
+        body = ApiCheckpointReport(checkpoint_path=resolved_checkpoint_manifest_path)
+        body["checkpoint_path"] = resolved_checkpoint_manifest_path
         if progress is not None:
             body["progress"] = progress
         if progress_codes is not None:
@@ -315,6 +323,27 @@ class ApiOrchestratorGateway:
                 x_api_token=self._api_token,
             ),
         )
+
+    def is_cancellation_requested(self, *, job_id: UUID) -> bool:
+        proxy_url = self._proxy_url()
+        if proxy_url is None:
+            response = httpx.get(
+                f"{self._orchestrator_url}/jobs/{job_id}/control",
+                headers={"x-api-token": self._api_token},
+                timeout=self._timeout_seconds,
+            )
+        else:
+            response = httpx.get(
+                f"{self._orchestrator_url}/jobs/{job_id}/control",
+                headers={"x-api-token": self._api_token},
+                timeout=self._timeout_seconds,
+                proxy=proxy_url,
+            )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            return False
+        return bool(payload.get("cancellation_requested", False))
 
     def complete_job(self, *, job_id: UUID) -> None:
         self._call_with_conflict_handling(
