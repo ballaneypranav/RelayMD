@@ -312,7 +312,11 @@ export function ConsoleTable<TData>({
                   {headerGroup.headers.map((header) => (
                     <th key={header.id} style={{ width: header.getSize() }}>
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                        <button className="table-sort-button" onClick={header.column.getToggleSortingHandler()}>
+                        <button
+                          className="table-sort-button"
+                          onClick={header.column.getToggleSortingHandler()}
+                          type="button"
+                        >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           <ChevronsUpDown aria-hidden="true" size={14} />
                         </button>
@@ -363,14 +367,24 @@ export function ConsoleTable<TData>({
               ))}
             </select>
           </label>
-          <button className="secondary" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
+          <button
+            className="secondary"
+            disabled={!table.getCanPreviousPage()}
+            onClick={() => table.previousPage()}
+            type="button"
+          >
             <ChevronLeft aria-hidden="true" size={16} />
             Previous
           </button>
           <span>
             Page {pagination.pageIndex + 1} of {Math.max(table.getPageCount(), 1)}
           </span>
-          <button className="secondary" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
+          <button
+            className="secondary"
+            disabled={!table.getCanNextPage()}
+            onClick={() => table.nextPage()}
+            type="button"
+          >
             Next
             <ChevronRight aria-hidden="true" size={16} />
           </button>
