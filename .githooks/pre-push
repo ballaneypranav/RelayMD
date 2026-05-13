@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if command -v uv >/dev/null 2>&1; then
-    uv run pytest -n 4
-else
-    pytest -n 4
-fi
+CODE_PATHS=(
+    "packages/"
+    "tests/"
+    "frontend/"
+    "pyproject.toml"
+    "uv.lock"
+    "scripts/sync_workspace.sh"
+)
 
 # Source paths whose changes require a version bump via make release-cli.
 CLI_PATHS=(
@@ -13,6 +16,8 @@ CLI_PATHS=(
     "relaymd-cli.spec"
     "packages/"
 )
+
+run_tests=0
 
 while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
     # Skip branch deletions.
@@ -27,6 +32,12 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
     if ! base_sha=$(git merge-base "${local_sha}^{commit}" "$main_sha" 2>/dev/null); then
         echo "pre-push: cannot compute merge-base between $local_sha and origin/main." >&2
         exit 1
+    fi
+
+    # Mirror CI: only run tests when code paths changed.
+    code_changed=$(git diff --name-only "$base_sha" "$local_sha" -- "${CODE_PATHS[@]}")
+    if [[ -n "$code_changed" ]]; then
+        run_tests=1
     fi
 
     # Check whether any CLI-affecting file changed on this branch.
@@ -56,5 +67,13 @@ while IFS=' ' read -r _local_ref local_sha _remote_ref _remote_sha; do
         exit 1
     fi
 done
+
+if [[ "$run_tests" -eq 1 ]]; then
+    if command -v uv >/dev/null 2>&1; then
+        uv run pytest -n 4
+    else
+        pytest -n 4
+    fi
+fi
 
 exit 0
