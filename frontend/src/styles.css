@@ -143,9 +143,11 @@ td {
 }
 
 .rail-nav-link span {
+  display: block;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.72rem;
   line-height: 1;
 }
