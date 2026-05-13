@@ -356,7 +356,7 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /Clusters/i }));
     });
 
-    const checkbox = await screen.findByRole("checkbox");
+    const checkbox = await screen.findByRole("checkbox", { name: /Toggle gilbreth provisioning/i });
     fireEvent.click(checkbox);
     expect(screen.getByText("1 unsaved changes")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
@@ -394,7 +394,7 @@ describe("App", () => {
       fireEvent.click(screen.getByRole("button", { name: /Clusters/i }));
     });
 
-    const checkbox = await screen.findByRole("checkbox");
+    const checkbox = await screen.findByRole("checkbox", { name: /Toggle gilbreth provisioning/i });
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByText(/save failed/i)).toBeInTheDocument());
