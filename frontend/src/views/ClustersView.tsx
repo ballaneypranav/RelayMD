@@ -23,18 +23,19 @@ export function ClustersView({
 }: ClustersViewProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["Enabled", "Disabled"]);
   const [selectedStrategies, setSelectedStrategies] = useState<string[]>([]);
-  const [strategiesInitialized, setStrategiesInitialized] = useState(false);
+  const [seenStrategies, setSeenStrategies] = useState<Set<string>>(new Set());
 
   const allStrategies = useMemo(() => {
     return Array.from(new Set(clusters.map((c) => c.strategy))).sort();
   }, [clusters]);
 
   useEffect(() => {
-    if (!strategiesInitialized && clusters.length > 0) {
-      setSelectedStrategies(Array.from(new Set(clusters.map((c) => c.strategy))).sort());
-      setStrategiesInitialized(true);
+    const newStrategies = allStrategies.filter((s) => !seenStrategies.has(s));
+    if (newStrategies.length > 0) {
+      setSelectedStrategies((prev) => [...prev, ...newStrategies]);
+      setSeenStrategies((prev) => new Set([...prev, ...newStrategies]));
     }
-  }, [clusters, strategiesInitialized]);
+  }, [allStrategies, seenStrategies]);
 
   const filteredRows = useMemo(() => {
     return clusters.filter((cluster) => {
