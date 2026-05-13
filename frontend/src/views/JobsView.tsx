@@ -362,16 +362,17 @@ export function JobsView({
                     .map((failure) => `${failure.code}: ${failure.detail}`)
                     .join("; ")
                 : "-",
-            history_source: selectedJobHistory
-              ? selectedJobHistory.derived
-                ? "Derived fallback"
-                : "Persisted events"
-              : "Unavailable",
+            history_source:
+              selectedJobId === job.id && selectedJobHistory
+                ? selectedJobHistory.derived
+                  ? "Derived fallback"
+                  : "Persisted events"
+                : "Unavailable",
             checkpoint_age: formatCheckpointAge(job),
           },
         ];
       }),
-    [filteredRows, jobById, selectedJobHistory],
+    [filteredRows, jobById, selectedJobHistory, selectedJobId],
   );
 
   const columns = useMemo<ColumnDef<JobTableRow>[]>(
