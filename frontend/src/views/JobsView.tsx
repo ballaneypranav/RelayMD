@@ -1,4 +1,16 @@
-import { etaSeconds, formatDuration, parseDate, toCsv, toDelimited, totalRuntimeSeconds } from "../format";
+import { useMemo } from "react";
+import type { ColumnDef, Row } from "@tanstack/react-table";
+
+import {
+  etaSeconds,
+  formatDuration,
+  parseDate,
+  toCsv,
+  toDelimited,
+  totalRuntimeSeconds,
+  type JobRow,
+} from "../format";
+import { ConsoleTable, type ConsoleTableToolbarContext } from "../components/ConsoleTable";
 import { StatusPill } from "../components/StatusPill";
 import type { JobHistoryRead, JobRead } from "../types";
 
@@ -7,17 +19,13 @@ const BLOCKED_REASON_LABELS: Record<string, string> = {
   no_matching_pinned_clusters: "Pinned clusters unavailable",
 };
 
-interface JobRow {
-  id: string;
-  job_id: string;
-  title: string;
-  status: string;
-  age: string;
-  time_in_status: string;
-  assigned_worker_id: string;
-  time_since_checkpoint: string;
-  progress: string;
-  checkpoint_health: string;
+const BULK_CANCEL_STATUSES = new Set(["queued", "assigned", "running"]);
+const BULK_REQUEUE_STATUSES = new Set(["failed", "cancelled"]);
+
+interface JobTableRow extends JobRow {
+  job: JobRead;
+  latest_checkpoint: string;
+  runtime: string;
 }
 
 interface JobsViewProps {
@@ -30,9 +38,246 @@ interface JobsViewProps {
   onCopyExport: (text: string) => void;
   onDownloadExport: (filename: string, text: string, mime: string) => void;
   onCancelJob: (job: JobRead) => void;
+  onBulkCancelJobs: (jobs: JobRead[]) => void;
   onRequeueJob: (job: JobRead) => void;
+  onBulkRequeueJobs: (jobs: JobRead[]) => void;
   loading: boolean;
   selectedJobHistory: JobHistoryRead | null;
+}
+
+function canCancel(job: JobRead): boolean {
+  return BULK_CANCEL_STATUSES.has(job.status);
+}
+
+function canRequeue(job: JobRead): boolean {
+  return BULK_REQUEUE_STATUSES.has(job.status);
+}
+
+function formatCheckpointAge(job: JobRead): string {
+  const checkpointAt = parseDate(job.last_checkpoint_at);
+  return checkpointAt ? formatDuration((Date.now() - checkpointAt.getTime()) / 1000) : "-";
+}
+
+function JobExpandedDetails({
+  row,
+  selectedJobHistory,
+}: {
+  row: JobTableRow;
+  selectedJobHistory: JobHistoryRead | null;
+}) {
+  const job = row.job;
+  const now = new Date();
+  const runtimeSeconds = totalRuntimeSeconds(job, now, selectedJobHistory?.worker_segments);
+  const eta = etaSeconds(job, now, selectedJobHistory?.worker_segments);
+
+  return (
+    <div className="job-expanded-detail">
+      <dl className="detail-list job-detail-grid">
+        <div>
+          <dt>Job ID</dt>
+          <dd>{job.id}</dd>
+        </div>
+        <div>
+          <dt>Assigned Worker</dt>
+          <dd>{job.assigned_worker_id || "-"}</dd>
+        </div>
+        <div>
+          <dt>Created</dt>
+          <dd>{parseDate(job.created_at)?.toISOString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Assigned</dt>
+          <dd>{parseDate(job.assigned_at)?.toISOString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Started</dt>
+          <dd>{parseDate(job.started_at)?.toISOString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Status Changed</dt>
+          <dd>{parseDate(job.status_changed_at)?.toISOString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Total Runtime</dt>
+          <dd>{formatDuration(runtimeSeconds)}</dd>
+        </div>
+        <div>
+          <dt>ETA</dt>
+          <dd>{eta !== null ? formatDuration(eta) : "-"}</dd>
+        </div>
+        <div>
+          <dt>Updated</dt>
+          <dd>{parseDate(job.updated_at)?.toISOString() ?? "-"}</dd>
+        </div>
+        <div>
+          <dt>Input Bundle</dt>
+          <dd>{job.input_bundle_path}</dd>
+        </div>
+        <div>
+          <dt>Pinned Clusters</dt>
+          <dd>
+            {(job.preferred_clusters ?? []).length > 0 ? (job.preferred_clusters ?? []).join(", ") : "-"}
+          </dd>
+        </div>
+        <div>
+          <dt>Comment</dt>
+          <dd style={{ whiteSpace: "pre-wrap" }}>{job.comment || "-"}</dd>
+        </div>
+        <div>
+          <dt>Queue Blocked</dt>
+          <dd>
+            {job.status === "queued" && job.queue_blocked_reason
+              ? (BLOCKED_REASON_LABELS[job.queue_blocked_reason] ?? job.queue_blocked_reason)
+              : "-"}
+          </dd>
+        </div>
+        <div>
+          <dt>Progress</dt>
+          <dd>{Math.round(((job.progress ?? 0) * 100) * 10) / 10}%</dd>
+        </div>
+        <div>
+          <dt>Progress Codes</dt>
+          <dd>{(job.progress_codes ?? []).length > 0 ? (job.progress_codes ?? []).join(", ") : "-"}</dd>
+        </div>
+        <div>
+          <dt>Latest Checkpoint</dt>
+          <dd>{job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-"}</dd>
+        </div>
+        <div>
+          <dt>Checkpoint Cycle Status</dt>
+          <dd>{job.checkpoint_cycle_status || "-"}</dd>
+        </div>
+        <div>
+          <dt>Checkpoint Failures</dt>
+          <dd>
+            {(job.checkpoint_cycle_failures ?? []).length > 0
+              ? (job.checkpoint_cycle_failures ?? [])
+                  .map((failure) => `${failure.code}: ${failure.detail}`)
+                  .join("; ")
+              : "-"}
+          </dd>
+        </div>
+        <div>
+          <dt>History Source</dt>
+          <dd>
+            {!selectedJobHistory
+              ? "Unavailable"
+              : selectedJobHistory.derived
+                ? "Derived fallback"
+                : "Persisted events"}
+          </dd>
+        </div>
+        <div>
+          <dt>Checkpoint Age</dt>
+          <dd>{formatCheckpointAge(job)}</dd>
+        </div>
+      </dl>
+
+      <div className="job-history-grid">
+        <section>
+          <h3>Worker Runtime Totals</h3>
+          {selectedJobHistory && selectedJobHistory.worker_totals.length > 0 ? (
+            <ul>
+              {selectedJobHistory.worker_totals.map((total) => (
+                <li key={`${total.worker_id || "none"}-${total.segment_count}`}>
+                  {(total.worker_id || "unassigned").slice(0, 12)}:{" "}
+                  {formatDuration(total.total_runtime_seconds)} ({total.segment_count} segments)
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="panel-copy">No runtime segments yet.</p>
+          )}
+        </section>
+
+        <section>
+          <h3>Timeline</h3>
+          {selectedJobHistory && selectedJobHistory.events.length > 0 ? (
+            <ul>
+              {selectedJobHistory.events.map((event) => (
+                <li key={`${event.occurred_at}-${event.event_seq}`}>
+                  {parseDate(event.occurred_at)?.toISOString() ?? event.occurred_at} - {event.event_type}
+                  {event.worker_id ? ` (${event.worker_id.slice(0, 12)})` : ""}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="panel-copy">No history events available.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function JobsToolbar({
+  context,
+  filteredRows,
+  onBulkCancelJobs,
+  onBulkRequeueJobs,
+  onCopyExport,
+  onDownloadExport,
+}: {
+  context: ConsoleTableToolbarContext<JobTableRow>;
+  filteredRows: JobRow[];
+  onBulkCancelJobs: (jobs: JobRead[]) => void;
+  onBulkRequeueJobs: (jobs: JobRead[]) => void;
+  onCopyExport: (text: string) => void;
+  onDownloadExport: (filename: string, text: string, mime: string) => void;
+}) {
+  const selectedJobs = context.selectedRows.map((row) => row.original.job);
+  const hasSelection = selectedJobs.length > 0;
+  const bulkCancelEnabled = hasSelection && selectedJobs.every(canCancel);
+  const bulkRequeueEnabled = hasSelection && selectedJobs.every(canRequeue);
+
+  const exportRows = context.table
+    .getFilteredRowModel()
+    .rows.map((row) => row.original)
+    .map(({ job, latest_checkpoint, runtime, ...rest }) => rest);
+
+  return (
+    <>
+      <button
+        aria-label="Bulk cancel selected jobs"
+        className="danger-ghost"
+        disabled={!bulkCancelEnabled}
+        onClick={() => onBulkCancelJobs(selectedJobs)}
+        type="button"
+      >
+        Cancel
+      </button>
+      <button
+        aria-label="Bulk requeue selected jobs"
+        className="secondary"
+        disabled={!bulkRequeueEnabled}
+        onClick={() => onBulkRequeueJobs(selectedJobs)}
+        type="button"
+      >
+        Requeue
+      </button>
+      <details className="table-menu">
+        <summary>Export</summary>
+        <div className="table-menu-panel">
+          <button
+            className="secondary"
+            disabled={exportRows.length === 0}
+            onClick={() => onCopyExport(toDelimited(exportRows))}
+            type="button"
+          >
+            Copy TSV
+          </button>
+          <button
+            className="secondary"
+            disabled={exportRows.length === 0}
+            onClick={() => onDownloadExport("relaymd-jobs.csv", toCsv(exportRows), "text/csv")}
+            type="button"
+          >
+            Download CSV
+          </button>
+        </div>
+      </details>
+    </>
+  );
 }
 
 export function JobsView({
@@ -45,7 +290,9 @@ export function JobsView({
   onCopyExport,
   onDownloadExport,
   onCancelJob,
+  onBulkCancelJobs,
   onRequeueJob,
+  onBulkRequeueJobs,
   loading,
   selectedJobHistory,
 }: JobsViewProps) {
@@ -54,315 +301,166 @@ export function JobsView({
     selectedStatuses.length > 0
       ? rows.filter((row) => selectedStatuses.includes(row.status))
       : rows;
-  const selectedJob = jobs.find((job) => job.id === selectedJobId) ?? jobs[0] ?? null;
-  const now = new Date();
-  const selectedRuntimeSeconds = selectedJob
-    ? totalRuntimeSeconds(selectedJob, now, selectedJobHistory?.worker_segments)
-    : 0;
-  const selectedEtaSeconds = selectedJob
-    ? etaSeconds(selectedJob, now, selectedJobHistory?.worker_segments)
-    : null;
+  const jobById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
+  const tableRows = useMemo<JobTableRow[]>(
+    () =>
+      filteredRows.flatMap((row) => {
+        const job = jobById.get(row.id);
+        if (!job) {
+          return [];
+        }
+        return [
+          {
+            ...row,
+            job,
+            latest_checkpoint: job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-",
+            runtime: formatDuration(totalRuntimeSeconds(job, new Date())),
+          },
+        ];
+      }),
+    [filteredRows, jobById],
+  );
+
+  const columns = useMemo<ColumnDef<JobTableRow>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Title",
+        cell: ({ row }) => (
+          <button
+            className="row-link"
+            onClick={() => {
+              onSelectJob(row.original.job.id);
+              row.toggleExpanded(true);
+            }}
+            type="button"
+          >
+            <strong>{row.original.title}</strong>
+          </button>
+        ),
+      },
+      {
+        accessorKey: "job_id",
+        header: "Job ID",
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <div className="cell-stack">
+            <StatusPill tone={row.original.job.status}>{row.original.job.status}</StatusPill>
+            {row.original.job.status === "queued" && row.original.job.queue_blocked_reason ? (
+              <small>
+                {BLOCKED_REASON_LABELS[row.original.job.queue_blocked_reason] ??
+                  row.original.job.queue_blocked_reason}
+              </small>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "age",
+        header: "Age",
+      },
+      {
+        accessorKey: "time_in_status",
+        header: "Time in Status",
+      },
+      {
+        accessorKey: "assigned_worker_id",
+        header: "Worker",
+      },
+      {
+        accessorKey: "time_since_checkpoint",
+        header: "Checkpoint",
+      },
+      {
+        accessorKey: "runtime",
+        header: "Runtime",
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="inline-actions">
+            {canCancel(row.original.job) ? (
+              <button className="danger-ghost" onClick={() => onCancelJob(row.original.job)} type="button">
+                Cancel
+              </button>
+            ) : null}
+            {canRequeue(row.original.job) ? (
+              <button className="secondary" onClick={() => onRequeueJob(row.original.job)} type="button">
+                Requeue
+              </button>
+            ) : null}
+          </div>
+        ),
+      },
+    ],
+    [onCancelJob, onRequeueJob, onSelectJob],
+  );
+
+  const selectedHistory =
+    selectedJobId && selectedJobHistory ? selectedJobHistory : null;
 
   return (
-    <div className="view-grid view-grid-jobs">
-      <section className="panel panel-table">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Jobs</p>
-            <h2>Execution queue</h2>
-            <p className="panel-copy">Filter by status, inspect the active backlog, and act in context.</p>
-          </div>
-          <div className="toolbar">
-            <button onClick={() => onCopyExport(toDelimited(filteredRows))} disabled={filteredRows.length === 0}>
-              Copy TSV
-            </button>
-            <button
-              className="secondary"
-              onClick={() => onDownloadExport("relaymd-jobs.csv", toCsv(filteredRows), "text/csv")}
-              disabled={filteredRows.length === 0}
-            >
-              Download CSV
-            </button>
-          </div>
+    <section className="panel panel-table">
+      <div className="panel-header">
+        <div>
+          <p className="eyebrow">Jobs</p>
+          <h2>Execution queue</h2>
+          <p className="panel-copy">Search, filter, expand, and act on queued simulation work.</p>
         </div>
+      </div>
 
-        <div className="filter-bar" aria-label="Job status filters">
-          {availableStatuses.map((status) => (
-            <label className="filter-chip" key={status}>
-              <input
-                type="checkbox"
-                checked={selectedStatuses.includes(status)}
-                onChange={(event) => onToggleStatus(status, event.target.checked)}
-              />
-              <span>{status}</span>
-            </label>
-          ))}
-        </div>
-
-        {loading ? <p className="panel-copy">Loading job data…</p> : null}
-        {filteredRows.length === 0 ? (
-          <div className="empty-state">
-            <h3>No jobs in view</h3>
-            <p>No jobs match the selected filters.</p>
+      <ConsoleTable
+        ariaLabel="Jobs"
+        columns={columns}
+        data={tableRows}
+        emptyDescription="No jobs match the selected filters."
+        emptyTitle="No jobs in view"
+        enableSelection
+        filterControls={
+          <div className="filter-stack" aria-label="Job status filters">
+            {availableStatuses.map((status) => (
+              <label className="filter-chip" key={status}>
+                <input
+                  checked={selectedStatuses.includes(status)}
+                  onChange={(event) => onToggleStatus(status, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{status}</span>
+              </label>
+            ))}
           </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Status</th>
-                  <th>Age</th>
-                  <th>Time In Status</th>
-                  <th>Worker</th>
-                  <th>Checkpoint</th>
-                  <th>Progress</th>
-                  <th>Checkpoint Health</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row) => {
-                  const backingJob = jobs.find((job) => job.id === row.id);
-                  return (
-                    <tr
-                      className={selectedJob?.id === backingJob?.id ? "row-active" : ""}
-                      key={row.id}
-                    >
-                      <td>
-                        <button
-                          className="row-link"
-                          onClick={() => {
-                            if (backingJob) {
-                              onSelectJob(backingJob.id);
-                            }
-                          }}
-                        >
-                          <strong>{row.title}</strong>
-                          <small>{row.job_id}</small>
-                        </button>
-                      </td>
-                      <td>
-                        <StatusPill tone={row.status as Parameters<typeof StatusPill>[0]["tone"]}>
-                          {row.status}
-                        </StatusPill>
-                        {backingJob?.status === "queued" && backingJob.queue_blocked_reason ? (
-                          <small>{BLOCKED_REASON_LABELS[backingJob.queue_blocked_reason] ?? backingJob.queue_blocked_reason}</small>
-                        ) : null}
-                      </td>
-                      <td>{row.age}</td>
-                      <td>{row.time_in_status}</td>
-                      <td>{row.assigned_worker_id}</td>
-                      <td>{row.time_since_checkpoint}</td>
-                      <td>{row.progress}</td>
-                      <td>{row.checkpoint_health === "warn" ? "Warning" : "OK"}</td>
-                      <td>
-                        <div className="inline-actions">
-                          {backingJob &&
-                          (backingJob.status === "queued" ||
-                            backingJob.status === "assigned" ||
-                            backingJob.status === "running") ? (
-                            <button className="danger-ghost" onClick={() => onCancelJob(backingJob)}>
-                              Cancel
-                            </button>
-                          ) : null}
-                          {backingJob && (backingJob.status === "failed" || backingJob.status === "cancelled") ? (
-                            <button className="secondary" onClick={() => onRequeueJob(backingJob)}>
-                              Re-queue
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+        }
+        getRowId={(row) => row.id}
+        initialPageSize={10}
+        loading={loading}
+        onExpandedRowToggle={(row: Row<JobTableRow>, nextExpanded) => {
+          if (nextExpanded) {
+            onSelectJob(row.original.job.id);
+          }
+        }}
+        renderExpandedRow={(row) => (
+          <JobExpandedDetails
+            row={row.original}
+            selectedJobHistory={selectedJobId === row.original.job.id ? selectedHistory : null}
+          />
         )}
-      </section>
-
-      <aside className="panel panel-detail">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Selected Job</p>
-            <h2>{selectedJob?.title ?? "No job selected"}</h2>
-          </div>
-          {selectedJob ? (
-            <StatusPill tone={selectedJob.status}>{selectedJob.status}</StatusPill>
-          ) : null}
-        </div>
-
-        {selectedJob ? (
-          <>
-            <dl className="detail-list">
-              <div>
-                <dt>Job ID</dt>
-                <dd>{selectedJob.id}</dd>
-              </div>
-              <div>
-                <dt>Assigned Worker</dt>
-                <dd>{selectedJob.assigned_worker_id || "-"}</dd>
-              </div>
-              <div>
-                <dt>Created</dt>
-                <dd>{parseDate(selectedJob.created_at)?.toISOString() ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Assigned</dt>
-                <dd>{parseDate(selectedJob.assigned_at)?.toISOString() ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Started</dt>
-                <dd>{parseDate(selectedJob.started_at)?.toISOString() ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Status Changed</dt>
-                <dd>{parseDate(selectedJob.status_changed_at)?.toISOString() ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Total Runtime</dt>
-                <dd>{formatDuration(selectedRuntimeSeconds)}</dd>
-              </div>
-              {selectedEtaSeconds !== null ? (
-                <div>
-                  <dt>ETA</dt>
-                  <dd>{formatDuration(selectedEtaSeconds)}</dd>
-                </div>
-              ) : null}
-              <div>
-                <dt>Updated</dt>
-                <dd>{parseDate(selectedJob.updated_at)?.toISOString() ?? "-"}</dd>
-              </div>
-              <div>
-                <dt>Input Bundle</dt>
-                <dd>{selectedJob.input_bundle_path}</dd>
-              </div>
-              <div>
-                <dt>Pinned Clusters</dt>
-                <dd>
-                  {(selectedJob.preferred_clusters ?? []).length > 0
-                    ? (selectedJob.preferred_clusters ?? []).join(", ")
-                    : "-"}
-                </dd>
-              </div>
-              <div>
-                <dt>Comment</dt>
-                <dd style={{ whiteSpace: "pre-wrap" }}>{selectedJob.comment || "-"}</dd>
-              </div>
-              <div>
-                <dt>Queue Blocked</dt>
-                <dd>
-                  {selectedJob.status === "queued" && selectedJob.queue_blocked_reason
-                    ? (BLOCKED_REASON_LABELS[selectedJob.queue_blocked_reason] ?? selectedJob.queue_blocked_reason)
-                    : "-"}
-                </dd>
-              </div>
-              <div>
-                <dt>Progress</dt>
-                <dd>{Math.round(((selectedJob.progress ?? 0) * 100) * 10) / 10}%</dd>
-              </div>
-              <div>
-                <dt>Progress Codes</dt>
-                <dd>
-                  {(selectedJob.progress_codes ?? []).length > 0
-                    ? (selectedJob.progress_codes ?? []).join(", ")
-                    : "-"}
-                </dd>
-              </div>
-              <div>
-                <dt>Latest Checkpoint</dt>
-                <dd>
-                  {selectedJob.latest_checkpoint_manifest_path || selectedJob.latest_checkpoint_path || "-"}
-                </dd>
-              </div>
-              <div>
-                <dt>Checkpoint Cycle Status</dt>
-                <dd>{selectedJob.checkpoint_cycle_status || "-"}</dd>
-              </div>
-              <div>
-                <dt>Checkpoint Failures</dt>
-                <dd>
-                  {(selectedJob.checkpoint_cycle_failures ?? []).length > 0
-                    ? (selectedJob.checkpoint_cycle_failures ?? [])
-                        .map((failure) => `${failure.code}: ${failure.detail}`)
-                        .join("; ")
-                    : "-"}
-                </dd>
-              </div>
-              <div>
-                <dt>History Source</dt>
-                <dd>
-                  {!selectedJobHistory
-                    ? "Unavailable"
-                    : selectedJobHistory.derived
-                      ? "Derived fallback"
-                      : "Persisted events"}
-                </dd>
-              </div>
-              <div>
-                <dt>Checkpoint Age</dt>
-                <dd>
-                  {selectedJob.last_checkpoint_at
-                    ? formatDuration(
-                        (Date.now() - parseDate(selectedJob.last_checkpoint_at)!.getTime()) / 1000,
-                      )
-                    : "-"}
-                </dd>
-              </div>
-            </dl>
-            <div>
-              <h3>Worker Runtime Totals</h3>
-              {selectedJobHistory && selectedJobHistory.worker_totals.length > 0 ? (
-                <ul>
-                  {selectedJobHistory.worker_totals.map((total) => (
-                    <li key={`${total.worker_id || "none"}-${total.segment_count}`}>
-                      {(total.worker_id || "unassigned").slice(0, 12)}: {formatDuration(total.total_runtime_seconds)} ({total.segment_count} segments)
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="panel-copy">No runtime segments yet.</p>
-              )}
-            </div>
-            <div>
-              <h3>Timeline</h3>
-              {selectedJobHistory && selectedJobHistory.events.length > 0 ? (
-                <ul>
-                  {selectedJobHistory.events.map((event) => (
-                    <li key={`${event.occurred_at}-${event.event_seq}`}>
-                      {parseDate(event.occurred_at)?.toISOString() ?? event.occurred_at} - {event.event_type}
-                      {event.worker_id ? ` (${event.worker_id.slice(0, 12)})` : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="panel-copy">No history events available.</p>
-              )}
-            </div>
-
-            <div className="detail-actions">
-              {(selectedJob.status === "queued" ||
-                selectedJob.status === "assigned" ||
-                selectedJob.status === "running") && (
-                <button className="danger-ghost" onClick={() => onCancelJob(selectedJob)}>
-                  Cancel job
-                </button>
-              )}
-              {(selectedJob.status === "failed" || selectedJob.status === "cancelled") && (
-                <button className="secondary" onClick={() => onRequeueJob(selectedJob)}>
-                  Re-queue job
-                </button>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="empty-state">
-            <h3>No selection</h3>
-            <p>Select a job from the table to inspect identifiers, paths, and actions.</p>
-          </div>
+        searchPlaceholder="Search jobs"
+        toolbarActions={(context) => (
+          <JobsToolbar
+            context={context}
+            filteredRows={filteredRows}
+            onBulkCancelJobs={onBulkCancelJobs}
+            onBulkRequeueJobs={onBulkRequeueJobs}
+            onCopyExport={onCopyExport}
+            onDownloadExport={onDownloadExport}
+          />
         )}
-      </aside>
-    </div>
+      />
+    </section>
   );
 }

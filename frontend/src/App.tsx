@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Boxes, BriefcaseBusiness, RefreshCw, Settings, Wifi, WifiOff } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { cancelJob, fetchDashboardData, fetchFrontendConfig, fetchJobHistory, requeueJob, updateClusterProvisioningEnabledMap } from "./api";
 import { AppShell } from "./components/AppShell";
@@ -131,7 +133,7 @@ export function App() {
   const [activeView, setActiveView] = useState<ViewName>(() => parseViewFromPath(window.location.pathname) ?? DEFAULT_VIEW);
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
-  const [pendingCancelJob, setPendingCancelJob] = useState<JobRead | null>(null);
+  const [pendingCancelJobs, setPendingCancelJobs] = useState<JobRead[]>([]);
   const [actionMessage, setActionMessage] = useState<string>("");
   const [actionError, setActionError] = useState<string>("");
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
@@ -236,18 +238,70 @@ export function App() {
   const activeWorkers = workers.filter((worker) => worker.status !== "queued").length;
   const provisioningWorkers = workers.filter((worker) => worker.status === "queued").length;
 
-  const handleCancel = async (job: JobRead) => {
+  const handleCancelJobs = async (jobsToCancel: JobRead[]) => {
     if (!config) {
       return;
     }
     try {
-      await cancelJob(config.api_base_url, job.id);
-      setActionMessage("Job cancelled");
-      setActionError("");
-      setPendingCancelJob(null);
-      setError("");
-      const payload = await fetchDashboardData(config.api_base_url);
-      setData(payload);
+      const results = await Promise.allSettled(jobsToCancel.map((job) => cancelJob(config.api_base_url, job.id)));
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (succeeded > 0) {
+        setActionMessage(succeeded === 1 ? "Job cancelled" : `${succeeded} jobs cancelled`);
+        setPendingCancelJobs([]);
+        setError("");
+      } else {
+        setActionMessage("");
+      }
+
+      if (failed.length > 0) {
+        const firstError = failed[0].reason;
+        setActionError(firstError instanceof Error ? firstError.message : String(firstError));
+      } else {
+        setActionError("");
+      }
+
+      if (succeeded > 0) {
+        const payload = await fetchDashboardData(config.api_base_url);
+        setData(payload);
+      }
+    } catch (actionFailure) {
+      setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
+      setActionMessage("");
+    }
+  };
+
+  const handleBulkRequeue = async (jobsToRequeue: JobRead[]) => {
+    if (!config) {
+      return;
+    }
+    try {
+      const results = await Promise.allSettled(jobsToRequeue.map((job) => requeueJob(config.api_base_url, job.id)));
+      const successes = results.filter((r) => r.status === "fulfilled") as PromiseFulfilledResult<string>[];
+      const failures = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (successes.length > 0) {
+        setActionMessage(
+          successes.length === 1
+            ? `Re-queued as job ${successes[0].value}`
+            : `Re-queued ${successes.length} jobs`,
+        );
+      } else {
+        setActionMessage("");
+      }
+
+      if (failures.length > 0) {
+        const firstError = failures[0].reason;
+        setActionError(firstError instanceof Error ? firstError.message : String(firstError));
+      } else {
+        setActionError("");
+      }
+
+      if (successes.length > 0) {
+        const payload = await fetchDashboardData(config.api_base_url);
+        setData(payload);
+      }
     } catch (actionFailure) {
       setActionError(actionFailure instanceof Error ? actionFailure.message : String(actionFailure));
       setActionMessage("");
@@ -302,16 +356,19 @@ export function App() {
   }
 
   const navigation = [
-    { id: "jobs", label: "Jobs", description: "Queue, detail, and actions" },
-    { id: "workers", label: "Workers", description: "Fleet health and assignments" },
-    { id: "clusters", label: "Clusters", description: "Provisioning targets" },
-    { id: "settings", label: "Settings", description: "Proxy auth and runtime config" },
-  ] satisfies Array<{ id: ViewName; label: string; description: string }>;
+    { id: "jobs", label: "Jobs", description: "Queue, detail, and actions", icon: BriefcaseBusiness },
+    { id: "workers", label: "Workers", description: "Fleet health and assignments", icon: Activity },
+    { id: "clusters", label: "Clusters", description: "Provisioning targets", icon: Boxes },
+    { id: "settings", label: "Settings", description: "Proxy auth and runtime config", icon: Settings },
+  ] satisfies Array<{ id: ViewName; label: string; description: string; icon: LucideIcon }>;
 
   const header = (
     <header className="console-header">
       <div>
-        <p className="eyebrow">Operational Console</p>
+        <div className="header-title-row">
+          <p className="eyebrow">RelayMD</p>
+          <span>Operator Console</span>
+        </div>
         <h2>{navigation.find((item) => item.id === activeView)?.label}</h2>
         <p className="header-copy">
           {lastUpdatedAt ? `Last updated ${new Date(lastUpdatedAt).toLocaleTimeString()}` : "Last updated -"}
@@ -319,8 +376,12 @@ export function App() {
       </div>
       <div className="console-header-actions">
         <div className="meta-pill meta-pill-version">RelayMD v{health?.version ?? "-"}</div>
-        <div className={error ? "meta-pill meta-pill-error" : "meta-pill meta-pill-live"}>{error ? "Error" : "Live"}</div>
+        <div className={error ? "meta-pill meta-pill-error" : "meta-pill meta-pill-live"}>
+          {error ? <WifiOff aria-hidden="true" size={15} /> : <Wifi aria-hidden="true" size={15} />}
+          {error ? "Error" : "Live"}
+        </div>
         <button className="secondary header-action-button" onClick={() => void refreshData()} disabled={isRefreshing}>
+          <RefreshCw aria-hidden="true" size={16} className={isRefreshing ? "spin-icon" : undefined} />
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </button>
         {health?.tailscale ? (
@@ -404,22 +465,26 @@ export function App() {
       header={header}
       overview={overview}
     >
-      {pendingCancelJob ? (
+      {pendingCancelJobs.length > 0 ? (
         <section className="panel confirm-panel">
           <div className="panel-header">
             <div>
               <p className="eyebrow">Confirmation Required</p>
-              <h2>Cancel {pendingCancelJob.title}?</h2>
+              <h2>
+                {pendingCancelJobs.length === 1
+                  ? `Cancel ${pendingCancelJobs[0].title}?`
+                  : `Cancel ${pendingCancelJobs.length} jobs?`}
+              </h2>
               <p className="panel-copy">
                 This cannot be undone. Workers will stop on their next poll cycle.
               </p>
             </div>
           </div>
           <div className="toolbar">
-            <button className="danger-ghost" onClick={() => void handleCancel(pendingCancelJob)}>
+            <button className="danger-ghost" onClick={() => void handleCancelJobs(pendingCancelJobs)}>
               Confirm cancellation
             </button>
-            <button className="secondary" onClick={() => setPendingCancelJob(null)}>
+            <button className="secondary" onClick={() => setPendingCancelJobs([])}>
               Abort
             </button>
           </div>
@@ -440,8 +505,10 @@ export function App() {
           }
           onCopyExport={copyText}
           onDownloadExport={downloadText}
-          onCancelJob={setPendingCancelJob}
+          onCancelJob={(job) => setPendingCancelJobs([job])}
+          onBulkCancelJobs={setPendingCancelJobs}
           onRequeueJob={(job) => void handleRequeue(job)}
+          onBulkRequeueJobs={(jobsToRequeue) => void handleBulkRequeue(jobsToRequeue)}
           loading={loading}
           selectedJobHistory={selectedJobHistory}
         />
@@ -449,6 +516,7 @@ export function App() {
 
       {activeView === "workers" ? (
         <WorkersView
+          workers={workers}
           rows={workerRows}
           onCopyExport={copyText}
           onDownloadExport={downloadText}
