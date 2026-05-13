@@ -47,6 +47,7 @@ export interface ConsoleTableProps<TData> {
   enableSelection?: boolean;
   onExpandedRowToggle?: (row: Row<TData>, nextExpanded: boolean) => void;
   renderExpandedRow?: (row: Row<TData>) => ReactNode;
+  initialColumnVisibility?: VisibilityState;
 }
 
 interface CompactIconButtonProps {
@@ -148,10 +149,11 @@ export function ConsoleTable<TData>({
   enableSelection = false,
   onExpandedRowToggle,
   renderExpandedRow,
+  initialColumnVisibility,
 }: ConsoleTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(initialColumnVisibility ?? {});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [pagination, setPagination] = useState<PaginationState>({
@@ -229,7 +231,23 @@ export function ConsoleTable<TData>({
     getRowCanExpand: () => Boolean(renderExpandedRow),
     getRowId,
     getSortedRowModel: getSortedRowModel(),
-    globalFilterFn: "includesString",
+    globalFilterFn: (row, columnId, filterValue) => {
+      const query = String(filterValue ?? "").trim().toLowerCase();
+      if (!query) {
+        return true;
+      }
+      const value = String(row.getValue(columnId) ?? "").toLowerCase();
+      if (value.includes(query)) {
+        return true;
+      }
+      let queryIndex = 0;
+      for (let i = 0; i < value.length && queryIndex < query.length; i += 1) {
+        if (value[i] === query[queryIndex]) {
+          queryIndex += 1;
+        }
+      }
+      return queryIndex === query.length;
+    },
     onColumnVisibilityChange: setColumnVisibility,
     onExpandedChange: setExpanded,
     onGlobalFilterChange: setGlobalFilter,
