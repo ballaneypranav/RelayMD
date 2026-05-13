@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { App } from "./App";
 
@@ -236,6 +236,115 @@ describe("App", () => {
     expect(screen.getByText("RUNNING")).toBeInTheDocument();
   });
 
+  it("renders jobs as a dense table with search, filter, sort, pagination, column visibility, selection, and expansion", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(
+        JSON.stringify([
+          {
+            id: "job-1",
+            title: "alpha-job",
+            status: "running",
+            input_bundle_path: "/tmp/input",
+            assigned_at: "2026-02-24T11:10:00Z",
+            started_at: "2026-02-24T11:20:00Z",
+            status_changed_at: "2026-02-24T11:20:00Z",
+            latest_checkpoint_path: null,
+            latest_checkpoint_manifest_path: null,
+            last_checkpoint_at: null,
+            progress: 0.4,
+            progress_codes: [],
+            checkpoint_cycle_status: null,
+            checkpoint_cycle_failures: [],
+            preferred_clusters: [],
+            comment: null,
+            queue_blocked_reason: null,
+            assigned_worker_id: "worker-1",
+            created_at: "2026-02-24T11:00:00Z",
+            updated_at: "2026-02-24T11:50:00Z",
+          },
+          {
+            id: "job-2",
+            title: "beta-job",
+            status: "queued",
+            input_bundle_path: "/tmp/input",
+            assigned_at: null,
+            started_at: null,
+            status_changed_at: "2026-02-24T11:20:00Z",
+            latest_checkpoint_path: null,
+            latest_checkpoint_manifest_path: null,
+            last_checkpoint_at: null,
+            progress: 0.0,
+            progress_codes: [],
+            checkpoint_cycle_status: null,
+            checkpoint_cycle_failures: [],
+            preferred_clusters: [],
+            comment: null,
+            queue_blocked_reason: null,
+            assigned_worker_id: null,
+            created_at: "2026-02-24T11:00:00Z",
+            updated_at: "2026-02-24T11:50:00Z",
+          },
+        ]),
+      ),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(JSON.stringify({ clusters: [] })),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", version: "0.1.4", warnings: [] })),
+      "GET /jobs/job-1/history": new Response(
+        JSON.stringify({ derived: true, worker_segments: [], worker_totals: [], events: [] }),
+      ),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("table", { name: "Jobs" })).toBeInTheDocument());
+    expect(screen.getByText("alpha-job")).toBeInTheDocument();
+    expect(screen.getByText("beta-job")).toBeInTheDocument();
+
+    // Expansion
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Expand row" })[0]);
+    });
+    expect(screen.getByText("Input Bundle")).toBeInTheDocument();
+
+    // Selection
+    await act(async () => {
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select row job-1" }));
+    });
+    expect(screen.getByRole("button", { name: "Bulk cancel selected jobs" })).toBeInTheDocument();
+
+    // Column visibility
+    const table = screen.getByRole("table", { name: "Jobs" });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Columns"));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Status" }));
+    });
+    await waitFor(() => expect(within(table).queryByText("queued")).not.toBeInTheDocument());
+
+    // Search
+    const searchInput = screen.getByRole("searchbox", { name: "Search table" });
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: "alpha" } });
+    });
+    expect(screen.getByText("alpha-job")).toBeInTheDocument();
+    expect(screen.queryByText("beta-job")).not.toBeInTheDocument();
+
+    // Clear search
+    await act(async () => {
+      fireEvent.change(searchInput, { target: { value: "" } });
+    });
+
+    // Filter
+    await act(async () => {
+      fireEvent.click(screen.getByText("Filters"));
+      fireEvent.click(screen.getByRole("checkbox", { name: "running" }));
+    });
+    await waitFor(() => expect(within(table).queryByText("alpha-job")).not.toBeInTheDocument());
+    expect(screen.getByText("beta-job")).toBeInTheDocument();
+  });
+
   it("hydrates active view from URL and keeps it on reload-like mount", async () => {
     window.history.replaceState(null, "", "/app/workers");
     mockFetch({
@@ -399,7 +508,68 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(screen.getByText(/save failed/i)).toBeInTheDocument());
     expect(screen.getByText("1 unsaved changes")).toBeInTheDocument();
+  });
+
+  it("renders clusters as a dense table with filters and expandable details", async () => {
+    mockFetch({
+      "GET /config/frontend": new Response(
+        JSON.stringify({ api_base_url: "", refresh_interval_seconds: 30 }),
+      ),
+      "GET /jobs": new Response(JSON.stringify([])),
+      "GET /workers": new Response(JSON.stringify([])),
+      "GET /config/slurm-clusters": new Response(
+        JSON.stringify({
+          clusters: [
+            {
+              name: "gilbreth",
+              partition: "gpu",
+              strategy: "reactive",
+              max_pending_jobs: 1,
+              wall_time: "4:00:00",
+              enabled: true,
+            },
+            {
+              name: "negishi",
+              partition: "A100",
+              strategy: "reactive",
+              max_pending_jobs: 2,
+              wall_time: "8:00:00",
+              enabled: false,
+            },
+          ],
+        }),
+      ),
+      "GET /healthz": new Response(JSON.stringify({ status: "ok", warnings: [] })),
     });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Clusters/i })).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Clusters/i }));
+    });
+
+    expect(screen.getByRole("table", { name: "Clusters table" })).toBeInTheDocument();
+    expect(screen.getByText("gilbreth")).toBeInTheDocument();
+    expect(screen.getByText("negishi")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Filters"));
+      const group = screen.getByRole("group", { name: "Status" });
+      fireEvent.click(within(group).getByRole("checkbox", { name: "Enabled" }));
+    });
+    await waitFor(() => expect(screen.queryByText("gilbreth")).not.toBeInTheDocument());
+    expect(screen.getByText("negishi")).toBeInTheDocument();
+
+    await act(async () => {
+      const group = screen.getByRole("group", { name: "Status" });
+      fireEvent.click(within(group).getByRole("checkbox", { name: "Enabled" }));
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Expand row" })[0]);
+    });
+    expect(screen.getAllByText("Max Pending Jobs")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("1").length).toBeGreaterThan(0);
   });
 
   it("shows history source as unavailable when history fetch fails", async () => {
@@ -740,3 +910,4 @@ describe("App", () => {
     expect(screen.getByText(/second-history/)).toBeInTheDocument();
     expect(screen.queryByText(/first-history-stale/)).not.toBeInTheDocument();
   });
+});
