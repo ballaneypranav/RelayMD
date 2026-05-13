@@ -8,17 +8,18 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
+from ...models.worker_heartbeat import WorkerHeartbeat
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     worker_id: UUID,
     *,
-    body: Any | None = None,
+    body: None | Unset | WorkerHeartbeat = UNSET,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset) and x_api_token is not None:
+    if not isinstance(x_api_token, Unset):
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
@@ -28,10 +29,14 @@ def _get_kwargs(
         ),
     }
 
-    _kwargs["headers"] = headers
-    if body is not None:
+    if isinstance(body, WorkerHeartbeat):
+        _kwargs["json"] = body.to_dict()
+    else:
         _kwargs["json"] = body
-        headers["Content-Type"] = "application/json"
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
@@ -68,7 +73,7 @@ def sync_detailed(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: Any | None = None,
+    body: None | Unset | WorkerHeartbeat = UNSET,
     x_api_token: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Heartbeat Worker
@@ -76,6 +81,7 @@ def sync_detailed(
     Args:
         worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (None | Unset | WorkerHeartbeat):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -102,7 +108,7 @@ def sync(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: Any | None = None,
+    body: None | Unset | WorkerHeartbeat = UNSET,
     x_api_token: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Heartbeat Worker
@@ -110,6 +116,7 @@ def sync(
     Args:
         worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (None | Unset | WorkerHeartbeat):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -131,7 +138,7 @@ async def asyncio_detailed(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: Any | None = None,
+    body: None | Unset | WorkerHeartbeat = UNSET,
     x_api_token: None | str | Unset = UNSET,
 ) -> Response[Any | HTTPValidationError]:
     """Heartbeat Worker
@@ -139,6 +146,7 @@ async def asyncio_detailed(
     Args:
         worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (None | Unset | WorkerHeartbeat):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -163,7 +171,7 @@ async def asyncio(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: Any | None = None,
+    body: None | Unset | WorkerHeartbeat = UNSET,
     x_api_token: None | str | Unset = UNSET,
 ) -> Any | HTTPValidationError | None:
     """Heartbeat Worker
@@ -171,6 +179,7 @@ async def asyncio(
     Args:
         worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (None | Unset | WorkerHeartbeat):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

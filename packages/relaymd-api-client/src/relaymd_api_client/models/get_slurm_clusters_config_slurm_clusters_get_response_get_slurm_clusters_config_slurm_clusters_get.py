@@ -7,7 +7,7 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 if TYPE_CHECKING:
-    from ..models.cluster_config import ClusterConfig
+    from ..models.cluster_config_read import ClusterConfigRead
 
 
 T = TypeVar(
@@ -20,7 +20,9 @@ T = TypeVar(
 class GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet:
     """ """
 
-    additional_properties: dict[str, list[ClusterConfig]] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, list[ClusterConfigRead]] = _attrs_field(
+        init=False, factory=dict
+    )
 
     def to_dict(self) -> dict[str, Any]:
 
@@ -35,7 +37,7 @@ class GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmC
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.cluster_config import ClusterConfig
+        from ..models.cluster_config_read import ClusterConfigRead
 
         d = dict(src_dict)
         get_slurm_clusters_config_slurm_clusters_get_response_get_slurm_clusters_config_slurm_clusters_get = cls()
@@ -45,7 +47,9 @@ class GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmC
             additional_property = []
             _additional_property = prop_dict
             for additional_property_item_data in _additional_property:
-                additional_property_item = ClusterConfig.from_dict(additional_property_item_data)
+                additional_property_item = ClusterConfigRead.from_dict(
+                    additional_property_item_data
+                )
 
                 additional_property.append(additional_property_item)
 
@@ -58,10 +62,10 @@ class GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmC
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> list[ClusterConfig]:
+    def __getitem__(self, key: str) -> list[ClusterConfigRead]:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: list[ClusterConfig]) -> None:
+    def __setitem__(self, key: str, value: list[ClusterConfigRead]) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

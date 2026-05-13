@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from typing import Any, cast
+from typing import Any
 from urllib.parse import quote
 from uuid import UUID
 
@@ -8,12 +8,12 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.http_validation_error import HTTPValidationError
-from ...models.job_conflict import JobConflict
+from ...models.job_history_read import JobHistoryRead
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
-    worker_id: UUID,
+    job_id: UUID,
     *,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
@@ -22,9 +22,9 @@ def _get_kwargs(
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/workers/{worker_id}/deregister".format(
-            worker_id=quote(str(worker_id), safe=""),
+        "method": "get",
+        "url": "/jobs/{job_id}/history".format(
+            job_id=quote(str(job_id), safe=""),
         ),
     }
 
@@ -34,15 +34,11 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Any | HTTPValidationError | JobConflict | None:
-    if response.status_code == 204:
-        response_204 = cast(Any, None)
-        return response_204
+) -> HTTPValidationError | JobHistoryRead | None:
+    if response.status_code == 200:
+        response_200 = JobHistoryRead.from_dict(response.json())
 
-    if response.status_code == 409:
-        response_409 = JobConflict.from_dict(response.json())
-
-        return response_409
+        return response_200
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -57,7 +53,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Any | HTTPValidationError | JobConflict]:
+) -> Response[HTTPValidationError | JobHistoryRead]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -67,15 +63,15 @@ def _build_response(
 
 
 def sync_detailed(
-    worker_id: UUID,
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+) -> Response[HTTPValidationError | JobHistoryRead]:
+    """Get Job History
 
     Args:
-        worker_id (UUID):
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -83,11 +79,11 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict]
+        Response[HTTPValidationError | JobHistoryRead]
     """
 
     kwargs = _get_kwargs(
-        worker_id=worker_id,
+        job_id=job_id,
         x_api_token=x_api_token,
     )
 
@@ -99,15 +95,15 @@ def sync_detailed(
 
 
 def sync(
-    worker_id: UUID,
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+) -> HTTPValidationError | JobHistoryRead | None:
+    """Get Job History
 
     Args:
-        worker_id (UUID):
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -115,26 +111,26 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict
+        HTTPValidationError | JobHistoryRead
     """
 
     return sync_detailed(
-        worker_id=worker_id,
+        job_id=job_id,
         client=client,
         x_api_token=x_api_token,
     ).parsed
 
 
 async def asyncio_detailed(
-    worker_id: UUID,
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+) -> Response[HTTPValidationError | JobHistoryRead]:
+    """Get Job History
 
     Args:
-        worker_id (UUID):
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -142,11 +138,11 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict]
+        Response[HTTPValidationError | JobHistoryRead]
     """
 
     kwargs = _get_kwargs(
-        worker_id=worker_id,
+        job_id=job_id,
         x_api_token=x_api_token,
     )
 
@@ -156,15 +152,15 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    worker_id: UUID,
+    job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
-) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+) -> HTTPValidationError | JobHistoryRead | None:
+    """Get Job History
 
     Args:
-        worker_id (UUID):
+        job_id (UUID):
         x_api_token (None | str | Unset):
 
     Raises:
@@ -172,12 +168,12 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict
+        HTTPValidationError | JobHistoryRead
     """
 
     return (
         await asyncio_detailed(
-            worker_id=worker_id,
+            job_id=job_id,
             client=client,
             x_api_token=x_api_token,
         )

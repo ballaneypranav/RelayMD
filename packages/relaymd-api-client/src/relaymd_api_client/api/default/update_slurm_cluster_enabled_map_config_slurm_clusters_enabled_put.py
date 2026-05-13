@@ -1,20 +1,18 @@
 from http import HTTPStatus
 from typing import Any, cast
-from urllib.parse import quote
-from uuid import UUID
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...models.cluster_enabled_map_update import ClusterEnabledMapUpdate
 from ...models.http_validation_error import HTTPValidationError
-from ...models.job_conflict import JobConflict
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
-    worker_id: UUID,
     *,
+    body: ClusterEnabledMapUpdate,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -22,11 +20,13 @@ def _get_kwargs(
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/workers/{worker_id}/deregister".format(
-            worker_id=quote(str(worker_id), safe=""),
-        ),
+        "method": "put",
+        "url": "/config/slurm-clusters/enabled",
     }
+
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
 
     _kwargs["headers"] = headers
     return _kwargs
@@ -34,15 +34,10 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Any | HTTPValidationError | JobConflict | None:
+) -> Any | HTTPValidationError | None:
     if response.status_code == 204:
         response_204 = cast(Any, None)
         return response_204
-
-    if response.status_code == 409:
-        response_409 = JobConflict.from_dict(response.json())
-
-        return response_409
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -57,7 +52,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Any | HTTPValidationError | JobConflict]:
+) -> Response[Any | HTTPValidationError]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -67,27 +62,27 @@ def _build_response(
 
 
 def sync_detailed(
-    worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: ClusterEnabledMapUpdate,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+) -> Response[Any | HTTPValidationError]:
+    """Update Slurm Cluster Enabled Map
 
     Args:
-        worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (ClusterEnabledMapUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        worker_id=worker_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -99,54 +94,54 @@ def sync_detailed(
 
 
 def sync(
-    worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: ClusterEnabledMapUpdate,
     x_api_token: None | str | Unset = UNSET,
-) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+) -> Any | HTTPValidationError | None:
+    """Update Slurm Cluster Enabled Map
 
     Args:
-        worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (ClusterEnabledMapUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict
+        Any | HTTPValidationError
     """
 
     return sync_detailed(
-        worker_id=worker_id,
         client=client,
+        body=body,
         x_api_token=x_api_token,
     ).parsed
 
 
 async def asyncio_detailed(
-    worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: ClusterEnabledMapUpdate,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+) -> Response[Any | HTTPValidationError]:
+    """Update Slurm Cluster Enabled Map
 
     Args:
-        worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (ClusterEnabledMapUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict]
+        Response[Any | HTTPValidationError]
     """
 
     kwargs = _get_kwargs(
-        worker_id=worker_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -156,29 +151,29 @@ async def asyncio_detailed(
 
 
 async def asyncio(
-    worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: ClusterEnabledMapUpdate,
     x_api_token: None | str | Unset = UNSET,
-) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+) -> Any | HTTPValidationError | None:
+    """Update Slurm Cluster Enabled Map
 
     Args:
-        worker_id (UUID):
         x_api_token (None | str | Unset):
+        body (ClusterEnabledMapUpdate):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict
+        Any | HTTPValidationError
     """
 
     return (
         await asyncio_detailed(
-            worker_id=worker_id,
             client=client,
+            body=body,
             x_api_token=x_api_token,
         )
     ).parsed

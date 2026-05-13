@@ -18,7 +18,7 @@ def _get_kwargs(
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset) and x_api_token is not None:
+    if not isinstance(x_api_token, Unset):
         headers["X-API-Token"] = x_api_token
 
     _kwargs: dict[str, Any] = {
@@ -34,7 +34,7 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Any | HTTPValidationError | JobConflict | dict[str, Any] | None:
+) -> Any | HTTPValidationError | JobConflict | None:
     if response.status_code == 204:
         response_204 = cast(Any, None)
         return response_204
@@ -43,11 +43,6 @@ def _parse_response(
         response_409 = JobConflict.from_dict(response.json())
 
         return response_409
-
-    if response.status_code == 404:
-        response_404 = response.json()
-
-        return response_404
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
@@ -62,7 +57,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Any | HTTPValidationError | JobConflict | dict[str, Any]]:
+) -> Response[Any | HTTPValidationError | JobConflict]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -88,7 +83,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict | dict[str, Any]]
+        Response[Any | HTTPValidationError | JobConflict]
     """
 
     kwargs = _get_kwargs(
@@ -120,7 +115,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict | dict[str, Any]
+        Any | HTTPValidationError | JobConflict
     """
 
     return sync_detailed(
@@ -147,7 +142,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Any | HTTPValidationError | JobConflict | dict[str, Any]]
+        Response[Any | HTTPValidationError | JobConflict]
     """
 
     kwargs = _get_kwargs(
@@ -177,7 +172,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Any | HTTPValidationError | JobConflict | dict[str, Any]
+        Any | HTTPValidationError | JobConflict
     """
 
     return (
