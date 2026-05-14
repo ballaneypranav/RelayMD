@@ -48,6 +48,12 @@ export interface ConsoleTableProps<TData> {
   onExpandedRowToggle?: (row: Row<TData>, nextExpanded: boolean) => void;
   renderExpandedRow?: (row: Row<TData>) => ReactNode;
   initialColumnVisibility?: VisibilityState;
+  columnGroups?: Array<{
+    id: string;
+    label: string;
+    columnIds: string[];
+  }>;
+  initiallyExpandedColumnGroupIds?: string[];
 }
 
 interface CompactIconButtonProps {
@@ -150,6 +156,8 @@ export function ConsoleTable<TData>({
   onExpandedRowToggle,
   renderExpandedRow,
   initialColumnVisibility,
+  columnGroups,
+  initiallyExpandedColumnGroupIds,
 }: ConsoleTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -267,6 +275,31 @@ export function ConsoleTable<TData>({
   );
   const renderedToolbarActions =
     typeof toolbarActions === "function" ? toolbarActions({ selectedRows, table }) : toolbarActions;
+  const groupedColumnIds = useMemo(
+    () => new Set((columnGroups ?? []).flatMap((group) => group.columnIds)),
+    [columnGroups],
+  );
+  const visibleColumnsById = useMemo(
+    () => new Map(visibleColumns.map((column) => [column.id, column])),
+    [visibleColumns],
+  );
+  const groupedColumns = useMemo(
+    () =>
+      (columnGroups ?? [])
+        .map((group) => ({
+          ...group,
+          columns: group.columnIds.flatMap((columnId) => {
+            const column = visibleColumnsById.get(columnId);
+            return column ? [column] : [];
+          }),
+        }))
+        .filter((group) => group.columns.length > 0),
+    [columnGroups, visibleColumnsById],
+  );
+  const ungroupedColumns = useMemo(
+    () => visibleColumns.filter((column) => !groupedColumnIds.has(column.id)),
+    [groupedColumnIds, visibleColumns],
+  );
 
   return (
     <div className="console-table-surface">
@@ -302,16 +335,75 @@ export function ConsoleTable<TData>({
               Columns
             </summary>
             <div className="table-menu-panel">
-              {visibleColumns.map((column) => (
-                <label className="table-menu-check" key={column.id}>
-                  <input
-                    checked={column.getIsVisible()}
-                    onChange={column.getToggleVisibilityHandler()}
-                    type="checkbox"
-                  />
-                  <span>{String(column.columnDef.header ?? column.id)}</span>
-                </label>
+              {groupedColumns.map((group) => (
+                <details
+                  className="table-menu-group"
+                  key={group.id}
+                  defaultOpen={(initiallyExpandedColumnGroupIds ?? []).includes(group.id)}
+                >
+                  <summary>
+                    <span>{group.label}</span>
+                    <span className="table-menu-group-actions">
+                      <button
+                        className="table-menu-link"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          group.columns.forEach((column) => column.toggleVisibility(true));
+                        }}
+                        type="button"
+                      >
+                        Show all
+                      </button>
+                      <button
+                        className="table-menu-link"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          group.columns.forEach((column) => column.toggleVisibility(false));
+                        }}
+                        type="button"
+                      >
+                        Hide all
+                      </button>
+                    </span>
+                  </summary>
+                  <div className="table-menu-group-list">
+                    {group.columns.map((column) => (
+                      <label className="table-menu-check" key={column.id}>
+                        <input
+                          checked={column.getIsVisible()}
+                          onChange={column.getToggleVisibilityHandler()}
+                          type="checkbox"
+                        />
+                        <span>{String(column.columnDef.header ?? column.id)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
               ))}
+              {ungroupedColumns.length > 0 ? (
+                <details
+                  className="table-menu-group"
+                  defaultOpen={groupedColumns.length === 0}
+                >
+                  <summary>
+                    <span>Other</span>
+                  </summary>
+                  <div className="table-menu-group-list">
+                    {ungroupedColumns.map((column) => (
+                      <label className="table-menu-check" key={column.id}>
+                        <input
+                          checked={column.getIsVisible()}
+                          onChange={column.getToggleVisibilityHandler()}
+                          type="checkbox"
+                        />
+                        <span>{String(column.columnDef.header ?? column.id)}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </details>
 

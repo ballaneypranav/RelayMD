@@ -148,4 +148,27 @@ describe("ConsoleTable", () => {
     expect(screen.getByText("No demo rows")).toBeInTheDocument();
     expect(screen.getByText("No demo rows match the current table state.")).toBeInTheDocument();
   });
+
+  it("supports grouped column controls with section-level show and hide actions", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      columnGroups: [
+        { id: "core", label: "Core", columnIds: ["title", "status"] },
+        { id: "meta", label: "Meta", columnIds: ["priority"] },
+      ],
+      initiallyExpandedColumnGroupIds: ["core"],
+    });
+
+    await user.click(screen.getByText("Columns"));
+    expect(screen.getByText("Core")).toBeInTheDocument();
+    expect(screen.getByText("Meta")).toBeInTheDocument();
+
+    const showButtons = screen.getAllByRole("button", { name: "Show all" });
+    const hideButtons = screen.getAllByRole("button", { name: "Hide all" });
+    await user.click(hideButtons[0]);
+    expect(screen.queryByText("queued")).not.toBeInTheDocument();
+
+    await user.click(showButtons[0]);
+    expect(screen.getByText("queued")).toBeInTheDocument();
+  });
 });
