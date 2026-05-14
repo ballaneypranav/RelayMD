@@ -502,6 +502,53 @@ dt {
   width: auto;
 }
 
+.table-menu-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table-menu-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.88rem;
+}
+
+.table-menu-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.table-menu-group-actions {
+  display: inline-flex;
+  gap: 0.45rem;
+}
+
+.table-menu-link {
+  border: 0;
+  border-radius: 0;
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+}
+
+.table-menu-link:hover,
+.table-menu-link:focus-visible {
+  text-decoration: underline;
+}
+
+.table-menu-group-list {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0 0.5rem 0.5rem;
+}
+
 .selection-count {
   color: var(--muted);
   font-size: 0.85rem;

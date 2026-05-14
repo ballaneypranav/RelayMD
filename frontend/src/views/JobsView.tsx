@@ -511,6 +511,7 @@ export function JobsView({
       {
         id: "actions",
         header: "Actions",
+        enableHiding: false,
         enableSorting: false,
         cell: ({ row }) => (
           <div className="inline-actions">
@@ -533,6 +534,60 @@ export function JobsView({
 
   const selectedHistory =
     selectedJobId && selectedJobHistory ? selectedJobHistory : null;
+  const columnGroups = useMemo(
+    () => [
+      {
+        id: "core",
+        label: "Core",
+        columnIds: [
+          "title",
+          "job_id",
+          "status",
+          "age",
+          "time_in_status",
+          "assigned_worker_id",
+          "time_since_checkpoint",
+          "runtime",
+        ],
+      },
+      {
+        id: "timing",
+        label: "Timing",
+        columnIds: [
+          "created_at_iso",
+          "assigned_at_iso",
+          "started_at_iso",
+          "status_changed_at_iso",
+          "etc",
+          "updated_at_iso",
+          "checkpoint_age",
+        ],
+      },
+      {
+        id: "placement",
+        label: "Placement",
+        columnIds: ["assigned_worker_full", "pinned_clusters", "queue_blocked"],
+      },
+      {
+        id: "progress_checkpoints",
+        label: "Progress & Checkpoints",
+        columnIds: [
+          "progress_percent",
+          "progress_codes_text",
+          "latest_checkpoint",
+          "checkpoint_cycle_status_text",
+          "checkpoint_failures_text",
+          "history_source",
+        ],
+      },
+      {
+        id: "metadata",
+        label: "Metadata",
+        columnIds: ["job_id_full", "input_bundle", "comment_text"],
+      },
+    ],
+    [],
+  );
 
   return (
     <section className="panel panel-table">
@@ -567,6 +622,8 @@ export function JobsView({
         }
         getRowId={(row) => row.id}
         initialPageSize={10}
+        columnGroups={columnGroups}
+        initiallyExpandedColumnGroupIds={["core"]}
         initialColumnVisibility={{
           assigned_worker_full: false,
           job_id_full: false,
