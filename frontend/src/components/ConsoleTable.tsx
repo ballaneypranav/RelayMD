@@ -300,7 +300,19 @@ export function ConsoleTable<TData>({
     () => visibleColumns.filter((column) => !groupedColumnIds.has(column.id)),
     [groupedColumnIds, visibleColumns],
   );
-  const [columnGroupOpenState, setColumnGroupOpenState] = useState<Record<string, boolean>>({});
+  const [columnGroupOpenState, setColumnGroupOpenState] = useState<Record<string, boolean>>(() => {
+    const nextState: Record<string, boolean> = {};
+
+    for (const group of groupedColumns) {
+      nextState[group.id] = (initiallyExpandedColumnGroupIds ?? []).includes(group.id);
+    }
+
+    if (ungroupedColumns.length > 0) {
+      nextState.__other = groupedColumns.length === 0;
+    }
+
+    return nextState;
+  });
 
   useEffect(() => {
     setColumnGroupOpenState((currentState) => {
