@@ -57,10 +57,17 @@ def parse_timestamp(value: Any) -> datetime | None:
     if not text:
         return None
     has_utc_designator = text.endswith(("Z", "z"))
-    has_offset = len(text) >= _TZ_OFFSET_SUFFIX_LENGTH and text[-_TZ_OFFSET_SUFFIX_LENGTH] in {
-        "+",
-        "-",
-    }
+    has_offset = (
+        (len(text) >= 3 and text[-3] in {"+", "-"} and text[-2:].isdigit())
+        or (len(text) >= 5 and text[-5] in {"+", "-"} and text[-4:].isdigit())
+        or (
+            len(text) >= 6
+            and text[-6] in {"+", "-"}
+            and text[-3] == ":"
+            and text[-5:-3].isdigit()
+            and text[-2:].isdigit()
+        )
+    )
     normalized = text if has_utc_designator or has_offset else f"{text}Z"
     try:
         parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00").replace("z", "+00:00"))
