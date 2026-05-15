@@ -1,22 +1,55 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if command -v uv >/dev/null 2>&1; then
-  export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
-  # Run formatting first
-  uv run ruff format .
-  # Then check (linting)
-  uv run ruff check --fix .
-  # Then type checking on staged Python files only
-  mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
-  if [[ ${#staged_py[@]} -gt 0 ]]; then
-    uv run pyright "${staged_py[@]}"
-  fi
-else
-  ruff format .
-  ruff check --fix .
-  mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
-  if [[ ${#staged_py[@]} -gt 0 ]]; then
-    pyright "${staged_py[@]}"
-  fi
+# Files that predate the 400-line limit.  Remove an entry once the file has
+# been refactored below the threshold and its per-file-ignores entry removed
+# from pyproject.toml.
+MAX_LINES=400
+LEGACY_LARGE_FILES=(
+    "packages/relaymd-worker/src/relaymd/worker/main.py"
+    "packages/relaymd-worker/src/relaymd/worker/bootstrap.py"
+    "src/relaymd/orchestrator/services/slurm_provisioning_service.py"
+    "src/relaymd/orchestrator/services/worker_lifecycle_service.py"
+    "src/relaymd/orchestrator/main.py"
+    "src/relaymd/orchestrator/routers/jobs_operator.py"
+    "src/relaymd/orchestrator/config.py"
+    "src/relaymd/cli/commands/service.py"
+)
+
+mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
+
+if [[ ${#staged_py[@]} -gt 0 ]]; then
+    if command -v uv > /dev/null 2>&1; then
+        export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
+        uv run ruff format "${staged_py[@]}"
+        uv run ruff check --fix "${staged_py[@]}"
+        uv run pyright "${staged_py[@]}"
+    else
+        ruff format "${staged_py[@]}"
+        ruff check --fix "${staged_py[@]}"
+        pyright "${staged_py[@]}"
+    fi
+
+    # Enforce max-module-lines = 400.
+    # Legacy files above this limit are exempt until explicitly refactored.
+    for f in "${staged_py[@]}"; do
+        lines=$(wc -l < "$f")
+        if [[ $lines -gt $MAX_LINES ]]; then
+            # Check if this file is in the legacy exemption list.
+            exempt=0
+            for legacy in "${LEGACY_LARGE_FILES[@]}"; do
+                if [[ "$f" == "$legacy" || "$f" == "./$legacy" ]]; then
+                    exempt=1
+                    break
+                fi
+            done
+            if [[ $exempt -eq 0 ]]; then
+                echo ""
+                echo "pre-commit: $f has $lines lines (max $MAX_LINES)."
+                echo "  Split the file before committing, or discuss adding a"
+                echo "  legacy exemption if this is a known large module."
+                exit 1
+            fi
+        fi
+    done
 fi

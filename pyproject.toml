@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "relaymd"
-version = "0.2.0"
+version = "0.2.1"
 requires-python = ">=3.11"
 dependencies = [
     "relaymd-core",
@@ -75,7 +75,78 @@ target-version = "py311"
 extend-exclude = ["packages/relaymd-api-client/src/relaymd_api_client"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PL"]
+
+# Per-file rule exemptions — gradual ratchet.
+# Only list rules that have *verified* violations in each file.
+# Remove entries as files are refactored; do NOT add new source files.
+# Test files: PLR2004 (magic numbers in assertions) is expected in tests.
+[tool.ruff.lint.per-file-ignores]
+# packages/relaymd-core — source
+"packages/relaymd-core/src/relaymd/core_secret_management.py" = ["PLR0913"]
+"packages/relaymd-core/src/relaymd/storage/client.py" = ["PLR0913", "PLR2004"]
+# packages/relaymd-worker — source
+"packages/relaymd-worker/src/relaymd/worker/bootstrap.py" = ["PLW0603"]
+"packages/relaymd-worker/src/relaymd/worker/gateway.py" = ["PLR0913", "PLR2004"]
+"packages/relaymd-worker/src/relaymd/worker/heartbeat.py" = ["PLR0913", "PLR2004"]
+"packages/relaymd-worker/src/relaymd/worker/job_execution.py" = ["PLR0911", "PLR0913"]
+"packages/relaymd-worker/src/relaymd/worker/logging.py" = ["PLC0415", "PLW0603"]
+"packages/relaymd-worker/src/relaymd/worker/main.py" = ["C901", "PLC0415", "PLR0912", "PLR0913", "PLR0915"]
+# src/relaymd/cli — source
+"src/relaymd/cli/__main__.py" = ["PLC0415", "PLR0913"]
+"src/relaymd/cli/commands/jobs.py" = ["PLR0912"]
+"src/relaymd/cli/commands/service.py" = ["C901", "PLR0912"]
+"src/relaymd/cli/commands/submit.py" = ["PLR0913", "PLR2004"]
+"src/relaymd/cli/config.py" = ["C901", "PLC0415"]
+"src/relaymd/cli/context.py" = ["PLC0415", "PLW0603"]
+"src/relaymd/cli/remote_dispatch.py" = ["PLR0911"]
+"src/relaymd/cli/services/submit_service.py" = ["C901", "PLR2004"]
+# src/relaymd/orchestrator — source
+"src/relaymd/dashboard_proxy_main.py" = ["PLC0415"]
+"src/relaymd/orchestrator/config.py" = ["C901", "PLC0415", "PLR0915"]
+"src/relaymd/orchestrator/db.py" = ["PLW0603"]
+"src/relaymd/orchestrator/logging.py" = ["PLC0415", "PLW0603"]
+"src/relaymd/orchestrator/main.py" = ["C901", "PLC0207", "PLR0911"]
+"src/relaymd/orchestrator/routers/jobs_operator.py" = ["PLR2004"]
+"src/relaymd/orchestrator/salad_scaler.py" = ["PLR0913"]
+"src/relaymd/orchestrator/services/job_history_service.py" = ["C901", "PLR0912", "PLR0913"]
+"src/relaymd/orchestrator/services/job_transitions.py" = ["PLR0913"]
+"src/relaymd/orchestrator/services/slurm_provisioning_service.py" = ["C901", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "PLW0603"]
+"src/relaymd/orchestrator/services/worker_lifecycle_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/relaymd/orchestrator/slurm.py" = ["PLR0913", "PLR2004"]
+"src/relaymd/orchestrator/tailscale.py" = ["PLR0911"]
+"src/relaymd/settings_sources.py" = ["C901", "PLR0912"]
+# scripts
+"scripts/check_infisical_secrets.py" = ["PLC0415"]
+# tests — PLR2004 expected; other rules from complex test helpers
+"packages/relaymd-core/tests/test_client.py" = ["PLR1711", "PLR2004"]
+"packages/relaymd-worker/tests/test_bootstrap.py" = ["PLR2004"]
+"packages/relaymd-worker/tests/test_config.py" = ["PLR2004"]
+"packages/relaymd-worker/tests/test_gateway.py" = ["PLR2004"]
+"packages/relaymd-worker/tests/test_heartbeat.py" = ["PLR2004"]
+"packages/relaymd-worker/tests/test_main_loop.py" = ["C901", "PLC0415", "PLR1711", "PLR2004"]
+"conftest.py" = ["PLR1711"]
+"tests/cli/test_config.py" = ["PLR2004"]
+"tests/cli/test_jobs_commands.py" = ["PLR2004"]
+"tests/cli/test_monitor.py" = ["PLW0108"]
+"tests/cli/test_remote_dispatch.py" = ["PLR2004"]
+"tests/cli/test_service_commands.py" = ["PLR2004"]
+"tests/cli/test_services.py" = ["PLR2004"]
+"tests/orchestrator/test_config.py" = ["PLR2004"]
+"tests/orchestrator/test_frontend_serving.py" = ["PLR2004"]
+"tests/orchestrator/test_job_transitions.py" = ["PLR2004"]
+"tests/orchestrator/test_logging.py" = ["PLR2004"]
+"tests/orchestrator/test_operator_endpoints.py" = ["PLR0915", "PLR2004"]
+"tests/orchestrator/test_sbatch.py" = ["PLC0415", "PLR2004"]
+"tests/orchestrator/test_worker_endpoints.py" = ["PLR0915", "PLR2004"]
+"tests/test_dashboard_proxy.py" = ["PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-statements = 50
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --cov=relaymd --cov=packages/relaymd-core/src/relaymd --cov-report=term-missing --cov-report=xml"
