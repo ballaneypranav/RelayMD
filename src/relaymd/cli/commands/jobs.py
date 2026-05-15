@@ -30,7 +30,6 @@ JOB_LIST_COLUMNS: list[str] = [
 ]
 
 
-
 def _status_style(status: str) -> str:
     styles = {
         "queued": "blue",
@@ -56,8 +55,6 @@ def _csv_stringify(value: Any) -> str:
     if isinstance(value, (str, int, float, bool)):
         return str(value)
     return json.dumps(value, sort_keys=True)
-
-
 
 
 def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
@@ -284,5 +281,6 @@ def export_jobs_csv(
             )
 
     typer.echo(f"Wrote {len(jobs_payload)} job(s) to {output.resolve()}")
+
 
 app.add_typer(checkpoint_app, name="checkpoint")
