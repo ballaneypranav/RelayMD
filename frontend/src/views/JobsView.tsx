@@ -51,6 +51,7 @@ interface JobsViewProps {
   rows: JobRow[];
   selectedJobId: string;
   selectedStatuses: string[];
+  jobHistoryById: Record<string, JobHistoryRead>;
   onSelectJob: (jobId: string) => void;
   onToggleStatus: (status: string, nextChecked: boolean) => void;
   onCopyExport: (text: string) => void;
@@ -116,7 +117,7 @@ function JobExpandedDetails({
           <dd>{parseDate(job.status_changed_at)?.toISOString() ?? "-"}</dd>
         </div>
         <div>
-          <dt>Total Runtime</dt>
+          <dt>Runtime</dt>
           <dd>{formatDuration(runtimeSeconds)}</dd>
         </div>
         <div>
@@ -303,6 +304,7 @@ export function JobsView({
   rows,
   selectedJobId,
   selectedStatuses,
+  jobHistoryById,
   onSelectJob,
   onToggleStatus,
   onCopyExport,
@@ -338,7 +340,9 @@ export function JobsView({
             started_at_iso: parseDate(job.started_at)?.toISOString() ?? "-",
             status_changed_at_iso: parseDate(job.status_changed_at)?.toISOString() ?? "-",
             latest_checkpoint: job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-",
-            runtime: formatDuration(totalRuntimeSeconds(job, new Date())),
+            runtime: formatDuration(
+              totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
+            ),
             etc: (() => {
               const estimate = etaSeconds(job, new Date());
               return estimate !== null ? formatDuration(estimate) : "-";
@@ -372,7 +376,7 @@ export function JobsView({
           },
         ];
       }),
-    [filteredRows, jobById, selectedJobHistory, selectedJobId],
+    [filteredRows, jobById, selectedJobHistory, selectedJobId, jobHistoryById],
   );
 
   const columns = useMemo<ColumnDef<JobTableRow>[]>(

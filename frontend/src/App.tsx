@@ -138,8 +138,8 @@ export function App() {
   const [actionError, setActionError] = useState<string>("");
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
   const [saveClusterEditsInFlight, setSaveClusterEditsInFlight] = useState(false);
-  const [selectedJobHistory, setSelectedJobHistory] = useState<JobHistoryRead | null>(null);
-  const historyRequestSeqRef = useRef(0);
+  const [jobHistoryById, setJobHistoryById] = useState<Record<string, JobHistoryRead>>({});
+  const historyInFlightRef = useRef<Set<string>>(new Set());
 
   const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
     useDashboardData(config);
@@ -207,27 +207,35 @@ export function App() {
   }, [jobs, selectedJobId]);
 
   useEffect(() => {
-    if (!config || !selectedJobId) {
-      historyRequestSeqRef.current += 1;
-      setSelectedJobHistory(null);
+    const visibleJobIds = new Set(jobs.map((job) => job.id));
+    setJobHistoryById((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([jobId]) => visibleJobIds.has(jobId))),
+    );
+  }, [jobs]);
+
+  useEffect(() => {
+    if (!config) {
       return;
     }
-    const requestSeq = historyRequestSeqRef.current + 1;
-    historyRequestSeqRef.current = requestSeq;
-    void fetchJobHistory(config.api_base_url, selectedJobId)
-      .then((history) => {
-        if (historyRequestSeqRef.current !== requestSeq) {
-          return;
-        }
-        setSelectedJobHistory(history);
-      })
-      .catch(() => {
-        if (historyRequestSeqRef.current !== requestSeq) {
-          return;
-        }
-        setSelectedJobHistory(null);
-      });
-  }, [config, selectedJobId, jobs]);
+    for (const job of jobs) {
+      if (jobHistoryById[job.id] || historyInFlightRef.current.has(job.id)) {
+        continue;
+      }
+      historyInFlightRef.current.add(job.id);
+      void fetchJobHistory(config.api_base_url, job.id)
+        .then((history) => {
+          setJobHistoryById((previous) => ({ ...previous, [job.id]: history }));
+        })
+        .catch(() => {
+          // Keep missing history absent; UI falls back when needed.
+        })
+        .finally(() => {
+          historyInFlightRef.current.delete(job.id);
+        });
+    }
+  }, [config, jobs, jobHistoryById]);
+
+  const selectedJobHistory = selectedJobId ? (jobHistoryById[selectedJobId] ?? null) : null;
 
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
@@ -494,6 +502,7 @@ export function App() {
       {activeView === "jobs" ? (
         <JobsView
           jobs={jobs}
+          jobHistoryById={jobHistoryById}
           rows={jobRows}
           selectedJobId={selectedJobId}
           selectedStatuses={selectedStatuses}
