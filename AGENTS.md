@@ -251,6 +251,7 @@ tail -n 40 /tmp/<tool>.out
 - Avoid committing generated caches, virtual environments, coverage output,
   `__pycache__`, `.pytest_cache`, or `frontend/.npm`.
 - Do not run destructive git commands unless the user explicitly requests them.
+- After completing any coding task, include a proposed commit message in chat.
 
 ## graphify
 
