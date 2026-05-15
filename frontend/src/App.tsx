@@ -16,6 +16,8 @@ import { WorkersView } from "./views/WorkersView";
 type ViewName = "jobs" | "workers" | "clusters" | "settings";
 const DEFAULT_VIEW: ViewName = "jobs";
 const APP_BASE_PATH = "/app";
+const ACTIVE_JOB_STATUSES = new Set(["queued", "assigned", "running", "cancelling"]);
+const JOB_HISTORY_REFRESH_MS = 30_000;
 
 const PATH_TO_VIEW: Record<string, ViewName> = {
   "/app/jobs": "jobs",
@@ -138,8 +140,9 @@ export function App() {
   const [actionError, setActionError] = useState<string>("");
   const [clusterEdits, setClusterEdits] = useState<Record<string, boolean>>({});
   const [saveClusterEditsInFlight, setSaveClusterEditsInFlight] = useState(false);
-  const [selectedJobHistory, setSelectedJobHistory] = useState<JobHistoryRead | null>(null);
-  const historyRequestSeqRef = useRef(0);
+  const [jobHistoryById, setJobHistoryById] = useState<Record<string, JobHistoryRead>>({});
+  const historyInFlightRef = useRef<Set<string>>(new Set());
+  const jobHistoryFetchedAtRef = useRef<Record<string, number>>({});
 
   const { data, error, loading, offlineSince, lastUpdatedAt, lastRefreshError, isRefreshing, refreshData, setData, setError } =
     useDashboardData(config);
@@ -207,27 +210,47 @@ export function App() {
   }, [jobs, selectedJobId]);
 
   useEffect(() => {
-    if (!config || !selectedJobId) {
-      historyRequestSeqRef.current += 1;
-      setSelectedJobHistory(null);
+    const visibleJobIds = new Set(jobs.map((job) => job.id));
+    setJobHistoryById((previous) =>
+      Object.fromEntries(Object.entries(previous).filter(([jobId]) => visibleJobIds.has(jobId))),
+    );
+    jobHistoryFetchedAtRef.current = Object.fromEntries(
+      Object.entries(jobHistoryFetchedAtRef.current).filter(([jobId]) => visibleJobIds.has(jobId)),
+    );
+  }, [jobs]);
+
+  useEffect(() => {
+    if (!config) {
       return;
     }
-    const requestSeq = historyRequestSeqRef.current + 1;
-    historyRequestSeqRef.current = requestSeq;
-    void fetchJobHistory(config.api_base_url, selectedJobId)
-      .then((history) => {
-        if (historyRequestSeqRef.current !== requestSeq) {
-          return;
-        }
-        setSelectedJobHistory(history);
-      })
-      .catch(() => {
-        if (historyRequestSeqRef.current !== requestSeq) {
-          return;
-        }
-        setSelectedJobHistory(null);
-      });
-  }, [config, selectedJobId, jobs]);
+    const now = Date.now();
+    for (const job of jobs) {
+      const isActiveJob = ACTIVE_JOB_STATUSES.has(job.status);
+      const hasCachedHistory = Boolean(jobHistoryById[job.id]);
+      const lastFetchedAt = jobHistoryFetchedAtRef.current[job.id] ?? 0;
+      const isFresh = now - lastFetchedAt < JOB_HISTORY_REFRESH_MS;
+      if (
+        historyInFlightRef.current.has(job.id) ||
+        (hasCachedHistory && (!isActiveJob || isFresh))
+      ) {
+        continue;
+      }
+      historyInFlightRef.current.add(job.id);
+      void fetchJobHistory(config.api_base_url, job.id)
+        .then((history) => {
+          setJobHistoryById((previous) => ({ ...previous, [job.id]: history }));
+          jobHistoryFetchedAtRef.current[job.id] = Date.now();
+        })
+        .catch(() => {
+          // Keep missing history absent; UI falls back when needed.
+        })
+        .finally(() => {
+          historyInFlightRef.current.delete(job.id);
+        });
+    }
+  }, [config, jobs, jobHistoryById]);
+
+  const selectedJobHistory = selectedJobId ? (jobHistoryById[selectedJobId] ?? null) : null;
 
   const statusCounts = jobs.reduce<Record<string, number>>((counts, job) => {
     counts[job.status] = (counts[job.status] ?? 0) + 1;
@@ -494,6 +517,7 @@ export function App() {
       {activeView === "jobs" ? (
         <JobsView
           jobs={jobs}
+          jobHistoryById={jobHistoryById}
           rows={jobRows}
           selectedJobId={selectedJobId}
           selectedStatuses={selectedStatuses}
