@@ -300,6 +300,50 @@ export function ConsoleTable<TData>({
     () => visibleColumns.filter((column) => !groupedColumnIds.has(column.id)),
     [groupedColumnIds, visibleColumns],
   );
+  const [columnGroupOpenState, setColumnGroupOpenState] = useState<Record<string, boolean>>(() => {
+    const nextState: Record<string, boolean> = {};
+
+    for (const group of groupedColumns) {
+      nextState[group.id] = (initiallyExpandedColumnGroupIds ?? []).includes(group.id);
+    }
+
+    if (ungroupedColumns.length > 0) {
+      nextState.__other = groupedColumns.length === 0;
+    }
+
+    return nextState;
+  });
+
+  useEffect(() => {
+    setColumnGroupOpenState((currentState) => {
+      const nextState: Record<string, boolean> = {};
+      let changed = false;
+
+      for (const group of groupedColumns) {
+        const defaultIsOpen = (initiallyExpandedColumnGroupIds ?? []).includes(group.id);
+        const isOpen = currentState[group.id] ?? defaultIsOpen;
+        nextState[group.id] = isOpen;
+        if (currentState[group.id] !== isOpen) {
+          changed = true;
+        }
+      }
+
+      if (ungroupedColumns.length > 0) {
+        const otherDefaultIsOpen = groupedColumns.length === 0;
+        const otherIsOpen = currentState.__other ?? otherDefaultIsOpen;
+        nextState.__other = otherIsOpen;
+        if (currentState.__other !== otherIsOpen) {
+          changed = true;
+        }
+      }
+
+      if (Object.keys(currentState).length !== Object.keys(nextState).length) {
+        changed = true;
+      }
+
+      return changed ? nextState : currentState;
+    });
+  }, [groupedColumns, initiallyExpandedColumnGroupIds, ungroupedColumns.length]);
 
   return (
     <div className="console-table-surface">
@@ -339,7 +383,13 @@ export function ConsoleTable<TData>({
                 <details
                   className="table-menu-group"
                   key={group.id}
-                  defaultOpen={(initiallyExpandedColumnGroupIds ?? []).includes(group.id)}
+                  onToggle={(event) => {
+                    setColumnGroupOpenState((currentState) => ({
+                      ...currentState,
+                      [group.id]: event.currentTarget.open,
+                    }));
+                  }}
+                  open={columnGroupOpenState[group.id] ?? false}
                 >
                   <summary>
                     <span>{group.label}</span>
@@ -385,7 +435,13 @@ export function ConsoleTable<TData>({
               {ungroupedColumns.length > 0 ? (
                 <details
                   className="table-menu-group"
-                  defaultOpen={groupedColumns.length === 0}
+                  onToggle={(event) => {
+                    setColumnGroupOpenState((currentState) => ({
+                      ...currentState,
+                      __other: event.currentTarget.open,
+                    }));
+                  }}
+                  open={columnGroupOpenState.__other ?? false}
                 >
                   <summary>
                     <span>Other</span>
