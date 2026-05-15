@@ -48,6 +48,7 @@ PROGRESS_OUT_OF_RANGE_CLAMPED = "progress_out_of_range_clamped"
 class BundleExecutionConfig:
     command: list[str]
     checkpoint_watch_paths: list[str]
+    resume_preserved_output_paths: list[str]
     progress_file_path: str
     checkpoint_poll_interval_seconds: int | None = None
     progress_glob_patterns: list[str] | None = None
@@ -147,6 +148,13 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
         if not command_raw:
             continue
         watch_paths = _required_string_list(parsed, "checkpoint_watch_paths")
+        resume_preserved_output_paths = (
+            _optional_string_list(parsed, "resume_preserved_output_paths") or []
+        )
+        _validate_resume_preserved_path_overlap(
+            checkpoint_watch_paths=watch_paths,
+            resume_preserved_output_paths=resume_preserved_output_paths,
+        )
         progress_file_path = _required_string(parsed, "progress_file_path")
 
         if isinstance(command_raw, str):
@@ -178,6 +186,7 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
         return BundleExecutionConfig(
             command=command,
             checkpoint_watch_paths=watch_paths,
+            resume_preserved_output_paths=resume_preserved_output_paths,
             progress_file_path=progress_file_path,
             checkpoint_poll_interval_seconds=bundle_interval,
             progress_glob_patterns=progress_glob_patterns,
@@ -236,6 +245,31 @@ def _required_string(parsed: dict[str, Any], key: str) -> str:
     raise RuntimeError(f"Invalid {key} in bundle config")
 
 
+def _validated_path_set(paths: list[str]) -> set[str]:
+    validated: set[str] = set()
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise RuntimeError(f"Invalid path in bundle config: {raw_path}")
+        validated.add(candidate.as_posix())
+    return validated
+
+
+def _validate_resume_preserved_path_overlap(
+    *,
+    checkpoint_watch_paths: list[str],
+    resume_preserved_output_paths: list[str],
+) -> None:
+    watch_paths = _validated_path_set(checkpoint_watch_paths)
+    resume_paths = _validated_path_set(resume_preserved_output_paths)
+    overlap = sorted(watch_paths & resume_paths)
+    if overlap:
+        raise RuntimeError(
+            "Invalid bundle config: paths cannot appear in both checkpoint_watch_paths "
+            "and resume_preserved_output_paths"
+        )
+
+
 def _utc_now_iso() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -291,6 +325,10 @@ def _checkpoint_file_key(job_id: UUID, relative_path: str) -> str:
 
 def _checkpoint_status_key(job_id: UUID) -> str:
     return f"jobs/{job_id}/checkpoints/status.json"
+
+
+def _checkpoint_preserved_output_key(job_id: UUID, relative_path: str, resume_segment: int) -> str:
+    return f"jobs/{job_id}/checkpoints/preserved-output/{relative_path}/{resume_segment:04d}"
 
 
 def _parse_bundle_config(path: Path) -> dict[str, Any] | None:
@@ -470,6 +508,106 @@ def _hydrate_checkpoint_files_from_manifest(
         )
 
     logger.info("checkpoint_hydration_completed", job_id=str(job_id))
+
+
+def _next_resume_segment(manifest: dict[str, Any]) -> int:
+    preserved_outputs = manifest.get("preserved_outputs")
+    if not isinstance(preserved_outputs, dict):
+        return 1
+    max_segment = 0
+    for entry in preserved_outputs.values():
+        if not isinstance(entry, dict):
+            continue
+        snapshots = entry.get("snapshots")
+        if not isinstance(snapshots, list):
+            continue
+        for snapshot in snapshots:
+            if not isinstance(snapshot, dict):
+                continue
+            segment = snapshot.get("resume_segment")
+            if isinstance(segment, int) and segment > max_segment:
+                max_segment = segment
+    return max_segment + 1
+
+
+def _capture_resume_preserved_outputs(
+    *,
+    context: WorkerContext,
+    logger,
+    job_id: UUID,
+    workdir: Path,
+    manifest: dict[str, Any],
+    resume_preserved_output_paths: list[str],
+) -> None:
+    if not resume_preserved_output_paths:
+        return
+
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        raise RuntimeError("invalid_manifest_files")
+
+    preserved_outputs = manifest.get("preserved_outputs")
+    if not isinstance(preserved_outputs, dict):
+        preserved_outputs = {}
+        manifest["preserved_outputs"] = preserved_outputs
+
+    resume_segment = _next_resume_segment(manifest)
+    for relative_path in sorted(_validated_path_set(resume_preserved_output_paths)):
+        file_entry = files.get(relative_path)
+        if not isinstance(file_entry, dict):
+            logger.info(
+                "checkpoint_preserved_output_skipped_missing_live_file",
+                job_id=str(job_id),
+                relative_path=relative_path,
+            )
+            continue
+        remote_key = file_entry.get("remote_key")
+        if not isinstance(remote_key, str) or not remote_key:
+            raise RuntimeError("invalid_manifest_remote_key")
+
+        staging_path = workdir / "preserved-output-staging" / relative_path
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        context.storage.download_file(remote_key, staging_path)
+
+        sha256 = _compute_sha256(staging_path)
+        size_bytes = staging_path.stat().st_size
+        preserved_remote_key = _checkpoint_preserved_output_key(
+            job_id=job_id,
+            relative_path=relative_path,
+            resume_segment=resume_segment,
+        )
+        context.storage.upload_file(staging_path, preserved_remote_key)
+
+        path_entry_raw = preserved_outputs.get(relative_path)
+        path_entry: dict[str, Any]
+        if isinstance(path_entry_raw, dict):
+            path_entry = path_entry_raw
+        else:
+            path_entry = {}
+            preserved_outputs[relative_path] = path_entry
+        snapshots_raw = path_entry.get("snapshots")
+        snapshots: list[dict[str, Any]]
+        if isinstance(snapshots_raw, list):
+            snapshots = [item for item in snapshots_raw if isinstance(item, dict)]
+        else:
+            snapshots = []
+        snapshots.append(
+            {
+                "resume_segment": resume_segment,
+                "remote_key": preserved_remote_key,
+                "size_bytes": size_bytes,
+                "sha256": sha256,
+                "captured_at": _utc_now_iso(),
+            }
+        )
+        path_entry["snapshots"] = snapshots
+        logger.info(
+            "checkpoint_preserved_output_captured",
+            job_id=str(job_id),
+            relative_path=relative_path,
+            resume_segment=resume_segment,
+            remote_key=preserved_remote_key,
+        )
 
 
 def _resolve_watch_files(
@@ -839,6 +977,14 @@ def _run_assigned_job(
         ) or getattr(assignment, "latest_checkpoint_path", None)
         if checkpoint_manifest_path:
             try:
+                _capture_resume_preserved_outputs(
+                    context=context,
+                    logger=job_log,
+                    job_id=assignment.job_id,
+                    workdir=workdir,
+                    manifest=checkpoint_manifest,
+                    resume_preserved_output_paths=execution_config.resume_preserved_output_paths,
+                )
                 _hydrate_checkpoint_files_from_manifest(
                     context=context,
                     logger=job_log,
@@ -931,7 +1077,8 @@ def _run_assigned_job(
                         job_id=assignment.job_id,
                         bundle_root=bundle_root,
                         workdir=workdir,
-                        watch_paths=execution_config.checkpoint_watch_paths,
+                        watch_paths=execution_config.checkpoint_watch_paths
+                        + execution_config.resume_preserved_output_paths,
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
@@ -1024,7 +1171,8 @@ def _run_assigned_job(
                                     job_id=assignment.job_id,
                                     bundle_root=bundle_root,
                                     workdir=workdir,
-                                    watch_paths=execution_config.checkpoint_watch_paths,
+                                    watch_paths=execution_config.checkpoint_watch_paths
+                                    + execution_config.resume_preserved_output_paths,
                                     manifest=checkpoint_manifest,
                                 )
                             )
@@ -1104,7 +1252,8 @@ def _run_assigned_job(
                             job_id=assignment.job_id,
                             bundle_root=bundle_root,
                             workdir=workdir,
-                            watch_paths=execution_config.checkpoint_watch_paths,
+                            watch_paths=execution_config.checkpoint_watch_paths
+                            + execution_config.resume_preserved_output_paths,
                             manifest=checkpoint_manifest,
                         )
                         if manifest_uploaded:
@@ -1137,7 +1286,8 @@ def _run_assigned_job(
                         job_id=assignment.job_id,
                         bundle_root=bundle_root,
                         workdir=workdir,
-                        watch_paths=execution_config.checkpoint_watch_paths,
+                        watch_paths=execution_config.checkpoint_watch_paths
+                        + execution_config.resume_preserved_output_paths,
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
@@ -1201,7 +1351,8 @@ def _run_assigned_job(
                             job_id=assignment.job_id,
                             bundle_root=bundle_root,
                             workdir=workdir,
-                            watch_paths=execution_config.checkpoint_watch_paths,
+                            watch_paths=execution_config.checkpoint_watch_paths
+                            + execution_config.resume_preserved_output_paths,
                             manifest=checkpoint_manifest,
                         )
                         if manifest_uploaded:
@@ -1252,7 +1403,8 @@ def _run_assigned_job(
                 job_id=assignment.job_id,
                 bundle_root=bundle_root,
                 workdir=workdir,
-                watch_paths=execution_config.checkpoint_watch_paths,
+                watch_paths=execution_config.checkpoint_watch_paths
+                + execution_config.resume_preserved_output_paths,
                 manifest=checkpoint_manifest,
             )
             if manifest_uploaded:

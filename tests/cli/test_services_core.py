@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
 from unittest.mock import Mock
 from uuid import UUID, uuid4
 
@@ -12,108 +9,17 @@ from relaymd_api_client.errors import UnexpectedStatus
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_conflict import JobConflict
 from relaymd_api_client.models.job_create_conflict import JobCreateConflict
-from relaymd_api_client.models.job_read import JobRead
-from relaymd_api_client.models.worker_read import WorkerRead
 
 from relaymd.cli.config import CliSettings
-from relaymd.cli.context import CliContext
 from relaymd.cli.services.jobs_service import JobsService
 from relaymd.cli.services.submit_service import SubmitService
 from relaymd.cli.services.workers_service import WorkersService
-
-
-class _ClientContextManager:
-    def __init__(self, client: object) -> None:
-        self._client = client
-
-    def __enter__(self) -> object:
-        return self._client
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        _ = (exc_type, exc, tb)
-        return False
-
-
-class _FakeContext:
-    def __init__(self) -> None:
-        self.settings = CliSettings(
-            storage_provider="cloudflare_backblaze",
-            api_token="test-token",
-            b2_endpoint_url="https://b2.example",
-            b2_bucket_name="relaymd-bucket",
-            b2_access_key_id="access",
-            b2_secret_access_key="secret",
-        )
-        self.client = object()
-        self.storage = Mock()
-
-    def api_client(self) -> _ClientContextManager:
-        return _ClientContextManager(self.client)
-
-    def storage_client(self) -> Mock:
-        return self.storage
-
-
-def _as_cli_context(context: _FakeContext) -> CliContext:
-    return cast(CliContext, context)
-
-
-def _make_job_read() -> JobRead:
-    now = datetime.now(UTC).isoformat()
-    return JobRead.from_dict(
-        {
-            "id": str(uuid4()),
-            "title": "job-a",
-            "status": "queued",
-            "input_bundle_path": "jobs/a/input/bundle.tar.gz",
-            "assigned_at": None,
-            "started_at": None,
-            "status_changed_at": now,
-            "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
-            "last_checkpoint_at": None,
-            "assigned_worker_id": None,
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
-
-
-def _make_checkpoint_job_read() -> JobRead:
-    now = datetime.now(UTC).isoformat()
-    return JobRead.from_dict(
-        {
-            "id": str(uuid4()),
-            "title": "job-checkpoint",
-            "status": "running",
-            "input_bundle_path": "jobs/a/input/bundle.tar.gz",
-            "assigned_at": now,
-            "started_at": now,
-            "status_changed_at": now,
-            "latest_checkpoint_manifest_path": "jobs/abc/checkpoints/manifest.json",
-            "latest_checkpoint_path": "jobs/abc/checkpoints/manifest.json",
-            "last_checkpoint_at": now,
-            "assigned_worker_id": str(uuid4()),
-            "created_at": now,
-            "updated_at": now,
-        }
-    )
-
-
-def _make_worker_read() -> WorkerRead:
-    now = datetime.now(UTC).isoformat()
-    return WorkerRead.from_dict(
-        {
-            "id": str(uuid4()),
-            "platform": "hpc",
-            "gpu_model": "NVIDIA A100",
-            "gpu_count": 1,
-            "vram_gb": 80,
-            "status": "active",
-            "last_heartbeat": now,
-            "registered_at": now,
-        }
-    )
+from tests.cli._services_test_helpers import (
+    _as_cli_context,
+    _FakeContext,
+    _make_job_read,
+    _make_worker_read,
+)
 
 
 def test_jobs_service_list_jobs_returns_typed_payload(monkeypatch) -> None:
@@ -350,105 +256,3 @@ def test_workers_service_list_workers_validates_shape(monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="Unexpected response model"):
         service.list_workers()
-
-
-def test_jobs_service_download_checkpoint_file_success(tmp_path: Path, monkeypatch) -> None:
-    context = _FakeContext()
-    service = JobsService(_as_cli_context(context))
-    job = _make_checkpoint_job_read()
-    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
-
-    manifest = {
-        "files": {
-            "state/checkpoint.chk": {
-                "remote_key": "jobs/abc/checkpoints/files/state/checkpoint.chk"
-            }
-        }
-    }
-
-    def _download(key: str, path: Path) -> None:
-        if key.endswith("manifest.json"):
-            path.write_text(json.dumps(manifest), encoding="utf-8")
-        else:
-            path.write_bytes(b"checkpoint-bytes")
-
-    context.storage.download_file.side_effect = _download
-
-    payload = service.download_checkpoint_file(
-        job_id=job.id,
-        relative_path="state/checkpoint.chk",
-        output=tmp_path,
-    )
-
-    assert payload["remote_key"] == "jobs/abc/checkpoints/files/state/checkpoint.chk"
-    assert Path(str(payload["local_path"])).read_bytes() == b"checkpoint-bytes"
-
-
-def test_jobs_service_download_all_checkpoint_files_partial_failure(
-    tmp_path: Path, monkeypatch
-) -> None:
-    context = _FakeContext()
-    service = JobsService(_as_cli_context(context))
-    job = _make_checkpoint_job_read()
-    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
-
-    manifest = {
-        "files": {
-            "a.chk": {"remote_key": "jobs/abc/checkpoints/files/a.chk"},
-            "b.chk": {"remote_key": "jobs/abc/checkpoints/files/b.chk"},
-        }
-    }
-
-    def _download(key: str, path: Path) -> None:
-        if key.endswith("manifest.json"):
-            path.write_text(json.dumps(manifest), encoding="utf-8")
-            return
-        if key.endswith("/a.chk"):
-            path.write_bytes(b"a")
-            return
-        raise RuntimeError("download exploded")
-
-    context.storage.download_file.side_effect = _download
-    payload = service.download_all_checkpoint_files(job_id=job.id, output_dir=tmp_path)
-
-    assert payload["status"] == "partial_failure"
-    assert payload["downloaded_files"] == 1
-    assert payload["failed_files"] == 1
-    assert payload["total_files"] == 2
-
-
-def test_jobs_service_download_all_checkpoint_files_rejects_traversal_paths(
-    tmp_path: Path, monkeypatch
-) -> None:
-    context = _FakeContext()
-    service = JobsService(_as_cli_context(context))
-    job = _make_checkpoint_job_read()
-    monkeypatch.setattr(service, "get_job", Mock(return_value=job))
-
-    manifest = {
-        "files": {
-            "../escape.chk": {"remote_key": "jobs/abc/checkpoints/files/escape.chk"},
-            "good.chk": {"remote_key": "jobs/abc/checkpoints/files/good.chk"},
-        }
-    }
-
-    def _download(key: str, path: Path) -> None:
-        if key.endswith("manifest.json"):
-            path.write_text(json.dumps(manifest), encoding="utf-8")
-            return
-        path.write_bytes(b"ok")
-
-    context.storage.download_file.side_effect = _download
-    payload = service.download_all_checkpoint_files(job_id=job.id, output_dir=tmp_path)
-
-    assert payload["status"] == "partial_failure"
-    assert payload["downloaded_files"] == 1
-    assert payload["failed_files"] == 1
-    assert payload["total_files"] == 2
-    results = payload["results"]
-    assert isinstance(results, list)
-    assert any(
-        isinstance(result, dict) and result.get("relative_path") == "../escape.chk"
-        for result in results
-    )
-    assert not (tmp_path.parent / "escape.chk").exists()

@@ -233,6 +233,22 @@ def test_load_bundle_execution_config_rejects_invalid_supervision_field(tmp_path
         _load_bundle_execution_config(tmp_path)
 
 
+def test_load_bundle_execution_config_rejects_overlapping_resume_preserved_paths(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "relaymd-worker.json").write_text(
+        (
+            '{"command": ["bash", "run.sh"], '
+            '"checkpoint_watch_paths": ["state.chk"], '
+            '"resume_preserved_output_paths": ["state.chk"], '
+            '"progress_file_path": "progress.txt"}\n'
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="paths cannot appear in both checkpoint_watch_paths"):
+        _load_bundle_execution_config(tmp_path)
+
+
 def test_extract_input_bundle_extracts_tar_on_python_311(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle.tar.gz"
     output_dir = tmp_path / "bundle-out"
@@ -667,6 +683,7 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -792,6 +809,7 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -904,6 +922,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
             fatal_log_path="payload.log",
             fatal_log_patterns=["Traceback"],
@@ -1015,6 +1034,7 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -1121,6 +1141,7 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["relaymd-checkpoint.tar.gz"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -1222,6 +1243,62 @@ def test_hydrate_checkpoint_files_from_manifest_rejects_invalid_entries(
         )
 
 
+def test_run_assigned_job_resume_preserved_capture_runs_before_hydration(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
+            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
+        }
+    )
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.return_value = False
+    logger = Mock()
+    logger.bind.return_value = Mock()
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+    )
+
+    call_order: list[str] = []
+    monkeypatch.setattr(
+        "relaymd.worker.main._capture_resume_preserved_outputs",
+        lambda **_kwargs: call_order.append("capture"),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main._hydrate_checkpoint_files_from_manifest",
+        lambda **_kwargs: call_order.append("hydrate"),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=["top.log"],
+            progress_file_path="progress.txt",
+        ),
+    )
+    job_execution = Mock()
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", job_execution)
+
+    _run_assigned_job(context=context, assignment=assignment)
+
+    assert call_order == ["capture", "hydrate"]
+
+
 def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> None:
     assignment = ApiJobAssigned.from_dict(
         {
@@ -1261,6 +1338,7 @@ def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> 
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -1325,6 +1403,7 @@ def test_first_checkpoint_cycle_after_hydration_keeps_manifest_entries(monkeypat
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -1441,6 +1520,7 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
         ),
     )
@@ -1562,6 +1642,7 @@ def test_run_assigned_job_heartbeat_degraded_healthy_checkpoint_keeps_running(
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
             checkpoint_poll_interval_seconds=2,
         ),
@@ -1685,6 +1766,7 @@ def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monk
         lambda _bundle_root: BundleExecutionConfig(
             command=["echo", "ok"],
             checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
             progress_file_path="progress.txt",
             checkpoint_poll_interval_seconds=2,
         ),
