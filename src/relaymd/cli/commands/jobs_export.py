@@ -121,8 +121,7 @@ def _format_eastern_timestamp(value: datetime | None) -> str:
     if value is None:
         return "-"
     eastern = value.astimezone(_EASTERN_TZ)
-    tz_name = eastern.tzname() or ""
-    return f"{eastern.isoformat()} {tz_name}".strip()
+    return eastern.isoformat()
 
 
 def _truncate_id(value: Any) -> str:
