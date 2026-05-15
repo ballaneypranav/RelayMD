@@ -108,6 +108,50 @@ async def load_job_history_events(
     return events
 
 
+async def load_job_history_events_for_jobs(
+    session: AsyncSession, *, job_ids: list[UUID]
+) -> dict[UUID, list[JobHistoryEventRead]]:
+    if not job_ids:
+        return {}
+
+    rows = (
+        await session.exec(
+            select(JobEvent)
+            .where(col(JobEvent.job_id).in_(job_ids))
+            .order_by(
+                col(JobEvent.job_id).asc(),
+                col(JobEvent.occurred_at).asc(),
+                col(JobEvent.event_seq).asc(),
+            )
+        )
+    ).all()
+
+    events_by_job_id: dict[UUID, list[JobHistoryEventRead]] = {job_id: [] for job_id in job_ids}
+    for row in rows:
+        payload: dict[str, Any] = {}
+        if row.payload_json:
+            try:
+                parsed = json.loads(row.payload_json)
+                if isinstance(parsed, dict):
+                    payload = parsed
+            except Exception:
+                payload = {}
+        events_by_job_id[row.job_id].append(
+            JobHistoryEventRead(
+                occurred_at=row.occurred_at,
+                event_seq=row.event_seq,
+                event_type=row.event_type,
+                worker_id=row.worker_id,
+                status_from=row.status_from,
+                status_to=row.status_to,
+                payload=payload,
+                derived=False,
+            )
+        )
+
+    return events_by_job_id
+
+
 def derive_history_events(job: Job) -> list[JobHistoryEventRead]:
     events: list[JobHistoryEventRead] = [
         JobHistoryEventRead(

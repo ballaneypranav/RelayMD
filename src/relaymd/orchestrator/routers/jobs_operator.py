@@ -33,6 +33,7 @@ from relaymd.orchestrator.services.job_history_service import (
     build_worker_runtime,
     derive_history_events,
     load_job_history_events,
+    load_job_history_events_for_jobs,
 )
 
 from ._responses import job_transition_conflict_response
@@ -307,7 +308,26 @@ async def list_jobs(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[JobRead]:
     jobs = (await session.exec(select(Job).order_by(col(Job.created_at).desc()))).all()
-    return [await _job_to_read_with_runtime(session, job) for job in jobs]
+    history_events_by_job_id = await load_job_history_events_for_jobs(
+        session, job_ids=[job.id for job in jobs]
+    )
+    now = datetime.now(UTC).replace(tzinfo=None)
+    job_reads: list[JobRead] = []
+    for job in jobs:
+        job_read = _job_to_read(job)
+        events = history_events_by_job_id.get(job.id) or derive_history_events(job)
+        segments, _ = build_worker_runtime(events, now=now)
+        runtime_seconds = sum(max(segment.duration_seconds, 0.0) for segment in segments)
+        etc_seconds, ett_seconds = _compute_eta_fields(
+            status=job.status,
+            progress=job.progress,
+            runtime_seconds=runtime_seconds,
+        )
+        job_read.runtime_seconds = runtime_seconds
+        job_read.etc_seconds = etc_seconds
+        job_read.ett_seconds = ett_seconds
+        job_reads.append(job_read)
+    return job_reads
 
 
 @router.get("/{job_id}", response_model=JobRead)
