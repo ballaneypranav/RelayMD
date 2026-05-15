@@ -17,3 +17,9 @@ The backend is the source of truth for runtime metrics. Frontend and CLI consume
 
 ## History vs Metrics
 `job history` exists to explain event/segment timeline details. `job metrics` (`runtime_seconds`, `etc_seconds`, `ett_seconds`) are list/read API fields intended for operational views and exports.
+
+## Live Output
+`live output` means a job-produced file that RelayMD restores into the working directory and allows the payload to overwrite or append during resumed execution.
+
+## Resume-Preserved Output
+`resume-preserved output` means a job-produced file that RelayMD snapshots once immediately before a resumed execution starts, so earlier generations survive across resumes. It is not versioned on each write during a single execution segment.

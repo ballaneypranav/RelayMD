@@ -77,6 +77,14 @@ make setup-hooks
 
 ## Code Quality Rules
 
+- Do not start editing code when the user's request is ambiguous about whether
+  they want implementation work or advice. If the prompt is exploratory, ask
+  for permission to edit code before making changes.
+- Treat prompts like "how can we better deal with issue X?" or "what do you
+  think we can do to improve Y?" as ambiguous by default. Respond with analysis,
+  options, or questions first unless the user explicitly asks for implementation.
+- Treat prompts like "modify <path> to do Z" or "implement plan.md" as clear
+  implementation requests when the target change is specific enough to execute.
 - Prefer small, focused changes with matching tests.
 - Keep package boundaries intact:
   - Shared API/domain/storage models belong in `packages/relaymd-core`.
