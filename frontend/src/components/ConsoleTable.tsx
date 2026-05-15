@@ -339,7 +339,7 @@ export function ConsoleTable<TData>({
                 <details
                   className="table-menu-group"
                   key={group.id}
-                  defaultOpen={(initiallyExpandedColumnGroupIds ?? []).includes(group.id)}
+                  open={(initiallyExpandedColumnGroupIds ?? []).includes(group.id)}
                 >
                   <summary>
                     <span>{group.label}</span>
@@ -385,7 +385,7 @@ export function ConsoleTable<TData>({
               {ungroupedColumns.length > 0 ? (
                 <details
                   className="table-menu-group"
-                  defaultOpen={groupedColumns.length === 0}
+                  open={groupedColumns.length === 0}
                 >
                   <summary>
                     <span>Other</span>
