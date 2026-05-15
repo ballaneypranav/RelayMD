@@ -46,6 +46,8 @@ _QUEUE_BLOCKED_LABELS: dict[str, str] = {
 _DURATION_MAX_PARTS = 2
 _TRUNCATE_ID_LENGTH = 12
 _TRUNCATE_ID_PREFIX = 8
+_TZ_OFFSET_SHORT_LEN = 3
+_TZ_OFFSET_COMPACT_LEN = 5
 _TZ_OFFSET_SUFFIX_LENGTH = 6
 _EASTERN_TZ = ZoneInfo("America/New_York")
 
@@ -58,11 +60,19 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
     has_utc_designator = text.endswith(("Z", "z"))
     has_offset = (
-        (len(text) >= 3 and text[-3] in {"+", "-"} and text[-2:].isdigit())
-        or (len(text) >= 5 and text[-5] in {"+", "-"} and text[-4:].isdigit())
+        (
+            len(text) >= _TZ_OFFSET_SHORT_LEN
+            and text[-_TZ_OFFSET_SHORT_LEN] in {"+", "-"}
+            and text[-2:].isdigit()
+        )
         or (
-            len(text) >= 6
-            and text[-6] in {"+", "-"}
+            len(text) >= _TZ_OFFSET_COMPACT_LEN
+            and text[-_TZ_OFFSET_COMPACT_LEN] in {"+", "-"}
+            and text[-4:].isdigit()
+        )
+        or (
+            len(text) >= _TZ_OFFSET_SUFFIX_LENGTH
+            and text[-_TZ_OFFSET_SUFFIX_LENGTH] in {"+", "-"}
             and text[-3] == ":"
             and text[-5:-3].isdigit()
             and text[-2:].isdigit()
@@ -121,7 +131,8 @@ def _format_eastern_timestamp(value: datetime | None) -> str:
     if value is None:
         return "-"
     eastern = value.astimezone(_EASTERN_TZ)
-    return eastern.isoformat()
+    tz_name = eastern.tzname() or ""
+    return f"{eastern.isoformat()} {tz_name}".strip()
 
 
 def _truncate_id(value: Any) -> str:
