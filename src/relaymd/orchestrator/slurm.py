@@ -254,12 +254,22 @@ def _write_sbatch_script_to_disk(
     if not settings.log_directory or not settings.log_directory.strip():
         return None
 
+    logger = structlog.get_logger(__name__)
     base_dir = Path(settings.log_directory).expanduser() / "slurm"
-    base_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
-    filename = f"{cluster.name}-{timestamp}-{worker_id.hex[:8]}.sbatch"
-    script_path = base_dir / filename
-    script_path.write_text(_redact_sbatch_script_for_disk(rendered_script), encoding="utf-8")
+    try:
+        base_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        filename = f"{cluster.name}-{timestamp}-{worker_id.hex[:8]}.sbatch"
+        script_path = base_dir / filename
+        script_path.write_text(_redact_sbatch_script_for_disk(rendered_script), encoding="utf-8")
+    except OSError:
+        logger.warning(
+            "Unable to persist rendered sbatch script locally",
+            cluster_name=cluster.name,
+            log_directory=settings.log_directory,
+            exc_info=True,
+        )
+        return None
     return str(script_path)
 
 

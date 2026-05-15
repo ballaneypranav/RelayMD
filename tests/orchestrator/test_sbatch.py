@@ -133,6 +133,8 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
 
 @pytest.mark.asyncio
 async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
+    monkeypatch.delenv("APPTAINER_DOCKER_USERNAME", raising=False)
+    monkeypatch.delenv("APPTAINER_DOCKER_PASSWORD", raising=False)
     captured: dict[str, str] = {}
 
     class FakeProcess:

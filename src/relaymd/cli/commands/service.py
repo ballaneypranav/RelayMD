@@ -64,7 +64,8 @@ def _ensure_down_allowed(paths: RelaymdPaths, *, force: bool) -> None:
     locked_host = pairs.get("HOST", "")
     active = pairs.get("ORCHESTRATOR_ACTIVE") == "1" or pairs.get("PROXY_ACTIVE") == "1"
     current_host = _current_host()
-    expected_host = paths.primary_host or locked_host
+    # Prefer the host lock recorded in status; fall back to configured primary host.
+    expected_host = locked_host or paths.primary_host
     if expected_host and expected_host != current_host and active and not force:
         typer.echo(
             f"Refusing to stop on {current_host}: status indicates active RelayMD service on "
