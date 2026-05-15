@@ -22,9 +22,9 @@ JOB_EXPORT_COLUMNS: list[str] = [
     "assigned_at_iso",
     "started_at_iso",
     "status_changed_at_iso",
-    "runtime",
-    "total_runtime",
-    "etc",
+    "runtime_seconds",
+    "etc_seconds",
+    "ett_seconds",
     "updated_at_iso",
     "input_bundle",
     "pinned_clusters",
@@ -35,7 +35,6 @@ JOB_EXPORT_COLUMNS: list[str] = [
     "latest_checkpoint",
     "checkpoint_cycle_status_text",
     "checkpoint_failures_text",
-    "history_source",
     "checkpoint_age",
 ]
 
@@ -142,29 +141,17 @@ def _truncate_id(value: Any) -> str:
     return text if len(text) <= _TRUNCATE_ID_LENGTH else f"{text[:_TRUNCATE_ID_PREFIX]}..."
 
 
-def _runtime_seconds(job: dict[str, Any], now: datetime) -> float:
-    started_at = parse_timestamp(job.get("started_at"))
-    assigned_at = parse_timestamp(job.get("assigned_at"))
-    status_changed_at = parse_timestamp(job.get("status_changed_at"))
-    start = started_at or assigned_at
-    if start is None:
-        return 0.0
-    status = str(job.get("status") or "")
-    if status in {"assigned", "running"}:
-        return max((now - start).total_seconds(), 0.0)
-    if status_changed_at is None:
-        return 0.0
-    return max((status_changed_at - start).total_seconds(), 0.0)
-
-
-def _eta_seconds(job: dict[str, Any], now: datetime) -> float | None:
-    if str(job.get("status") or "") not in {"assigned", "running"}:
+def _seconds_value(value: Any) -> float | None:
+    if value is None or value == "":
         return None
-    progress = max(0.0, min(1.0, _progress_as_float(job.get("progress"))))
-    if progress <= 0 or progress >= 1:
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, Real):
+        return max(float(value), 0.0)
+    try:
+        return max(float(str(value).strip()), 0.0)
+    except (TypeError, ValueError):
         return None
-    runtime = _runtime_seconds(job, now)
-    return max((runtime / progress) - runtime, 0.0)
 
 
 def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
@@ -174,8 +161,9 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
     status_changed_at = parse_timestamp(job.get("status_changed_at"))
     updated_at = parse_timestamp(job.get("updated_at"))
     checkpoint_at = parse_timestamp(job.get("last_checkpoint_at"))
-    runtime_seconds = _runtime_seconds(job, now)
-    eta_seconds = _eta_seconds(job, now)
+    runtime_seconds = _seconds_value(job.get("runtime_seconds")) or 0.0
+    etc_seconds = _seconds_value(job.get("etc_seconds"))
+    ett_seconds = _seconds_value(job.get("ett_seconds"))
     progress_value = _progress_as_float(job.get("progress"))
     progress_percent = round(progress_value * 1000) / 10
     preferred_clusters = job.get("preferred_clusters") or []
@@ -224,9 +212,9 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         "assigned_at_iso": _format_eastern_timestamp(assigned_at),
         "started_at_iso": _format_eastern_timestamp(started_at),
         "status_changed_at_iso": _format_eastern_timestamp(status_changed_at),
-        "runtime": format_duration(runtime_seconds),
-        "total_runtime": format_duration(runtime_seconds),
-        "etc": format_duration(eta_seconds) if eta_seconds is not None else "-",
+        "runtime_seconds": str(runtime_seconds),
+        "etc_seconds": str(etc_seconds) if etc_seconds is not None else "-",
+        "ett_seconds": str(ett_seconds) if ett_seconds is not None else "-",
         "updated_at_iso": _format_eastern_timestamp(updated_at),
         "input_bundle": str(job.get("input_bundle_path") or "-"),
         "pinned_clusters": pinned_clusters or "-",
@@ -241,7 +229,6 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         ),
         "checkpoint_cycle_status_text": str(job.get("checkpoint_cycle_status") or "-"),
         "checkpoint_failures_text": checkpoint_failures_text,
-        "history_source": "Unavailable",
         "checkpoint_age": format_duration((now - checkpoint_at).total_seconds())
         if checkpoint_at
         else "-",

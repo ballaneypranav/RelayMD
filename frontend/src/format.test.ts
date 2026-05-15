@@ -40,6 +40,9 @@ describe("format helpers", () => {
         latest_checkpoint_manifest_path: null,
         last_checkpoint_at: "2026-02-24T11:58:45Z",
         progress: 0.45,
+        runtime_seconds: 2400,
+        etc_seconds: 2933.3333333333335,
+        ett_seconds: 5333.333333333334,
         progress_codes: [],
         checkpoint_cycle_status: "success",
         checkpoint_cycle_failures: [],
@@ -149,6 +152,9 @@ describe("format helpers", () => {
         latest_checkpoint_manifest_path: null,
         last_checkpoint_at: "2026-02-24T11:58:45Z",
         progress: 0.45,
+        runtime_seconds: 2400,
+        etc_seconds: 2933.3333333333335,
+        ett_seconds: 5333.333333333334,
         progress_codes: [],
         checkpoint_cycle_status: "success",
         checkpoint_cycle_failures: [],
@@ -191,6 +197,9 @@ describe("format helpers", () => {
       latest_checkpoint_manifest_path: null,
       last_checkpoint_at: null,
       progress: 0.5,
+      runtime_seconds: 2400,
+      etc_seconds: 2400,
+      ett_seconds: 4800,
       progress_codes: [],
       checkpoint_cycle_status: null,
       checkpoint_cycle_failures: [],
@@ -205,6 +214,9 @@ describe("format helpers", () => {
       ...runningJob,
       status: "completed" as const,
       status_changed_at: "2026-02-24T11:45:00Z",
+      runtime_seconds: 1500,
+      etc_seconds: null,
+      ett_seconds: null,
     };
 
     expect(totalRuntimeSeconds(runningJob, now)).toBe(40 * 60);
@@ -225,6 +237,9 @@ describe("format helpers", () => {
       latest_checkpoint_manifest_path: null,
       last_checkpoint_at: null,
       progress: 0.5,
+      runtime_seconds: 2400,
+      etc_seconds: 2400,
+      ett_seconds: 4800,
       progress_codes: [],
       checkpoint_cycle_status: null,
       checkpoint_cycle_failures: [],
@@ -237,10 +252,7 @@ describe("format helpers", () => {
     };
 
     expect(etaSeconds(baseJob, now)).toBe(40 * 60);
-    expect(etaSeconds({ ...baseJob, progress: 0 }, now)).toBeNull();
-    expect(etaSeconds({ ...baseJob, progress: 1 }, now)).toBeNull();
-    expect(etaSeconds({ ...baseJob, status: "completed" as const }, now)).toBeNull();
-    expect(etaSeconds({ ...baseJob, progress: 1.2 }, now)).toBeNull();
-    expect(etaSeconds({ ...baseJob, progress: -0.2 }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, etc_seconds: null }, now)).toBeNull();
+    expect(etaSeconds({ ...baseJob, status: "completed" as const, etc_seconds: null }, now)).toBeNull();
   });
 });

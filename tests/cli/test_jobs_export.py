@@ -26,7 +26,7 @@ def test_export_row_handles_non_numeric_progress_without_crashing() -> None:
     )
     assert row["progress"] == "0.0%"
     assert row["progress_percent"] == "0.0%"
-    assert row["etc"] == "-"
+    assert row["etc_seconds"] == "-"
 
 
 def test_export_row_renders_iso_fields_in_eastern_time() -> None:
