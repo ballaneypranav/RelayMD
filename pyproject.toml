@@ -75,7 +75,55 @@ target-version = "py311"
 extend-exclude = ["packages/relaymd-api-client/src/relaymd_api_client"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PL"]
+
+# Legacy exemptions — gradual ratchet.
+# When you refactor a file below the thresholds, remove its entry here.
+# Do NOT add new files to this list; fix violations in new code instead.
+[tool.ruff.lint.per-file-ignores]
+# packages/relaymd-core
+"packages/relaymd-core/src/relaymd/axiom_logging.py" = ["PLC0415", "PLW0603"]
+"packages/relaymd-core/src/relaymd/core_secret_management.py" = ["PLR0913"]
+"packages/relaymd-core/src/relaymd/storage/client.py" = ["PLR0913", "PLR2004"]
+"packages/relaymd-core/tests/test_client.py" = ["PLR1711", "PLR2004"]
+# packages/relaymd-worker
+"packages/relaymd-worker/src/relaymd/worker/bootstrap.py" = ["PLW0603"]
+"packages/relaymd-worker/src/relaymd/worker/gateway.py" = ["PLR0913", "PLR2004"]
+"packages/relaymd-worker/src/relaymd/worker/heartbeat.py" = ["PLR0913", "PLR2004"]
+"packages/relaymd-worker/src/relaymd/worker/job_execution.py" = ["PLR0911", "PLR0913"]
+"packages/relaymd-worker/src/relaymd/worker/logging.py" = ["PLC0415", "PLW0603"]
+"packages/relaymd-worker/src/relaymd/worker/main.py" = ["C901", "PLC0415", "PLR0912", "PLR0913", "PLR0915"]
+# src/relaymd/cli
+"src/relaymd/cli/__main__.py" = ["PLC0415", "PLR0913"]
+"src/relaymd/cli/commands/jobs.py" = ["PLR0912"]
+"src/relaymd/cli/commands/service.py" = ["C901", "PLR0912"]
+"src/relaymd/cli/commands/submit.py" = ["PLR0913", "PLR2004"]
+"src/relaymd/cli/config.py" = ["C901", "PLC0415"]
+"src/relaymd/cli/context.py" = ["PLC0415", "PLW0603"]
+"src/relaymd/cli/remote_dispatch.py" = ["PLR0911"]
+"src/relaymd/cli/services/submit_service.py" = ["C901", "PLR2004"]
+# src/relaymd/orchestrator
+"src/relaymd/dashboard_proxy_main.py" = ["PLC0415"]
+"src/relaymd/orchestrator/config.py" = ["C901", "PLC0415", "PLR0915"]
+"src/relaymd/orchestrator/db.py" = ["PLW0603"]
+"src/relaymd/orchestrator/logging.py" = ["PLC0415", "PLW0603"]
+"src/relaymd/orchestrator/main.py" = ["C901", "PLC0207", "PLR0911"]
+"src/relaymd/orchestrator/routers/jobs_operator.py" = ["PLR2004"]
+"src/relaymd/orchestrator/salad_scaler.py" = ["PLR0913"]
+"src/relaymd/orchestrator/services/job_history_service.py" = ["C901", "PLR0912", "PLR0913"]
+"src/relaymd/orchestrator/services/job_transitions.py" = ["PLR0913"]
+"src/relaymd/orchestrator/services/slurm_provisioning_service.py" = ["C901", "PLC0415", "PLR0911", "PLR0912", "PLR0915", "PLR2004", "PLW0603"]
+"src/relaymd/orchestrator/services/worker_lifecycle_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/relaymd/orchestrator/slurm.py" = ["PLR0913", "PLR2004"]
+"src/relaymd/orchestrator/tailscale.py" = ["PLR0911"]
+"src/relaymd/settings_sources.py" = ["C901", "PLR0912"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-statements = 50
 
 [tool.pytest.ini_options]
 addopts = "--import-mode=importlib --cov=relaymd --cov=packages/relaymd-core/src/relaymd --cov-report=term-missing --cov-report=xml"
