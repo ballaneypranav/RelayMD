@@ -232,6 +232,8 @@ tail -n 40 /tmp/<tool>.out
 
 - In status updates and final reports, include only command run, pass/fail, and
   a compact error summary rather than full logs.
+- If you need to move large chunks of code from one file to another 
+  (eg. refactoring), do it using bash commands then make targeted edits. 
 
 ## Configuration, Secrets, and Deployments
 
