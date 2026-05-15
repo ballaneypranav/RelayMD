@@ -131,7 +131,7 @@ describe("format helpers", () => {
     expect(rows.find((row) => row.id === "worker-active")?.status).toBe("active");
     expect(rows.find((row) => row.id === "worker-queued")?.status).toBe("provisioning");
     expect(rows.find((row) => row.id === "worker-stale")?.status).toBe("stale");
-    expect(rows.find((row) => row.id === "worker-active")?.last_heartbeat).toBe("11:59:30 UTC");
+    expect(rows.find((row) => row.id === "worker-active")?.last_heartbeat).toBe("06:59:30 EST");
   });
 
   it("uses status_changed_at rather than updated_at for time in status", () => {

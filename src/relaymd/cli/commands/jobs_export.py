@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from numbers import Real
 from typing import Any
+from zoneinfo import ZoneInfo
 
 JOB_EXPORT_COLUMNS: list[str] = [
     "id",
@@ -44,6 +46,8 @@ _QUEUE_BLOCKED_LABELS: dict[str, str] = {
 _DURATION_MAX_PARTS = 2
 _TRUNCATE_ID_LENGTH = 12
 _TRUNCATE_ID_PREFIX = 8
+_TZ_OFFSET_SUFFIX_LENGTH = 6
+_EASTERN_TZ = ZoneInfo("America/New_York")
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -52,14 +56,35 @@ def parse_timestamp(value: Any) -> datetime | None:
     text = str(value).strip()
     if not text:
         return None
-    normalized = text if text.endswith("Z") or "+" in text[-6:] else f"{text}Z"
+    has_utc_designator = text.endswith(("Z", "z"))
+    has_offset = (
+        len(text) >= _TZ_OFFSET_SUFFIX_LENGTH and text[-_TZ_OFFSET_SUFFIX_LENGTH] in {"+", "-"}
+    )
+    normalized = text if has_utc_designator or has_offset else f"{text}Z"
     try:
-        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00").replace("z", "+00:00"))
     except ValueError:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _progress_as_float(raw_value: Any) -> float:
+    if raw_value is None or raw_value == "":
+        return 0.0
+    if isinstance(raw_value, bool):
+        return 1.0 if raw_value else 0.0
+    if isinstance(raw_value, Real):
+        return float(raw_value)
+    if isinstance(raw_value, str):
+        raw_value = raw_value.strip()
+    if not isinstance(raw_value, str) or not raw_value:
+        return 0.0
+    try:
+        return float(raw_value)
+    except ValueError:
+        return 0.0
 
 
 def format_duration(delta_seconds: float) -> str:
@@ -82,6 +107,14 @@ def format_duration(delta_seconds: float) -> str:
     if len(parts) == 1:
         return f"{parts[0]} {remainder}s" if remainder > 0 else parts[0]
     return f"{total_seconds // 60}m {total_seconds % 60}s"
+
+
+def _format_eastern_timestamp(value: datetime | None) -> str:
+    if value is None:
+        return "-"
+    eastern = value.astimezone(_EASTERN_TZ)
+    tz_name = eastern.tzname() or ""
+    return f"{eastern.isoformat()} {tz_name}".strip()
 
 
 def _truncate_id(value: Any) -> str:
@@ -109,7 +142,7 @@ def _runtime_seconds(job: dict[str, Any], now: datetime) -> float:
 def _eta_seconds(job: dict[str, Any], now: datetime) -> float | None:
     if str(job.get("status") or "") not in {"assigned", "running"}:
         return None
-    progress = max(0.0, min(1.0, float(job.get("progress") or 0.0)))
+    progress = max(0.0, min(1.0, _progress_as_float(job.get("progress"))))
     if progress <= 0 or progress >= 1:
         return None
     runtime = _runtime_seconds(job, now)
@@ -125,7 +158,7 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
     checkpoint_at = parse_timestamp(job.get("last_checkpoint_at"))
     runtime_seconds = _runtime_seconds(job, now)
     eta_seconds = _eta_seconds(job, now)
-    progress_value = float(job.get("progress") or 0.0)
+    progress_value = _progress_as_float(job.get("progress"))
     progress_percent = round(progress_value * 1000) / 10
     preferred_clusters = job.get("preferred_clusters") or []
     progress_codes = job.get("progress_codes") or []
@@ -169,16 +202,14 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         "checkpoint_health": "warn" if isinstance(failures, list) and failures else "ok",
         "job_id_full": str(job.get("id") or "-"),
         "assigned_worker_full": str(job.get("assigned_worker_id") or "-"),
-        "created_at_iso": created_at.isoformat().replace("+00:00", "Z") if created_at else "-",
-        "assigned_at_iso": assigned_at.isoformat().replace("+00:00", "Z") if assigned_at else "-",
-        "started_at_iso": started_at.isoformat().replace("+00:00", "Z") if started_at else "-",
-        "status_changed_at_iso": status_changed_at.isoformat().replace("+00:00", "Z")
-        if status_changed_at
-        else "-",
+        "created_at_iso": _format_eastern_timestamp(created_at),
+        "assigned_at_iso": _format_eastern_timestamp(assigned_at),
+        "started_at_iso": _format_eastern_timestamp(started_at),
+        "status_changed_at_iso": _format_eastern_timestamp(status_changed_at),
         "runtime": format_duration(runtime_seconds),
         "total_runtime": format_duration(runtime_seconds),
         "etc": format_duration(eta_seconds) if eta_seconds is not None else "-",
-        "updated_at_iso": updated_at.isoformat().replace("+00:00", "Z") if updated_at else "-",
+        "updated_at_iso": _format_eastern_timestamp(updated_at),
         "input_bundle": str(job.get("input_bundle_path") or "-"),
         "pinned_clusters": pinned_clusters or "-",
         "comment_text": str(job.get("comment") or "-"),
