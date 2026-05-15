@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import atexit
+import datetime
 import os
 import queue
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 from contextlib import suppress
+from dataclasses import dataclass, field
 
 import orjson
 import structlog
@@ -52,9 +55,6 @@ class AxiomSenderThread(threading.Thread):
         return batch
 
     def _send_batch(self, batch: list[structlog.types.EventDict]) -> None:
-        import datetime
-        import sys
-
         payload = orjson.dumps(batch, default=str)
         req = urllib.request.Request(
             self.url,
@@ -90,9 +90,16 @@ class AxiomSenderThread(threading.Thread):
             self._send_batch(batch)
 
 
-_AXIOM_THREAD: AxiomSenderThread | None = None
-_AXIOM_THREAD_LOCK = threading.Lock()
-_AXIOM_CLEANUP_REGISTERED = False
+@dataclass
+class _AxiomState:
+    """Module-level singleton state for the background sender thread."""
+
+    thread: AxiomSenderThread | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    cleanup_registered: bool = False
+
+
+_STATE = _AxiomState()
 
 
 def _axiom_upload_disabled() -> bool:
@@ -101,24 +108,22 @@ def _axiom_upload_disabled() -> bool:
 
 
 def get_axiom_thread(axiom_token: str, dataset: str) -> AxiomSenderThread:
-    global _AXIOM_THREAD, _AXIOM_CLEANUP_REGISTERED
-    with _AXIOM_THREAD_LOCK:
-        if _AXIOM_THREAD is None or not _AXIOM_THREAD.is_alive():
-            _AXIOM_THREAD = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
-            _AXIOM_THREAD.start()
-            if not _AXIOM_CLEANUP_REGISTERED:
+    with _STATE.lock:
+        if _STATE.thread is None or not _STATE.thread.is_alive():
+            _STATE.thread = AxiomSenderThread(axiom_token=axiom_token, dataset=dataset)
+            _STATE.thread.start()
+            if not _STATE.cleanup_registered:
                 atexit.register(_cleanup_axiom_thread)
-                _AXIOM_CLEANUP_REGISTERED = True
-        return _AXIOM_THREAD
+                _STATE.cleanup_registered = True
+        return _STATE.thread
 
 
 def _cleanup_axiom_thread() -> None:
-    global _AXIOM_THREAD
-    with _AXIOM_THREAD_LOCK:
-        if _AXIOM_THREAD is not None:
-            _AXIOM_THREAD.stop()
-            _AXIOM_THREAD.join(timeout=2.0)
-            _AXIOM_THREAD = None
+    with _STATE.lock:
+        if _STATE.thread is not None:
+            _STATE.thread.stop()
+            _STATE.thread.join(timeout=2.0)
+            _STATE.thread = None
 
 
 class AxiomProcessor:

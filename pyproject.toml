@@ -82,7 +82,6 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PL"]
 # Do NOT add new files to this list; fix violations in new code instead.
 [tool.ruff.lint.per-file-ignores]
 # packages/relaymd-core
-"packages/relaymd-core/src/relaymd/axiom_logging.py" = ["PLC0415", "PLW0603"]
 "packages/relaymd-core/src/relaymd/core_secret_management.py" = ["PLR0913"]
 "packages/relaymd-core/src/relaymd/storage/client.py" = ["PLR0913", "PLR2004"]
 "packages/relaymd-core/tests/test_client.py" = ["PLR1711", "PLR2004"]
