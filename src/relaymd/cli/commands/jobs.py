@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,12 +13,21 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
+from relaymd.cli.commands.jobs_checkpoint import checkpoint_app
+from relaymd.cli.commands.jobs_export import JOB_EXPORT_COLUMNS, job_to_export_row
 from relaymd.cli.context import create_cli_context
 from relaymd.cli.services.jobs_service import JobsService
 
 app = typer.Typer(help="Manage jobs.")
-checkpoint_app = typer.Typer(help="Manage job checkpoints.")
 console = Console()
+
+JOB_LIST_COLUMNS: list[str] = [
+    "id",
+    "title",
+    "status",
+    "created_at",
+    "assigned_worker_id",
+]
 
 
 def _status_style(status: str) -> str:
@@ -33,20 +43,18 @@ def _status_style(status: str) -> str:
 
 
 def _render_jobs_plain_lines(jobs: list[dict[str, Any]]) -> list[str]:
-    lines = ["id\ttitle\tstatus\tcreated_at\tassigned_worker_id"]
+    lines = ["\t".join(JOB_LIST_COLUMNS)]
     for job in jobs:
-        lines.append(
-            "\t".join(
-                [
-                    str(job.get("id") or "-"),
-                    str(job.get("title") or "-"),
-                    str(job.get("status") or "-"),
-                    str(job.get("created_at") or "-"),
-                    str(job.get("assigned_worker_id") or "-"),
-                ]
-            )
-        )
+        lines.append("\t".join(str(job.get(column) or "-") for column in JOB_LIST_COLUMNS))
     return lines
+
+
+def _csv_stringify(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (str, int, float, bool)):
+        return str(value)
+    return json.dumps(value, sort_keys=True)
 
 
 def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
@@ -244,133 +252,35 @@ def prune_jobs(
         typer.echo(f"Deleted {deleted} job(s) older than {older_than} day(s).")
 
 
-@checkpoint_app.command("download")
-def download_checkpoint(
-    job_id: str,
+@app.command("export-csv")
+def export_jobs_csv(
     output: Annotated[
-        Path | None,
-        typer.Option("--output", help="Output file or directory path."),
-    ] = None,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
+        Path,
+        typer.Option(
+            "--output",
+            help="Output CSV path. Defaults to relaymd-jobs.csv in the current directory.",
+        ),
+    ] = Path("relaymd-jobs.csv"),
 ) -> None:
     try:
-        payload = JobsService(create_cli_context()).download_latest_checkpoint(
-            job_id=UUID(job_id),
-            output=output,
-        )
+        jobs = JobsService(create_cli_context()).list_jobs()
     except Exception as exc:  # noqa: BLE001
-        if json_mode:
-            try:
-                json.loads(str(exc))
-                typer.echo(str(exc))
-            except Exception:
-                typer.echo(
-                    json.dumps(
-                        {
-                            "error": {
-                                "code": "checkpoint_download_failed",
-                                "message": str(exc),
-                            }
-                        }
-                    )
-                )
-        else:
-            console.print(f"[red]Failed to download checkpoint:[/red] {escape(str(exc))}")
+        console.print(f"[red]Failed to list jobs:[/red] {escape(str(exc))}")
         raise typer.Exit(code=1) from exc
 
-    if json_mode:
-        typer.echo(json.dumps(payload))
-    else:
-        console.print(f"[green]Downloaded checkpoint[/green] {payload['local_path']}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    jobs_payload = [job.to_dict() for job in jobs]
+    now = datetime.now(UTC)
+    with output.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=JOB_EXPORT_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        for job in jobs_payload:
+            row = job_to_export_row(job, now)
+            writer.writerow(
+                {column: _csv_stringify(row.get(column)) for column in JOB_EXPORT_COLUMNS}
+            )
 
-
-@checkpoint_app.command("download-file")
-def download_checkpoint_file(
-    job_id: str,
-    relative_path: str,
-    output: Annotated[
-        Path | None,
-        typer.Option("--output", help="Output file or directory path."),
-    ] = None,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    try:
-        payload = JobsService(create_cli_context()).download_checkpoint_file(
-            job_id=UUID(job_id),
-            relative_path=relative_path,
-            output=output,
-        )
-    except Exception as exc:  # noqa: BLE001
-        if json_mode:
-            try:
-                json.loads(str(exc))
-                typer.echo(str(exc))
-            except Exception:
-                typer.echo(
-                    json.dumps(
-                        {
-                            "error": {
-                                "code": "checkpoint_download_failed",
-                                "message": str(exc),
-                            }
-                        }
-                    )
-                )
-        else:
-            console.print(f"[red]Failed to download checkpoint file:[/red] {escape(str(exc))}")
-        raise typer.Exit(code=1) from exc
-
-    if json_mode:
-        typer.echo(json.dumps(payload))
-    else:
-        console.print(f"[green]Downloaded checkpoint file[/green] {payload['local_path']}")
-
-
-@checkpoint_app.command("download-all")
-def download_all_checkpoints(
-    job_id: str,
-    output_dir: Annotated[
-        Path | None,
-        typer.Option("--output-dir", help="Directory to write manifest + files."),
-    ] = None,
-    json_mode: Annotated[bool, typer.Option("--json")] = False,
-) -> None:
-    try:
-        payload = JobsService(create_cli_context()).download_all_checkpoint_files(
-            job_id=UUID(job_id),
-            output_dir=output_dir,
-        )
-    except Exception as exc:  # noqa: BLE001
-        if json_mode:
-            try:
-                json.loads(str(exc))
-                typer.echo(str(exc))
-            except Exception:
-                typer.echo(
-                    json.dumps(
-                        {
-                            "error": {
-                                "code": "checkpoint_download_failed",
-                                "message": str(exc),
-                            }
-                        }
-                    )
-                )
-        else:
-            console.print(f"[red]Failed to download checkpoint bundle:[/red] {escape(str(exc))}")
-        raise typer.Exit(code=1) from exc
-
-    if json_mode:
-        typer.echo(json.dumps(payload))
-    else:
-        console.print(
-            "[green]Downloaded checkpoint bundle[/green] "
-            f"{payload['downloaded_files']}/{payload['total_files']} files "
-            f"to {payload['output_dir']}"
-        )
-
-    if payload.get("status") == "partial_failure":
-        raise typer.Exit(code=1)
+    typer.echo(f"Wrote {len(jobs_payload)} job(s) to {output.resolve()}")
 
 
 app.add_typer(checkpoint_app, name="checkpoint")

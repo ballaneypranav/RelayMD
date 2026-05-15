@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +11,11 @@ import typer
 from relaymd_api_client.models.job_read import JobRead
 from relaymd_api_client.models.job_status import JobStatus
 
-from relaymd.cli.commands.jobs import download_all_checkpoints, download_checkpoint_file, prune_jobs
+from relaymd.cli.commands.jobs import JOB_EXPORT_COLUMNS, export_jobs_csv, prune_jobs
+from relaymd.cli.commands.jobs_checkpoint import (
+    download_all_checkpoints,
+    download_checkpoint_file,
+)
 
 
 def _make_job_read(
@@ -169,8 +175,8 @@ def test_download_checkpoint_file_json_output(capsys) -> None:
     }
 
     with (
-        patch("relaymd.cli.commands.jobs.create_cli_context"),
-        patch("relaymd.cli.commands.jobs.JobsService", return_value=mock_service),
+        patch("relaymd.cli.commands.jobs_checkpoint.create_cli_context"),
+        patch("relaymd.cli.commands.jobs_checkpoint.JobsService", return_value=mock_service),
     ):
         download_checkpoint_file(
             job_id="00000000-0000-0000-0000-000000000001",
@@ -199,8 +205,8 @@ def test_download_all_checkpoints_partial_failure_exits_nonzero(capsys) -> None:
     }
 
     with (
-        patch("relaymd.cli.commands.jobs.create_cli_context"),
-        patch("relaymd.cli.commands.jobs.JobsService", return_value=mock_service),
+        patch("relaymd.cli.commands.jobs_checkpoint.create_cli_context"),
+        patch("relaymd.cli.commands.jobs_checkpoint.JobsService", return_value=mock_service),
         pytest.raises(typer.Exit) as exc,
     ):
         download_all_checkpoints(
@@ -212,3 +218,47 @@ def test_download_all_checkpoints_partial_failure_exits_nonzero(capsys) -> None:
     assert exc.value.exit_code == 1
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] == "partial_failure"
+
+
+def test_export_jobs_csv_writes_default_columns(tmp_path) -> None:
+    mock_service = MagicMock()
+    mock_service.list_jobs.return_value = [_make_job_read()]
+    output = tmp_path / "jobs.csv"
+
+    with (
+        patch("relaymd.cli.commands.jobs.create_cli_context"),
+        patch("relaymd.cli.commands.jobs.JobsService", return_value=mock_service),
+    ):
+        export_jobs_csv(output=output)
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert lines
+    assert lines[0] == ",".join(JOB_EXPORT_COLUMNS)
+    assert "00000000-0000-0000-0000-000000000001" in lines[1]
+
+
+def test_cli_export_columns_match_frontend_export_columns() -> None:
+    jobs_view = Path("frontend/src/views/JobsView.tsx").read_text(encoding="utf-8")
+    marker = "export const JOB_EXPORT_COLUMN_KEYS"
+    start = jobs_view.find(marker)
+    assert start != -1
+    list_start = jobs_view.find("[", start)
+    list_end = jobs_view.find("];", list_start)
+    assert list_start != -1 and list_end != -1
+    list_text = jobs_view[list_start + 1 : list_end]
+    frontend_columns = re.findall(r'"([^"]+)"', list_text)
+    assert frontend_columns == JOB_EXPORT_COLUMNS
+
+
+def test_export_jobs_csv_exits_nonzero_on_list_error() -> None:
+    mock_service = MagicMock()
+    mock_service.list_jobs.side_effect = RuntimeError("boom")
+
+    with (
+        patch("relaymd.cli.commands.jobs.create_cli_context"),
+        patch("relaymd.cli.commands.jobs.JobsService", return_value=mock_service),
+        pytest.raises(typer.Exit) as exc,
+    ):
+        export_jobs_csv()
+
+    assert exc.value.exit_code == 1

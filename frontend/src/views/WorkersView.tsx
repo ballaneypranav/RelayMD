@@ -2,7 +2,14 @@ import { useMemo, useState } from "react";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { ConsoleTable, type ConsoleTableToolbarContext } from "../components/ConsoleTable";
-import { parseDate, toCsv, toDelimited, truncateUuid, type WorkerRow } from "../format";
+import {
+  formatEasternTimestamp,
+  parseDate,
+  toCsv,
+  toDelimited,
+  truncateUuid,
+  type WorkerRow,
+} from "../format";
 import { StatusPill } from "../components/StatusPill";
 import type { WorkerRead } from "../types";
 
@@ -29,6 +36,9 @@ const STATUS_FILTERS = ["active", "provisioning", "stale"] as const;
 
 function WorkerExpandedDetails({ row }: { row: WorkerTableRow }) {
   const worker = row.worker;
+  const providerLastCheckedAt = parseDate(worker?.provider_last_checked_at);
+  const registeredAt = parseDate(worker?.registered_at);
+  const heartbeatAt = parseDate(worker?.last_heartbeat);
 
   return (
     <div className="job-expanded-detail">
@@ -51,15 +61,15 @@ function WorkerExpandedDetails({ row }: { row: WorkerTableRow }) {
         </div>
         <div>
           <dt>Provider Last Checked</dt>
-          <dd>{parseDate(worker?.provider_last_checked_at)?.toISOString() ?? "-"}</dd>
+          <dd>{providerLastCheckedAt ? formatEasternTimestamp(providerLastCheckedAt) : "-"}</dd>
         </div>
         <div>
           <dt>Registered</dt>
-          <dd>{parseDate(worker?.registered_at)?.toISOString() ?? "-"}</dd>
+          <dd>{registeredAt ? formatEasternTimestamp(registeredAt) : "-"}</dd>
         </div>
         <div>
           <dt>Heartbeat Timestamp</dt>
-          <dd>{parseDate(worker?.last_heartbeat)?.toISOString() ?? "-"}</dd>
+          <dd>{heartbeatAt ? formatEasternTimestamp(heartbeatAt) : "-"}</dd>
         </div>
         <div>
           <dt>Current Job</dt>
@@ -129,15 +139,20 @@ export function WorkersView({
     () =>
       filteredRows.map((row) => {
         const worker = workerById.get(row.id) ?? null;
+        const providerLastCheckedAt = parseDate(worker?.provider_last_checked_at);
+        const registeredAt = parseDate(worker?.registered_at);
+        const heartbeatAt = parseDate(worker?.last_heartbeat);
         return {
           ...row,
           worker,
           worker_id_full: worker?.id ?? row.id,
           provider_raw_state: worker?.provider_state_raw || "-",
           provider_reason: worker?.provider_reason || "-",
-          provider_last_checked: parseDate(worker?.provider_last_checked_at)?.toISOString() ?? "-",
-          registered_at: parseDate(worker?.registered_at)?.toISOString() ?? "-",
-          heartbeat_timestamp: parseDate(worker?.last_heartbeat)?.toISOString() ?? "-",
+          provider_last_checked: providerLastCheckedAt
+            ? formatEasternTimestamp(providerLastCheckedAt)
+            : "-",
+          registered_at: registeredAt ? formatEasternTimestamp(registeredAt) : "-",
+          heartbeat_timestamp: heartbeatAt ? formatEasternTimestamp(heartbeatAt) : "-",
         };
       }),
     [filteredRows, workerById],

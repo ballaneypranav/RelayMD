@@ -157,6 +157,8 @@ git push origin vX.Y.Z
 ## Testing Guidance
 
 - Run the narrowest relevant tests while iterating.
+- Run targeted checks first; run full-suite checks only before final handoff or
+  when explicitly requested.
 - Before finishing substantial Python changes, run:
 
 ```bash
@@ -175,6 +177,53 @@ npm --cache ./.npm test
 
 - If a full suite is too expensive or blocked by environment constraints, report
   exactly which checks were run and which were not.
+
+## Token-Efficient Command Execution
+
+- Prefer narrow, file- or package-scoped checks before full-suite runs.
+- Use commands that produce short output by default; avoid verbose flags unless
+  needed.
+- For pytest iteration, prefer targeted tests first, for example:
+
+```bash
+uv run pytest -q tests/cli/test_jobs_export.py
+uv run pytest -q tests/cli/test_jobs_export.py -k <pattern>
+```
+
+- For lint/type checks, scope to changed paths first:
+
+```bash
+uv run ruff check <path>
+uv run pyright <path>
+```
+
+- Run repo-wide checks only before final handoff or when requested:
+
+```bash
+uv run ruff check .
+uv run pyright
+uv run pytest
+```
+
+- If output may be large, redirect to `/tmp` and inspect only relevant parts:
+
+```bash
+uv run pytest -q > /tmp/pytest.out 2>&1
+uv run pyright > /tmp/pyright.out 2>&1
+uv run ruff check . > /tmp/ruff.out 2>&1
+```
+
+- When using redirected logs, report concise summaries with targeted filters:
+
+```bash
+rg -n "FAILED|ERROR|Traceback" /tmp/pytest.out
+rg -n "error|warning" /tmp/pyright.out
+rg -n "^[A-Z].*:" /tmp/ruff.out
+tail -n 40 /tmp/<tool>.out
+```
+
+- In status updates and final reports, include only command run, pass/fail, and
+  a compact error summary rather than full logs.
 
 ## Configuration, Secrets, and Deployments
 

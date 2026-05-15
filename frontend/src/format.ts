@@ -1,6 +1,7 @@
 import type { JobRead, JobWorkerSegment, WorkerRead } from "./types";
 
 const STALE_WORKER_SECONDS = 120;
+const EASTERN_TIMEZONE = "America/New_York";
 
 export function parseDate(value: string | null | undefined): Date | null {
   if (!value) {
@@ -40,6 +41,18 @@ export function formatDuration(deltaSeconds: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}m ${seconds}s`;
+}
+
+export function formatEasternTimestamp(value: Date): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: EASTERN_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+  });
+  return formatter.format(value).replace(",", "");
 }
 
 export function truncateUuid(value: string | null | undefined): string {
@@ -156,7 +169,7 @@ export function buildWorkerRows(rawWorkers: WorkerRead[], now: Date, rawJobs: Jo
     let heartbeatText = "-";
 
     if (heartbeatAt) {
-      heartbeatText = heartbeatAt.toISOString().slice(11, 19) + " UTC";
+      heartbeatText = formatEasternTimestamp(heartbeatAt);
       if ((now.getTime() - heartbeatAt.getTime()) / 1000 > STALE_WORKER_SECONDS) {
         status = "stale";
       }
