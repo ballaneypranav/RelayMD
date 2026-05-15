@@ -67,6 +67,9 @@ class JobRead(SQLModel):
     cancellation_requested_at: datetime | None = None
     last_checkpoint_at: datetime | None
     progress: float | None = None
+    runtime_seconds: float = 0.0
+    etc_seconds: float | None = None
+    ett_seconds: float | None = None
     progress_codes: list[str] = []
     checkpoint_cycle_status: str | None = None
     checkpoint_cycle_failures: list[dict[str, str]] = []

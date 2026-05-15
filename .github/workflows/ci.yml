@@ -546,6 +546,11 @@ jobs:
           cache-local-path: /tmp/uv-cache
       - run: ./scripts/sync_workspace.sh
       - run: ./scripts/build_cli_binary.sh
+      - name: Smoke test CLI binary
+        run: |
+          ./dist/relaymd --help >/dev/null
+          ./dist/relaymd submit --help >/dev/null
+          ./dist/relaymd --version
       - id: cli_sha
         run: echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - name: Rename binary

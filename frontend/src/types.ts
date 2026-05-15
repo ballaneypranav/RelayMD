@@ -22,6 +22,9 @@ export interface JobRead {
   latest_checkpoint_path: string | null;
   last_checkpoint_at: string | null;
   progress: number | null;
+  runtime_seconds: number;
+  etc_seconds: number | null;
+  ett_seconds: number | null;
   progress_codes: string[];
   checkpoint_cycle_status: string | null;
   checkpoint_cycle_failures: Array<{ code: string; detail: string }>;

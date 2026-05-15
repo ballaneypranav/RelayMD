@@ -88,38 +88,18 @@ export interface WorkerRow {
 }
 
 export function totalRuntimeSeconds(job: JobRead, now: Date, segments?: JobWorkerSegment[]): number {
-  if (segments && segments.length > 0) {
-    return segments.reduce((total, segment) => total + Math.max(0, segment.duration_seconds), 0);
-  }
-  const startedAt = parseDate(job.started_at);
-  const assignedAt = parseDate(job.assigned_at);
-  const terminalAt = parseDate(job.status_changed_at);
-  const active = job.status === "assigned" || job.status === "running";
-  const segmentStart = startedAt ?? assignedAt;
-  if (!segmentStart) {
-    return 0;
-  }
-  if (active) {
-    return Math.max(0, (now.getTime() - segmentStart.getTime()) / 1000);
-  }
-  if (!terminalAt) {
-    return 0;
-  }
-  return Math.max(0, (terminalAt.getTime() - segmentStart.getTime()) / 1000);
+  void now;
+  void segments;
+  return Math.max(0, Number(job.runtime_seconds ?? 0));
 }
 
 export function etaSeconds(job: JobRead, now: Date, segments?: JobWorkerSegment[]): number | null {
-  if (job.status !== "assigned" && job.status !== "running") {
+  void now;
+  void segments;
+  if (job.etc_seconds === null || job.etc_seconds === undefined) {
     return null;
   }
-  const rawProgress = job.progress ?? 0;
-  const progress = Math.max(0, Math.min(1, rawProgress));
-  if (progress <= 0 || progress >= 1) {
-    return null;
-  }
-  const runtime = totalRuntimeSeconds(job, now, segments);
-  const estimatedTotal = runtime / progress;
-  return Math.max(0, estimatedTotal - runtime);
+  return Math.max(0, Number(job.etc_seconds));
 }
 
 export function buildJobRows(rawJobs: JobRead[], now: Date): JobRow[] {

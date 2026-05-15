@@ -31,8 +31,11 @@ interface JobTableRow extends JobRow {
   started_at_iso: string;
   status_changed_at_iso: string;
   runtime: string;
-  total_runtime: string;
   etc: string;
+  ett: string;
+  runtime_seconds: string;
+  etc_seconds: string;
+  ett_seconds: string;
   updated_at_iso: string;
   input_bundle: string;
   pinned_clusters: string;
@@ -43,7 +46,6 @@ interface JobTableRow extends JobRow {
   latest_checkpoint: string;
   checkpoint_cycle_status_text: string;
   checkpoint_failures_text: string;
-  history_source: string;
   checkpoint_age: string;
 }
 
@@ -64,9 +66,9 @@ export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
   "assigned_at_iso",
   "started_at_iso",
   "status_changed_at_iso",
-  "runtime",
-  "total_runtime",
-  "etc",
+  "runtime_seconds",
+  "etc_seconds",
+  "ett_seconds",
   "updated_at_iso",
   "input_bundle",
   "pinned_clusters",
@@ -77,7 +79,6 @@ export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
   "latest_checkpoint",
   "checkpoint_cycle_status_text",
   "checkpoint_failures_text",
-  "history_source",
   "checkpoint_age",
 ];
 
@@ -89,8 +90,8 @@ export const JOB_EXPANDED_PANEL_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job"
   "started_at_iso",
   "status_changed_at_iso",
   "runtime",
-  "total_runtime",
   "etc",
+  "ett",
   "updated_at_iso",
   "input_bundle",
   "pinned_clusters",
@@ -101,7 +102,6 @@ export const JOB_EXPANDED_PANEL_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job"
   "latest_checkpoint",
   "checkpoint_cycle_status_text",
   "checkpoint_failures_text",
-  "history_source",
   "checkpoint_age",
 ];
 
@@ -153,6 +153,7 @@ function JobExpandedDetails({
   const now = new Date();
   const runtimeSeconds = totalRuntimeSeconds(job, now, selectedJobHistory?.worker_segments);
   const eta = etaSeconds(job, now, selectedJobHistory?.worker_segments);
+  const ett = job.ett_seconds;
 
   return (
     <div className="job-expanded-detail">
@@ -188,6 +189,10 @@ function JobExpandedDetails({
         <div>
           <dt>ETC</dt>
           <dd>{eta !== null ? formatDuration(eta) : "-"}</dd>
+        </div>
+        <div>
+          <dt>ETT</dt>
+          <dd>{ett !== null && ett !== undefined ? formatDuration(ett) : "-"}</dd>
         </div>
         <div>
           <dt>Updated</dt>
@@ -239,16 +244,6 @@ function JobExpandedDetails({
                   .map((failure) => `${failure.code}: ${failure.detail}`)
                   .join("; ")
               : "-"}
-          </dd>
-        </div>
-        <div>
-          <dt>History Source</dt>
-          <dd>
-            {!selectedJobHistory
-              ? "Unavailable"
-              : selectedJobHistory.derived
-                ? "Derived fallback"
-                : "Persisted events"}
           </dd>
         </div>
         <div>
@@ -405,13 +400,23 @@ export function JobsView({
             runtime: formatDuration(
               totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
             ),
-            total_runtime: formatDuration(
-              totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
-            ),
             etc: (() => {
               const estimate = etaSeconds(job, new Date());
               return estimate !== null ? formatDuration(estimate) : "-";
             })(),
+            ett:
+              job.ett_seconds !== null && job.ett_seconds !== undefined
+                ? formatDuration(job.ett_seconds)
+                : "-",
+            runtime_seconds: String(Math.max(0, Number(job.runtime_seconds ?? 0))),
+            etc_seconds:
+              job.etc_seconds !== null && job.etc_seconds !== undefined
+                ? String(Math.max(0, Number(job.etc_seconds)))
+                : "-",
+            ett_seconds:
+              job.ett_seconds !== null && job.ett_seconds !== undefined
+                ? String(Math.max(0, Number(job.ett_seconds)))
+                : "-",
             updated_at_iso: parseDate(job.updated_at)?.toISOString() ?? "-",
             input_bundle: job.input_bundle_path,
             pinned_clusters:
@@ -431,12 +436,6 @@ export function JobsView({
                     .map((failure) => `${failure.code}: ${failure.detail}`)
                     .join("; ")
                 : "-",
-            history_source:
-              selectedJobId === job.id && selectedJobHistory
-                ? selectedJobHistory.derived
-                  ? "Derived fallback"
-                  : "Persisted events"
-                : "Unavailable",
             checkpoint_age: formatCheckpointAge(job),
           },
         ];
@@ -526,12 +525,12 @@ export function JobsView({
         header: "Runtime",
       },
       {
-        accessorKey: "total_runtime",
-        header: "Total Runtime",
-      },
-      {
         accessorKey: "etc",
         header: "ETC",
+      },
+      {
+        accessorKey: "ett",
+        header: "ETT",
       },
       {
         accessorKey: "updated_at_iso",
@@ -572,10 +571,6 @@ export function JobsView({
       {
         accessorKey: "checkpoint_failures_text",
         header: "Checkpoint Failures",
-      },
-      {
-        accessorKey: "history_source",
-        header: "History Source",
       },
       {
         accessorKey: "checkpoint_age",
@@ -621,7 +616,6 @@ export function JobsView({
           "assigned_worker_id",
           "time_since_checkpoint",
           "runtime",
-          "total_runtime",
         ],
       },
       {
@@ -633,6 +627,7 @@ export function JobsView({
           "started_at_iso",
           "status_changed_at_iso",
           "etc",
+          "ett",
           "updated_at_iso",
           "checkpoint_age",
         ],
@@ -651,7 +646,6 @@ export function JobsView({
           "latest_checkpoint",
           "checkpoint_cycle_status_text",
           "checkpoint_failures_text",
-          "history_source",
         ],
       },
       {
@@ -716,7 +710,6 @@ export function JobsView({
           latest_checkpoint: false,
           checkpoint_cycle_status_text: false,
           checkpoint_failures_text: false,
-          history_source: false,
           checkpoint_age: false,
         }}
         loading={loading}

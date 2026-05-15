@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_submodules
 
 SOURCE_ROOT = Path(os.environ.get("RELAYMD_CLI_SOURCE_ROOT", "src"))
 CORE_ROOT = Path(os.environ.get("RELAYMD_CORE_SOURCE_ROOT", "packages/relaymd-core/src"))
@@ -16,7 +17,7 @@ a = Analysis(
         'relaymd.runtime_defaults',
         'relaymd.storage',
         'relaymd.storage.client',
-    ],
+    ] + collect_submodules('rich._unicode_data'),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
