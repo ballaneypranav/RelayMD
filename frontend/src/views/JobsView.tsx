@@ -31,6 +31,7 @@ interface JobTableRow extends JobRow {
   started_at_iso: string;
   status_changed_at_iso: string;
   runtime: string;
+  total_runtime: string;
   etc: string;
   updated_at_iso: string;
   input_bundle: string;
@@ -44,6 +45,70 @@ interface JobTableRow extends JobRow {
   checkpoint_failures_text: string;
   history_source: string;
   checkpoint_age: string;
+}
+
+export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
+  "id",
+  "job_id",
+  "title",
+  "status",
+  "age",
+  "time_in_status",
+  "assigned_worker_id",
+  "time_since_checkpoint",
+  "progress",
+  "checkpoint_health",
+  "job_id_full",
+  "assigned_worker_full",
+  "created_at_iso",
+  "assigned_at_iso",
+  "started_at_iso",
+  "status_changed_at_iso",
+  "runtime",
+  "total_runtime",
+  "etc",
+  "updated_at_iso",
+  "input_bundle",
+  "pinned_clusters",
+  "comment_text",
+  "queue_blocked",
+  "progress_percent",
+  "progress_codes_text",
+  "latest_checkpoint",
+  "checkpoint_cycle_status_text",
+  "checkpoint_failures_text",
+  "history_source",
+  "checkpoint_age",
+];
+
+export const JOB_EXPANDED_PANEL_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
+  "job_id_full",
+  "assigned_worker_full",
+  "created_at_iso",
+  "assigned_at_iso",
+  "started_at_iso",
+  "status_changed_at_iso",
+  "runtime",
+  "total_runtime",
+  "etc",
+  "updated_at_iso",
+  "input_bundle",
+  "pinned_clusters",
+  "comment_text",
+  "queue_blocked",
+  "progress_percent",
+  "progress_codes_text",
+  "latest_checkpoint",
+  "checkpoint_cycle_status_text",
+  "checkpoint_failures_text",
+  "history_source",
+  "checkpoint_age",
+];
+
+export function buildJobExportRow(record: JobTableRow): Record<(typeof JOB_EXPORT_COLUMN_KEYS)[number], string> {
+  return Object.fromEntries(
+    JOB_EXPORT_COLUMN_KEYS.map((key) => [key, record[key]]),
+  ) as Record<(typeof JOB_EXPORT_COLUMN_KEYS)[number], string>;
 }
 
 interface JobsViewProps {
@@ -249,10 +314,7 @@ function JobsToolbar({
   const bulkCancelEnabled = hasSelection && selectedJobs.every(canCancel);
   const bulkRequeueEnabled = hasSelection && selectedJobs.every(canRequeue);
 
-  const exportRows = context.table
-    .getFilteredRowModel()
-    .rows.map((row) => row.original)
-    .map(({ job, latest_checkpoint, runtime, ...rest }) => rest);
+  const exportRows = context.table.getFilteredRowModel().rows.map((row) => buildJobExportRow(row.original));
 
   return (
     <>
@@ -341,6 +403,9 @@ export function JobsView({
             status_changed_at_iso: parseDate(job.status_changed_at)?.toISOString() ?? "-",
             latest_checkpoint: job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-",
             runtime: formatDuration(
+              totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
+            ),
+            total_runtime: formatDuration(
               totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
             ),
             etc: (() => {
@@ -461,6 +526,10 @@ export function JobsView({
         header: "Runtime",
       },
       {
+        accessorKey: "total_runtime",
+        header: "Total Runtime",
+      },
+      {
         accessorKey: "etc",
         header: "ETC",
       },
@@ -552,6 +621,7 @@ export function JobsView({
           "assigned_worker_id",
           "time_since_checkpoint",
           "runtime",
+          "total_runtime",
         ],
       },
       {
