@@ -1,145 +1,90 @@
 # Enforcement Plan: Ruff + Pylint Code Quality Rules
 
+## Branch: `chore/enforce-ruff-pl-rules`
+
+### What Has Landed
+
+| Commit | Description |
+|---|---|
+| `a76fa22` | Add C90/PL ruff rules + gradual-ratchet per-file-ignores baseline |
+| `b1ee3f7` | Refactor `axiom_logging.py` — eliminate globals and lazy imports (drops PLW0603/PLC0415) |
+| `b553878` | Bump version to 0.2.1 |
+| *(this PR)* | **Audit and prune stale per-file-ignores** — remove 26 source-file entries that had 0 real violations; add precise test-file exemptions |
+
+---
+
 ## Current State
 
 | Item | Status |
 |---|---|
-| **Pre-commit framework** | Not installed — repo uses a custom `.githooks/pre-commit` shell script |
-| **Ruff rules today** | `E, F, I, UP, B, SIM` — no complexity / pylint rules yet |
-| **pre-commit-hooks repo** | No `.pre-commit-config.yaml` exists |
-| **Pylint** | Not a dependency |
+| **Ruff rules** | `E, F, I, UP, B, SIM, C90, PL` — enforced on staged files via `.githooks/pre-commit` |
+| **max-complexity** | 10 (C901) |
+| **max-args** | 5 (PLR0913) |
+| **max-statements** | 50 (PLR0915) |
+| **per-file-ignores** | Pruned: 26 stale source-file entries removed; 20 test-file entries added |
+| **File-length check** | Shell `wc -l` in `.githooks/pre-commit`, max 400 lines, legacy files exempted |
 
-### Existing Violations (against your proposed rules)
+### Remaining Source-File Exemptions (tech debt backlog)
 
-Running `ruff check --select C90,PL` across `src/` and `packages/` (excluding the generated API client) finds **112 violations**:
-
-| Rule | Count | Description |
+| File | Rules Exempted | Effort to Fix |
 |---|---|---|
-| `PLR2004` | 20 | Magic value comparisons |
-| `PLC0415` | 18 | Import outside top-level |
-| `PLW0603` | 18 | Global statement |
-| `PLR0913` | 17 | Too many arguments (>5) |
-| `C901` | 14 | Too complex (cyclomatic) |
-| `PLR0912` | 11 | Too many branches |
-| `PLR0915` | 6 | Too many statements |
-| `PLR0911` | 5 | Too many return statements |
-| `PLC0207` | 2 | Missing maxsplit arg |
-| `PLR1711` | 1 | Useless return |
+| `worker/main.py` | C901, PLC0415, PLR0912, PLR0913, PLR0915 | High — 1445-line file |
+| `orchestrator/services/slurm_provisioning_service.py` | C901, PLC0415, PLR0911, PLR0912, PLR0915, PLR2004, PLW0603 | High — 650 lines |
+| `orchestrator/services/worker_lifecycle_service.py` | C901, PLR0912, PLR0915 | Medium |
+| `orchestrator/main.py` | C901, PLC0207, PLR0911 | Medium |
+| `orchestrator/services/job_history_service.py` | C901, PLR0912, PLR0913 | Medium |
+| `orchestrator/config.py` | C901, PLC0415, PLR0915 | Medium |
+| `settings_sources.py` | C901, PLR0912 | Low |
+| `cli/commands/service.py` | C901, PLR0912 | Low |
+| `cli/config.py` | C901, PLC0415 | Low |
+| `cli/services/submit_service.py` | C901, PLR2004 | Low |
+| `worker/logging.py` | PLC0415, PLW0603 | Low — lazy import pattern |
+| `cli/context.py` | PLC0415, PLW0603 | Low — global singleton |
+| `orchestrator/db.py` | PLW0603 | Low — module-level singletons |
+| `orchestrator/logging.py` | PLC0415, PLW0603 | Low |
+| `worker/bootstrap.py` | PLW0603 | Low |
+| `cli/__main__.py` | PLC0415, PLR0913 | Low |
+| `dashboard_proxy_main.py` | PLC0415 | Low |
+| `cli/remote_dispatch.py` | PLR0911 | Low |
+| `orchestrator/tailscale.py` | PLR0911 | Low |
+| `worker/gateway.py` + `heartbeat.py` | PLR0913, PLR2004 | Low |
+| `storage/client.py` + `core_secret_management.py` | PLR0913, PLR2004 | Low |
+| `orchestrator/slurm.py` + `routers/jobs_operator.py` | PLR0913, PLR2004 | Low |
+| `orchestrator/salad_scaler.py` + `services/job_transitions.py` | PLR0913 | Low |
+| `worker/job_execution.py` | PLR0911, PLR0913 | Low |
+| `cli/commands/jobs.py` | PLR0912 | Low |
+| `cli/commands/submit.py` | PLR0913, PLR2004 | Low |
+| `scripts/check_infisical_secrets.py` | PLC0415 | Low |
 
-### Files Exceeding 400 Lines
+### Test-File Exemptions
 
-| File | Lines |
-|---|---|
-| `packages/relaymd-worker/src/relaymd/worker/main.py` | 1445 |
-| `src/relaymd/orchestrator/services/slurm_provisioning_service.py` | 650 |
-| `packages/relaymd-worker/src/relaymd/worker/bootstrap.py` | 593 |
-| `src/relaymd/orchestrator/services/worker_lifecycle_service.py` | 460 |
-| `src/relaymd/orchestrator/main.py` | 445 |
-| `src/relaymd/orchestrator/routers/jobs_operator.py` | 435 |
-| `src/relaymd/orchestrator/config.py` | 431 |
-| `src/relaymd/cli/commands/service.py` | 421 |
+Tests are allowed `PLR2004` (magic numbers in assertions are normal). A few also allow specific rules due to large integration-test helper classes. **No action required unless tests are refactored.**
 
-> [!IMPORTANT]
-> 8 source files already exceed 400 lines, and the worker `main.py` is **1445 lines**.
-> Fixing all of these up-front would be that "massive PR" we want to avoid.
+---
+
+## Decision Points (from original plan — resolved or open)
+
+1. ✅ **File-length enforcement on legacy files** — Legacy files exempted in the hook via whitelist; explicit tracking issues planned.
+2. ✅ **`PLR2004` (magic values)** — Included in enforced set for source; exempted in test files.
+3. ✅ **`PLC0415` / `PLW0603`** — Enforced; legacy files exempted with explicit entries.
 
 ---
 
 ## Proposed Approach: Gradual Ratchet
 
-The key insight is: **pre-commit (and ruff) only run on staged/changed files by default**, so new code is held to the standard immediately, while legacy violations are exempt until someone touches those files.
+New code is held to the standard immediately via pre-commit staged-file checks. Legacy exemptions in `pyproject.toml` serve as a visible **tech debt backlog** — teams chip away at them file by file.
 
-### Phase 1 — This PR (Config Only)
+### Priority Order for Removing Source-File Exemptions
 
-This PR adds the rules and tooling **without fixing any existing code**:
-
-1. **Add `C90` and `PL` to the ruff `select` list** in `pyproject.toml`, along with the `max-complexity`, `max-args`, and `max-statements` thresholds.
-
-2. **Baseline existing violations with per-file `noqa` comments** — **NO.** This is noisy. Instead, use **ruff's `per-file-ignores`** to exempt the 8 files that currently violate the module-length rule, and the specific rules they violate. This is a tiny, auditable config block.
-
-3. **For the `max-module-lines = 400` rule**: Ruff doesn't natively enforce max file length. Options:
-   - **(A) Skip pylint entirely** — Use ruff's `PL` rules for everything *except* file length, and add a lightweight shell check in the hook for file length on staged files only.
-   - **(B) Add pylint as a full pre-commit hook** — Heavy, slow, and requires pylint as a dependency. Not recommended for this repo.
-   - **→ Recommended: Option A.** A 3-line shell snippet in the existing `.githooks/pre-commit` checks `wc -l` on staged `.py` files. Fast, zero new dependencies.
-
-4. **Wire the new ruff rules into `.githooks/pre-commit`** — The existing hook already runs `ruff check --fix .` on the whole repo. Change it to only check **staged files** (matching the pyright behavior). This way existing violations in untouched files don't block commits.
-
-5. **No `.pre-commit-config.yaml` / `pre-commit` framework** — The repo already has a working `.githooks` workflow with `make setup-hooks`. Adding a second hook framework introduces friction. We'll keep the existing pattern and extend it.
-
-### Phase 2 — Ongoing (Organic Cleanup)
-
-- Every time a developer touches a legacy file, ruff will flag violations *in that file*, and the commit hook blocks until they're fixed.
-- The `per-file-ignores` list in `pyproject.toml` serves as a visible "tech debt backlog" — teams can chip away at it in small PRs.
-- Optionally, create a tracking Linear issue per exempt file.
+1. **Low-effort PLW0603 / PLC0415 globals/lazy-imports** — Already done for `axiom_logging.py`. Next: `worker/logging.py`, `orchestrator/logging.py`, `orchestrator/db.py`, `cli/context.py`.
+2. **PLR0912 / C901 complexity** — Extract sub-functions to bring cyclomatic complexity < 10.
+3. **PLR0913 too-many-args** — Introduce kwargs dataclasses/models; already done for `axiom_logging.py`.
+4. **High-effort files (worker/main.py, slurm_provisioning_service.py)** — Dedicated refactor PRs.
 
 ---
 
-## Concrete Changes in This PR
+## Not Adding
 
-### 1. `pyproject.toml` — Ruff Config
-
-```diff
- [tool.ruff.lint]
--select = ["E", "F", "I", "UP", "B", "SIM"]
-+select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PL"]
-
-+[tool.ruff.lint.mccabe]
-+max-complexity = 10
-+
-+[tool.ruff.lint.pylint]
-+max-args = 5
-+max-statements = 50
-+
-+[tool.ruff.lint.per-file-ignores]
-+# --- Legacy exemptions (gradual ratchet) ---
-+# Remove each entry as the file is refactored below thresholds.
-+"packages/relaymd-worker/src/relaymd/worker/main.py" = ["C901", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLC0415", "PLW0603"]
-+"packages/relaymd-worker/src/relaymd/worker/bootstrap.py" = ["C901", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLC0415", "PLW0603"]
-+"src/relaymd/orchestrator/services/slurm_provisioning_service.py" = ["C901", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLC0415"]
-+# ... (exact list determined by running ruff against each file)
-```
-
-### 2. `.githooks/pre-commit` — Scoped to Staged Files + File Length Check
-
-```bash
-# Only check staged Python files (not entire repo)
-mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
-if [[ ${#staged_py[@]} -gt 0 ]]; then
-  uv run ruff check --fix "${staged_py[@]}"
-  uv run ruff format "${staged_py[@]}"
-  uv run pyright "${staged_py[@]}"
-
-  # Enforce max 400 lines per file
-  for f in "${staged_py[@]}"; do
-    lines=$(wc -l < "$f")
-    if [[ $lines -gt 400 ]]; then
-      echo "pre-commit: $f has $lines lines (max 400). Refactor before committing."
-      exit 1
-    fi
-  done
-fi
-```
-
-### 3. NOT Adding
-
-- ❌ `.pre-commit-config.yaml` — would conflict with existing `.githooks` workflow
-- ❌ `pylint` as a dependency — ruff covers the same `PL*` rules natively
-- ❌ Bulk code rewrites — violations in untouched files are exempt
-
----
-
-## Decision Points for You
-
-1. **File-length enforcement on legacy files** — The 8 files above 400 lines would fail the `wc -l` check if anyone touches them. Two options:
-   - **(A) Exempt the 8 files from the length check too** (whitelist in the hook), requiring explicit refactoring PRs later.
-   - **(B) Enforce immediately** — anyone touching those files must split them first. This is stricter but may slow down unrelated work.
-   - **Recommendation: (A)** — whitelist + a tracking issue per file.
-
-2. **`PLR2004` (magic values)** — 20 violations. This rule can be noisy for things like HTTP status codes (`if resp.status == 200`). Do you want to:
-   - **(A) Include it** in the enforced set (with per-file exemptions for legacy)?
-   - **(B) Exclude it** entirely as too noisy?
-
-3. **`PLC0415` (import outside top-level)** and **`PLW0603` (global statement)** — 18 violations each. These are often intentional patterns (lazy imports, module-level singletons). Same question: enforce or exclude?
-
-> [!TIP]
-> Let me know your choices on these 3 points and I'll implement the changes on a new branch.
+- ❌ `.pre-commit-config.yaml` — conflicts with existing `.githooks` workflow
+- ❌ `pylint` as a dependency — ruff's `PL*` rules cover the same checks natively
+- ❌ Bulk code rewrites — violations in untouched files are exempt until touched
