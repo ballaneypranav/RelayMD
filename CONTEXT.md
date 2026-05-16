@@ -30,3 +30,9 @@ Files declared as `resume-preserved output` are also part of ordinary checkpoint
 
 ## Resume Segment
 `resume segment` means one worker execution segment of a logical job, bounded by assignment/start and exit/handoff. RelayMD may number preserved outputs by resume segment. Payload-specific names like AToM replica directories are not resume segments.
+
+## Handoff
+`handoff` means a planned end to a resume segment where RelayMD stops the payload, preserves resumable checkpoint state, and makes the logical job eligible for another worker.
+
+## Resumable Checkpoint State
+`resumable checkpoint state` means the durable checkpoint files and manifest RelayMD may hydrate into a future resume segment.
