@@ -1,21 +1,16 @@
-"""Contains all the data models used in inputs/outputs"""
+""" Contains all the data models used in inputs/outputs """
 
 from .checkpoint_report import CheckpointReport
-from .checkpoint_report_checkpoint_cycle_failures_item import (
-    CheckpointReportCheckpointCycleFailuresItem,
-)
+from .checkpoint_report_checkpoint_cycle_failures_item import CheckpointReportCheckpointCycleFailuresItem
 from .cluster_config_read import ClusterConfigRead
 from .cluster_enabled_map_update import ClusterEnabledMapUpdate
 from .cluster_enabled_map_update_enabled import ClusterEnabledMapUpdateEnabled
-from .frontend_config_config_frontend_get_response_frontend_config_config_frontend_get import (
-    FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet,
-)
-from .get_slurm_clusters_config_slurm_clusters_get_response_get_slurm_clusters_config_slurm_clusters_get import (
-    GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet,
-)
-from .healthz_healthz_get_response_healthz_healthz_get import (
-    HealthzHealthzGetResponseHealthzHealthzGet,
-)
+from .frontend_config_config_frontend_get_response_frontend_config_config_frontend_get import FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet
+from .get_slurm_clusters_config_slurm_clusters_get_response_get_slurm_clusters_config_slurm_clusters_get import GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet
+from .handoff_complete import HandoffComplete
+from .handoff_complete_checkpoint_cycle_failures_item import HandoffCompleteCheckpointCycleFailuresItem
+from .handoff_start import HandoffStart
+from .healthz_healthz_get_response_healthz_healthz_get import HealthzHealthzGetResponseHealthzHealthzGet
 from .http_validation_error import HTTPValidationError
 from .job_assigned import JobAssigned
 from .job_conflict import JobConflict
@@ -32,12 +27,8 @@ from .job_worker_segment_read import JobWorkerSegmentRead
 from .job_worker_total_read import JobWorkerTotalRead
 from .no_job_available import NoJobAvailable
 from .platform import Platform
-from .prune_jobs_jobs_delete_response_prune_jobs_jobs_delete import (
-    PruneJobsJobsDeleteResponsePruneJobsJobsDelete,
-)
-from .register_worker_workers_register_post_response_register_worker_workers_register_post import (
-    RegisterWorkerWorkersRegisterPostResponseRegisterWorkerWorkersRegisterPost,
-)
+from .prune_jobs_jobs_delete_response_prune_jobs_jobs_delete import PruneJobsJobsDeleteResponsePruneJobsJobsDelete
+from .register_worker_workers_register_post_response_register_worker_workers_register_post import RegisterWorkerWorkersRegisterPostResponseRegisterWorkerWorkersRegisterPost
 from .validation_error import ValidationError
 from .validation_error_context import ValidationErrorContext
 from .worker_heartbeat import WorkerHeartbeat
@@ -53,6 +44,9 @@ __all__ = (
     "ClusterEnabledMapUpdateEnabled",
     "FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet",
     "GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet",
+    "HandoffComplete",
+    "HandoffCompleteCheckpointCycleFailuresItem",
+    "HandoffStart",
     "HealthzHealthzGetResponseHealthzHealthzGet",
     "HTTPValidationError",
     "JobAssigned",

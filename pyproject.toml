@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "relaymd"
-version = "0.2.4"
+version = "0.2.5"
 requires-python = ">=3.11"
 dependencies = [
     "relaymd-core",
@@ -72,6 +72,7 @@ RELAYMD_DISABLE_AXIOM_UPLOAD = "1"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+force-exclude = true
 extend-exclude = ["packages/relaymd-api-client/src/relaymd_api_client"]
 
 [tool.ruff.lint]
@@ -138,7 +139,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C90", "PL"]
 "tests/orchestrator/test_logging.py" = ["PLR2004"]
 "tests/orchestrator/test_operator_endpoints.py" = ["PLR0915", "PLR2004"]
 "tests/orchestrator/test_sbatch.py" = ["PLC0415", "PLR2004"]
-"tests/orchestrator/test_worker_endpoints.py" = ["PLR0915", "PLR2004"]
+"tests/orchestrator/test_worker_endpoints_api.py" = ["PLR0915", "PLR2004"]
+"tests/orchestrator/test_worker_endpoints_lifecycle.py" = ["PLR0915", "PLR2004"]
+"tests/orchestrator/test_worker_endpoints_reaper.py" = ["PLR0915", "PLR2004"]
 "tests/test_dashboard_proxy.py" = ["PLR2004"]
 
 [tool.ruff.lint.mccabe]

@@ -170,6 +170,22 @@ async def test_create_list_get_and_cancel_paths() -> None:
         )
         assert force_cancel_response.status_code == 204
 
+        async with get_sessionmaker()() as session:
+            handoff_worker_id = uuid4()
+            handoff_job = Job(
+                title="job-4",
+                input_bundle_path="jobs/4/input/bundle.tar.gz",
+                status=JobStatus.handoff,
+                assigned_worker_id=handoff_worker_id,
+            )
+            session.add(handoff_job)
+            await session.commit()
+            await session.refresh(handoff_job)
+            handoff_job_id = handoff_job.id
+
+        cancel_handoff_response = await client.delete(f"/jobs/{handoff_job_id}", headers=headers)
+        assert cancel_handoff_response.status_code == 204
+
         history_response = await client.get(f"/jobs/{running_job_id}/history", headers=headers)
         assert history_response.status_code == 200
         history_events = history_response.json()["events"]
@@ -184,6 +200,11 @@ async def test_create_list_get_and_cancel_paths() -> None:
             assert cancelled_running_job is not None
             assert cancelled_running_job.status == JobStatus.cancelling
             assert cancelled_running_job.assigned_worker_id == running_worker_id
+
+            cancelled_handoff_job = await session.get(Job, handoff_job_id)
+            assert cancelled_handoff_job is not None
+            assert cancelled_handoff_job.status == JobStatus.cancelling
+            assert cancelled_handoff_job.assigned_worker_id == handoff_worker_id
 
 
 @pytest.mark.asyncio
@@ -274,7 +295,7 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
         assert requeued_job["title"] == "job-requeue"
         assert requeued_job["status"] == "queued"
         assert requeued_job["input_bundle_path"] == "jobs/requeue/input/bundle.tar.gz"
-        assert requeued_job["latest_checkpoint_path"] == "jobs/requeue/checkpoints/latest"
+        assert requeued_job["latest_checkpoint_manifest_path"] == "jobs/requeue/checkpoints/latest"
         assert requeued_job["last_checkpoint_at"] is not None
         assert requeued_job["assigned_worker_id"] is None
 

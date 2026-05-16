@@ -421,7 +421,6 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
                     "job_id": "6bd48968-0ecf-4205-9f59-091ec74e7f79",
                     "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
                     "latest_checkpoint_manifest_path": "jobs/job-1/checkpoints/latest",
-                    "latest_checkpoint_path": "jobs/job-1/checkpoints/latest",
                 }
             ),
             ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
@@ -635,7 +634,6 @@ def test_run_assigned_job_uses_shutdown_wait_instead_of_sleep(monkeypatch) -> No
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-1/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -741,7 +739,6 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-fast-exit/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -850,6 +847,99 @@ def test_run_assigned_job_polls_exit_frequently_without_checkpoint_churn(monkeyp
     gateway.fail_job.assert_not_called()
 
 
+def test_run_assigned_job_handoff_trigger_uses_epoch_time(monkeypatch) -> None:
+    assignment = ApiJobAssigned.from_dict(
+        {
+            "status": "assigned",
+            "job_id": str(uuid4()),
+            "input_bundle_path": "jobs/job-handoff/input/bundle.tar.gz",
+            "latest_checkpoint_manifest_path": None,
+        }
+    )
+
+    class _FakeExecution:
+        def __init__(self, **kwargs) -> None:
+            _ = kwargs
+            self._running = True
+
+        def start(self) -> None:
+            return None
+
+        def iter_new_checkpoints(self):
+            return iter(())
+
+        def poll_exit_code(self) -> int | None:
+            return 0
+
+        def latest_checkpoint(self):
+            return None
+
+        def result(self):
+            return SimpleNamespace(status="completed")
+
+        def is_running(self) -> bool:
+            return self._running
+
+        def request_terminate(self) -> None:
+            self._running = False
+
+        def wait(self, timeout_seconds: float) -> int | None:
+            _ = timeout_seconds
+            return 0
+
+        def kill(self) -> None:
+            raise AssertionError("kill should not be called")
+
+    monkeypatch.setenv("RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS", "1000")
+    monkeypatch.setenv("RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS", "10")
+    monkeypatch.setattr("relaymd.worker.main.JobExecution", _FakeExecution)
+    monkeypatch.setattr("relaymd.worker.main.time.monotonic", lambda: 10.0)
+    monkeypatch.setattr("relaymd.worker.main.time.time", lambda: 995.0)
+    monkeypatch.setattr(
+        "relaymd.worker.main._load_bundle_execution_config",
+        lambda _bundle_root: BundleExecutionConfig(
+            command=["echo", "ok"],
+            checkpoint_watch_paths=["*.chk"],
+            resume_preserved_output_paths=[],
+            progress_file_path="progress.txt",
+            checkpoint_poll_interval_seconds=2,
+        ),
+    )
+    monkeypatch.setattr(
+        "relaymd.worker.main._sync_checkpoint_manifest_cycle",
+        lambda **kwargs: (kwargs["manifest"], False),
+    )
+
+    storage = Mock()
+    storage.download_file.side_effect = lambda _remote, local: local.write_bytes(b"bundle-data")
+    gateway = Mock()
+    shutdown_event = Mock()
+    shutdown_event.is_set.return_value = False
+    shutdown_event.wait.return_value = False
+    logger = Mock()
+    logger.bind.return_value = logger
+
+    context = WorkerContext(
+        gateway=gateway,
+        storage=storage,
+        shutdown_event=shutdown_event,
+        checkpoint_poll_interval_seconds=7,
+        sigterm_checkpoint_wait_seconds=60,
+        sigterm_checkpoint_poll_seconds=2,
+        sigterm_process_wait_seconds=10,
+        logger=logger,
+        openmm_platforms=[],
+    )
+
+    handoff_completed = _run_assigned_job(context=context, assignment=assignment)
+
+    assert handoff_completed is True
+    gateway.start_handoff.assert_called_once()
+    gateway.complete_handoff.assert_called_once()
+    gateway.complete_job.assert_not_called()
+    gateway.fail_job.assert_not_called()
+
+
 def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatch) -> None:
     assignment = ApiJobAssigned.from_dict(
         {
@@ -857,7 +947,6 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-supervision/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -987,7 +1076,6 @@ def test_run_assigned_job_shutdown_uploads_newer_checkpoint(monkeypatch) -> None
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": "jobs/job-shutdown/checkpoints/latest",
-            "latest_checkpoint_path": "jobs/job-shutdown/checkpoints/latest",
         }
     )
 
@@ -1095,7 +1183,6 @@ def test_run_assigned_job_shutdown_skips_stale_checkpoint_for_resumed_job(
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
-            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
 
@@ -1250,7 +1337,6 @@ def test_run_assigned_job_resume_preserved_capture_runs_before_hydration(monkeyp
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
-            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
     storage = Mock()
@@ -1306,7 +1392,6 @@ def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> 
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
-            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
     storage = Mock()
@@ -1359,7 +1444,6 @@ def test_first_checkpoint_cycle_after_hydration_keeps_manifest_entries(monkeypat
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-resume/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": "jobs/job-resume/checkpoints/latest",
-            "latest_checkpoint_path": "jobs/job-resume/checkpoints/latest",
         }
     )
 
@@ -1465,7 +1549,6 @@ def test_run_assigned_job_terminates_execution_on_exception(monkeypatch, tmp_pat
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-2/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -1568,7 +1651,6 @@ def test_run_assigned_job_heartbeat_degraded_healthy_checkpoint_keeps_running(
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-healthy/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -1707,7 +1789,6 @@ def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monk
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/job-shutdown/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -1991,7 +2072,6 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
                 "job_id": job_1_id,
                 "input_bundle_path": "a",
                 "latest_checkpoint_manifest_path": None,
-                "latest_checkpoint_path": None,
             }
         ),
         ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
@@ -2002,7 +2082,6 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
                 "job_id": job_2_id,
                 "input_bundle_path": "a",
                 "latest_checkpoint_manifest_path": None,
-                "latest_checkpoint_path": None,
             }
         ),
         ApiNoJobAvailable.from_dict({"status": "no_job_available"}),
@@ -2139,7 +2218,6 @@ def test_run_assigned_job_fails_fast_when_cuda_required_but_unavailable(
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 
@@ -2181,7 +2259,6 @@ def test_run_assigned_job_proceeds_when_cuda_required_and_available(
             "job_id": str(uuid4()),
             "input_bundle_path": "jobs/test-job/input/bundle.tar.gz",
             "latest_checkpoint_manifest_path": None,
-            "latest_checkpoint_path": None,
         }
     )
 

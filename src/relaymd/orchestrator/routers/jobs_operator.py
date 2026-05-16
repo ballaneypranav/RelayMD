@@ -141,7 +141,6 @@ def _job_to_read(job: Job) -> JobRead:
         started_at=job.started_at,
         status_changed_at=job.status_changed_at,
         latest_checkpoint_manifest_path=job.latest_checkpoint_manifest_path,
-        latest_checkpoint_path=job.latest_checkpoint_manifest_path,
         last_checkpoint_at=job.last_checkpoint_at,
         cancellation_requested_at=job.cancellation_requested_at,
         progress=job.progress,

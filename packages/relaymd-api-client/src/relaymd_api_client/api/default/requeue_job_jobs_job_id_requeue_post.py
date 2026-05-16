@@ -1,53 +1,68 @@
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
-from uuid import UUID
 
 import httpx
 
-from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...types import Response, UNSET
+from ... import errors
+
 from ...models.http_validation_error import HTTPValidationError
 from ...models.job_conflict import JobConflict
 from ...models.job_read import JobRead
-from ...types import UNSET, Response, Unset
+from ...types import UNSET, Unset
+from typing import cast
+from uuid import UUID
+
 
 
 def _get_kwargs(
     job_id: UUID,
     *,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
-    if not isinstance(x_api_token, Unset) and x_api_token is not None:
+    if not isinstance(x_api_token, Unset):
         headers["X-API-Token"] = x_api_token
+
+
+
+    
+
+    
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/jobs/{job_id}/requeue".format(
-            job_id=quote(str(job_id), safe=""),
-        ),
+        "url": "/jobs/{job_id}/requeue".format(job_id=quote(str(job_id), safe=""),),
     }
+
 
     _kwargs["headers"] = headers
     return _kwargs
 
 
-def _parse_response(
-    *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | JobConflict | JobRead | None:
+
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> HTTPValidationError | JobConflict | JobRead | None:
     if response.status_code == 200:
         response_200 = JobRead.from_dict(response.json())
+
+
 
         return response_200
 
     if response.status_code == 409:
         response_409 = JobConflict.from_dict(response.json())
 
+
+
         return response_409
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
+
+
 
         return response_422
 
@@ -57,9 +72,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[HTTPValidationError | JobConflict | JobRead]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -73,8 +86,9 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Response[HTTPValidationError | JobConflict | JobRead]:
-    """Requeue Job
+    """ Requeue Job
 
     Args:
         job_id (UUID):
@@ -86,11 +100,13 @@ def sync_detailed(
 
     Returns:
         Response[HTTPValidationError | JobConflict | JobRead]
-    """
+     """
+
 
     kwargs = _get_kwargs(
         job_id=job_id,
-        x_api_token=x_api_token,
+x_api_token=x_api_token,
+
     )
 
     response = client.get_httpx_client().request(
@@ -99,14 +115,14 @@ def sync_detailed(
 
     return _build_response(client=client, response=response)
 
-
 def sync(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> HTTPValidationError | JobConflict | JobRead | None:
-    """Requeue Job
+    """ Requeue Job
 
     Args:
         job_id (UUID):
@@ -118,22 +134,24 @@ def sync(
 
     Returns:
         HTTPValidationError | JobConflict | JobRead
-    """
+     """
+
 
     return sync_detailed(
         job_id=job_id,
-        client=client,
-        x_api_token=x_api_token,
-    ).parsed
+client=client,
+x_api_token=x_api_token,
 
+    ).parsed
 
 async def asyncio_detailed(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Response[HTTPValidationError | JobConflict | JobRead]:
-    """Requeue Job
+    """ Requeue Job
 
     Args:
         job_id (UUID):
@@ -145,25 +163,29 @@ async def asyncio_detailed(
 
     Returns:
         Response[HTTPValidationError | JobConflict | JobRead]
-    """
+     """
+
 
     kwargs = _get_kwargs(
         job_id=job_id,
-        x_api_token=x_api_token,
+x_api_token=x_api_token,
+
     )
 
-    response = await client.get_async_httpx_client().request(**kwargs)
+    response = await client.get_async_httpx_client().request(
+        **kwargs
+    )
 
     return _build_response(client=client, response=response)
-
 
 async def asyncio(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> HTTPValidationError | JobConflict | JobRead | None:
-    """Requeue Job
+    """ Requeue Job
 
     Args:
         job_id (UUID):
@@ -175,12 +197,12 @@ async def asyncio(
 
     Returns:
         HTTPValidationError | JobConflict | JobRead
-    """
+     """
 
-    return (
-        await asyncio_detailed(
-            job_id=job_id,
-            client=client,
-            x_api_token=x_api_token,
-        )
-    ).parsed
+
+    return (await asyncio_detailed(
+        job_id=job_id,
+client=client,
+x_api_token=x_api_token,
+
+    )).parsed

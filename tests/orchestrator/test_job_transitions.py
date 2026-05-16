@@ -23,6 +23,10 @@ from relaymd.orchestrator.services import JobTransitionConflictError, JobTransit
         (JobStatus.running, JobStatus.failed),
         (JobStatus.running, JobStatus.cancelled),
         (JobStatus.running, JobStatus.queued),
+        (JobStatus.running, JobStatus.handoff),
+        (JobStatus.handoff, JobStatus.queued),
+        (JobStatus.handoff, JobStatus.cancelled),
+        (JobStatus.handoff, JobStatus.cancelling),
     ],
 )
 def test_transition_matrix_allows_expected_edges(start: JobStatus, target: JobStatus) -> None:
@@ -53,7 +57,7 @@ def test_transition_matrix_rejects_invalid_edges(start: JobStatus, target: JobSt
         service.ensure_transition(job, target)
 
 
-@pytest.mark.parametrize("status", [JobStatus.assigned, JobStatus.running])
+@pytest.mark.parametrize("status", [JobStatus.assigned, JobStatus.running, JobStatus.handoff])
 def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
     service = JobTransitionService()
     job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=status)
@@ -61,7 +65,7 @@ def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
 
     service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
 
-    assert job.latest_checkpoint_path == "jobs/1/checkpoints/latest"
+    assert job.latest_checkpoint_manifest_path == "jobs/1/checkpoints/latest"
     assert isinstance(job.last_checkpoint_at, datetime)
     assert job.status_changed_at == status_changed_at
 
@@ -155,7 +159,7 @@ def test_requeue_clone_preserves_checkpoint_metadata() -> None:
         title="job",
         input_bundle_path="jobs/1/input/bundle.tar.gz",
         status=JobStatus.failed,
-        latest_checkpoint_path="jobs/1/checkpoints/latest",
+        latest_checkpoint_manifest_path="jobs/1/checkpoints/latest",
         last_checkpoint_at=datetime.now(),
     )
 
@@ -163,6 +167,23 @@ def test_requeue_clone_preserves_checkpoint_metadata() -> None:
 
     assert clone.id != job.id
     assert clone.status == JobStatus.queued
-    assert clone.latest_checkpoint_path == job.latest_checkpoint_path
+    assert clone.latest_checkpoint_manifest_path == job.latest_checkpoint_manifest_path
     assert clone.last_checkpoint_at == job.last_checkpoint_at
     assert clone.assigned_worker_id is None
+
+
+def test_complete_handoff_requeues_without_clearing_existing_checkpoint() -> None:
+    service = JobTransitionService()
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        status=JobStatus.handoff,
+        latest_checkpoint_manifest_path="jobs/1/checkpoints/existing",
+    )
+
+    service.complete_handoff(job, checkpoint_cycle_status="partial")
+
+    assert job.status == JobStatus.queued
+    assert job.assigned_worker_id is None
+    assert job.latest_checkpoint_manifest_path == "jobs/1/checkpoints/existing"
+    assert job.checkpoint_cycle_status == "partial"

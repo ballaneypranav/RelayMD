@@ -32,7 +32,6 @@ def test_job_request_response_json_shapes() -> None:
         job_id=job_id,
         input_bundle_path="jobs/123/input/bundle.tar.gz",
         latest_checkpoint_manifest_path=None,
-        latest_checkpoint_path=None,
     )
     no_job = NoJobAvailable()
 
@@ -41,6 +40,5 @@ def test_job_request_response_json_shapes() -> None:
         "job_id": str(job_id),
         "input_bundle_path": "jobs/123/input/bundle.tar.gz",
         "latest_checkpoint_manifest_path": None,
-        "latest_checkpoint_path": None,
     }
     assert no_job.model_dump(mode="json") == {"status": "no_job_available"}

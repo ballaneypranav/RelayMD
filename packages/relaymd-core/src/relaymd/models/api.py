@@ -11,7 +11,6 @@ class JobAssigned(SQLModel):
     job_id: uuid.UUID
     input_bundle_path: str
     latest_checkpoint_manifest_path: str | None
-    latest_checkpoint_path: str | None = None
 
 
 class JobControl(SQLModel):

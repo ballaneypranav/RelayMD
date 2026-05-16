@@ -19,12 +19,16 @@ POST /jobs/request
     │       ├── every 5min (poll): new checkpoint? → upload to B2
     │       │                                      → POST /jobs/{id}/checkpoint
     │       │
-    │       ├── on SIGTERM (wall time / Salad shutdown):
-    │       │       → SIGTERM to subprocess
-    │       │       → wait for checkpoint newer than pre-shutdown baseline mtime
-    │       │       → upload only if newer checkpoint exists
-    │       │       → POST /jobs/{id}/checkpoint → exit
-    │       │       (orchestrator re-queues automatically)
+    │       ├── on proactive handoff trigger (deadline - margin):
+    │       │       → POST /jobs/{id}/handoff/start (running → handoff)
+    │       │       → SIGTERM to subprocess and wait with existing process wait limits
+    │       │       → run final non-destructive checkpoint manifest cycle
+    │       │       → POST /jobs/{id}/handoff/complete (handoff → queued)
+    │       │       → deregister worker → exit 0
+    │       │
+    │       ├── fallback on SIGTERM (wall time / provider shutdown):
+    │       │       → best-effort shutdown checkpoint/report path
+    │       │       → stale-worker cleanup remains safety net
     │       │
     │       └── on clean subprocess exit:
     │               → POST /jobs/{id}/complete
@@ -56,6 +60,12 @@ class WorkerSettings(BaseSettings):
 
 `checkpoint_poll_interval_seconds` defaults to `300` seconds and can be overridden via `CHECKPOINT_POLL_INTERVAL_SECONDS` (worker env var) or `worker_checkpoint_poll_interval_seconds` (orchestrator config rendered into the SLURM worker environment).
 Per-job bundle config can override this default using `checkpoint_poll_interval_seconds` in `relaymd-worker.json` or `.toml`. Bundle values must be integers `>= 1`.
+
+For planned handoff on HPC, the SLURM wrapper may inject:
+- `RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS`
+- `RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS` (default `600`)
+
+When both are valid, the worker proactively starts handoff at `deadline - margin`.
 
 On HPC, `SLURM_JOB_ID` is automatically present in the environment. The worker reads it and passes it as `slurm_job_id` in `POST /workers/register`. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.
 
@@ -127,6 +137,7 @@ Filesystem polling defaults to every 5 minutes (`300s`) unless overridden by the
 - Uses `size_bytes + mtime_ns` as a fast unchanged prefilter.
 - For changed files, performs hash-copy-hash validation before upload to stable keys under `jobs/<job_id>/checkpoints/files/<relative_path>`.
 - Uploads `jobs/<job_id>/checkpoints/manifest.json` at cycle end and reports checkpoint to the orchestrator only when manifest upload succeeds.
+- Missing files from a later watch scan do not imply deletion from resumable checkpoint state; manifest entries are preserved unless a newer valid upload replaces them.
 
 Failure codes include:
 - `watch_file_cap_exceeded`

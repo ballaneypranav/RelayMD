@@ -1,25 +1,34 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..types import UNSET, Unset
+
+
+
+
+
+
+
 T = TypeVar("T", bound="ClusterConfigRead")
+
 
 
 @_attrs_define
 class ClusterConfigRead:
-    """
-    Attributes:
-        name (str):
-        partition (str):
-        strategy (str):
-        max_pending_jobs (int):
-        wall_time (str):
-        enabled (bool):
-    """
+    """ 
+        Attributes:
+            name (str):
+            partition (str):
+            strategy (str):
+            max_pending_jobs (int):
+            wall_time (str):
+            enabled (bool):
+     """
 
     name: str
     partition: str
@@ -28,6 +37,10 @@ class ClusterConfigRead:
     wall_time: str
     enabled: bool
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         name = self.name
@@ -42,20 +55,21 @@ class ClusterConfigRead:
 
         enabled = self.enabled
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "name": name,
-                "partition": partition,
-                "strategy": strategy,
-                "max_pending_jobs": max_pending_jobs,
-                "wall_time": wall_time,
-                "enabled": enabled,
-            }
-        )
+        field_dict.update({
+            "name": name,
+            "partition": partition,
+            "strategy": strategy,
+            "max_pending_jobs": max_pending_jobs,
+            "wall_time": wall_time,
+            "enabled": enabled,
+        })
 
         return field_dict
+
+
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
@@ -80,6 +94,7 @@ class ClusterConfigRead:
             wall_time=wall_time,
             enabled=enabled,
         )
+
 
         cluster_config_read.additional_properties = d
         return cluster_config_read

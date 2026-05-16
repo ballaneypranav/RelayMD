@@ -756,7 +756,8 @@ dt {
   border-color: rgba(241, 184, 75, 0.28);
 }
 
-.status-pill.tone-running {
+.status-pill.tone-running,
+.status-pill.tone-handoff {
   background: rgba(31, 182, 122, 0.14);
   border-color: rgba(31, 182, 122, 0.28);
   color: #b5f2d7;

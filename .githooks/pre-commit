@@ -18,6 +18,11 @@ LEGACY_LARGE_FILES=(
     "src/relaymd/cli/commands/service.py"
 )
 
+is_generated_api_client_file() {
+    local file="$1"
+    [[ "$file" == packages/relaymd-api-client/src/relaymd_api_client/* ]]
+}
+
 mapfile -t staged_py < <(git diff --cached --name-only --diff-filter=ACMR | grep '\.py$' || true)
 
 if [[ ${#staged_py[@]} -gt 0 ]]; then
@@ -35,6 +40,11 @@ if [[ ${#staged_py[@]} -gt 0 ]]; then
     # Enforce max-module-lines = 400.
     # Legacy files above this limit are exempt until explicitly refactored.
     for f in "${staged_py[@]}"; do
+        # Generated OpenAPI client files are machine-produced and can exceed
+        # line-count thresholds; enforce limits on hand-written code only.
+        if is_generated_api_client_file "$f"; then
+            continue
+        fi
         lines=$(wc -l < "$f")
         if [[ $lines -gt $MAX_LINES ]]; then
             # Check if this file is in the legacy exemption list.
