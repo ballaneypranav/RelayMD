@@ -35,6 +35,9 @@ from relaymd.runtime_defaults import (
 )
 from relaymd.worker import bootstrap as worker_bootstrap
 from relaymd.worker import gateway_control_plane, gateway_helpers
+from relaymd.worker.gateway_types import OrchestratorGateway
+
+__all__ = ["ApiOrchestratorGateway", "OrchestratorGateway"]
 
 
 class ApiOrchestratorGateway:
