@@ -48,11 +48,18 @@ relaymd submit ./inputs/ --title "lig42-eq1" --command "python run_atom.py"
                   │       → POST /jobs/{id}/checkpoint
                   │       → if job already terminal: typed 409 conflict (safe to ignore)
                   │
-                  ├── on wall-time margin (SIGTERM from SLURM):
+                  ├── before allocation deadline (default 600s margin):
+                  │       → POST /jobs/{id}/handoff/start (running → handoff)
+                  │       → stop subprocess gracefully
+                  │       → run final non-destructive checkpoint manifest cycle
+                  │       → POST /jobs/{id}/handoff/complete (handoff → queued)
+                  │       → deregister worker and exit 0
+                  │
+                  ├── fallback if proactive handoff is unavailable/late (SIGTERM from SLURM):
                   │       → send SIGTERM to subprocess
                   │       → wait up to 60s for checkpoint newer than pre-shutdown baseline mtime
                   │       → if newer checkpoint exists: upload to B2 + POST /jobs/{id}/checkpoint
-                  │       → exit  (orchestrator re-queues automatically)
+                  │       → exit (stale-worker cleanup may requeue)
                   │
                   └── on clean subprocess exit:
                           → POST /jobs/{id}/complete (or /fail)
@@ -70,7 +77,8 @@ Read storage-backed liveness `jobs/<job_id>/checkpoints/status.json`
 and (for HPC workers) query SLURM allocation state
          │
          ├── `status.json` fresh OR SLURM allocation still alive:
-         │       keep job `running` and keep worker/job assignment
+         │       keep job in active segment (`running` or `handoff`)
+         │       and keep worker/job assignment
          │
          └── provider gone (or no provider and storage status stale):
                  requeue job with latest_checkpoint_path preserved
