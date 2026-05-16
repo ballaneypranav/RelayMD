@@ -1422,18 +1422,22 @@
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    │       ├── every 5min (poll): new checkpoint? → upload to B2
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    │       │                                      → POST /jobs/{id}/checkpoint
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    │       │
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │       ├── on SIGTERM (wall time / Salad shutdown):
-</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    │       │       → SIGTERM to subprocess
-</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    │       │       → wait for checkpoint newer than pre-shutdown baseline mtime
-</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    │       │       → upload only if newer checkpoint exists
-</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    │       │       → POST /jobs/{id}/checkpoint → exit
-</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    │       │       (orchestrator re-queues automatically)
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    │       ├── on proactive handoff trigger (deadline - margin):
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    │       │       → POST /jobs/{id}/handoff/start (running → handoff)
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    │       │       → SIGTERM to subprocess and wait with existing process wait limits
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    │       │       → run final non-destructive checkpoint manifest cycle
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    │       │       → POST /jobs/{id}/handoff/complete (handoff → queued)
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    │       │       → deregister worker → exit 0
 </span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    │       │
-</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    │       └── on clean subprocess exit:
-</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    │               → POST /jobs/{id}/complete
-</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    │               → loop back to POST /jobs/request
-</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    │
-</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    └── response: no_job_available → worker exits cleanly
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    │       ├── fallback on SIGTERM (wall time / provider shutdown):
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>    │       │       → best-effort shutdown checkpoint/report path
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>    │       │       → stale-worker cleanup remains safety net
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    │       │
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    │       └── on clean subprocess exit:
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    │               → POST /jobs/{id}/complete
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    │               → loop back to POST /jobs/request
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    │
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    └── response: no_job_available → worker exits cleanly
 </span></code></pre></div>
 <p>A worker loops back to request another job immediately after completing one. This means a long-running simulation can be served by the same worker container across multiple wall-time allocations if time permits.</p>
 <h2 id="worker-stack">Worker Stack</h2>
@@ -1450,6 +1454,10 @@
 </span></code></pre></div>
 <p><code>checkpoint_poll_interval_seconds</code> defaults to <code>300</code> seconds and can be overridden via <code>CHECKPOINT_POLL_INTERVAL_SECONDS</code> (worker env var) or <code>worker_checkpoint_poll_interval_seconds</code> (orchestrator config rendered into the SLURM worker environment).
 Per-job bundle config can override this default using <code>checkpoint_poll_interval_seconds</code> in <code>relaymd-worker.json</code> or <code>.toml</code>. Bundle values must be integers <code>&gt;= 1</code>.</p>
+<p>For planned handoff on HPC, the SLURM wrapper may inject:
+- <code>RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS</code>
+- <code>RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS</code> (default <code>600</code>)</p>
+<p>When both are valid, the worker proactively starts handoff at <code>deadline - margin</code>.</p>
 <p>On HPC, <code>SLURM_JOB_ID</code> is automatically present in the environment. The worker reads it and passes it as <code>slurm_job_id</code> in <code>POST /workers/register</code>. The orchestrator uses this to delete the matching placeholder row atomically, preventing duplicate worker entries in the UI.</p>
 <h3 id="secret-bootstrap">Secret Bootstrap</h3>
 <p>The bootstrap token is injected via SLURM's <code>--export</code> env var (never written to disk) or the Salad dashboard environment. From it, Infisical provides all other secrets: B2 credentials, the Tailscale ephemeral auth key, the orchestrator API token.</p>
@@ -1501,7 +1509,8 @@ Per-job bundle config can override this default using <code>checkpoint_poll_inte
 - Rejects cycles with more than 250 matched files (<code>watch_file_cap_exceeded</code>).
 - Uses <code>size_bytes + mtime_ns</code> as a fast unchanged prefilter.
 - For changed files, performs hash-copy-hash validation before upload to stable keys under <code>jobs/&lt;job_id&gt;/checkpoints/files/&lt;relative_path&gt;</code>.
-- Uploads <code>jobs/&lt;job_id&gt;/checkpoints/manifest.json</code> at cycle end and reports checkpoint to the orchestrator only when manifest upload succeeds.</p>
+- Uploads <code>jobs/&lt;job_id&gt;/checkpoints/manifest.json</code> at cycle end and reports checkpoint to the orchestrator only when manifest upload succeeds.
+- Missing files from a later watch scan do not imply deletion from resumable checkpoint state; manifest entries are preserved unless a newer valid upload replaces them.</p>
 <p>Failure codes include:
 - <code>watch_file_cap_exceeded</code>
 - <code>potential_write_in_progress</code>

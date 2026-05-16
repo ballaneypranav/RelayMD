@@ -89,11 +89,19 @@
          <lastmod>2026-05-16</lastmod>
     </url>
     <url>
+         <loc>https://github.com/ballaneypranav/RelayMD/adr/0003-planned-worker-handoff/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
          <loc>https://github.com/ballaneypranav/RelayMD/plans/001-backend-runtime-metrics-migration/</loc>
          <lastmod>2026-05-16</lastmod>
     </url>
     <url>
          <loc>https://github.com/ballaneypranav/RelayMD/plans/002-preserved-resume-output-history/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/ballaneypranav/RelayMD/plans/003-planned-worker-handoff/</loc>
          <lastmod>2026-05-16</lastmod>
     </url>
 </urlset>

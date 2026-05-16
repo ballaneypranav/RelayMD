@@ -1379,7 +1379,7 @@
 <h3 id="orchestrator">Orchestrator</h3>
 <p>The orchestrator is the only stateful component. It runs as a FastAPI application on a persistent machine — in practice, a cluster login node — backed by a SQLite database. Its responsibilities are:</p>
 <ul>
-<li>Maintaining the canonical state of every job (queued, assigned, running, completed, failed, cancelled) and every worker (registered, idle, running, stale)</li>
+<li>Maintaining the canonical state of every job (queued, assigned, running, handoff, completed, failed, cancelled) and every worker (registered, idle, running, stale)</li>
 <li>Validating all in-place job transitions through a central transition service and returning typed <code>409</code> conflicts for invalid transitions</li>
 <li>Assigning jobs to workers based on GPU availability and a preference policy</li>
 <li>Detecting stale workers via heartbeat timeouts and re-queuing their jobs</li>
@@ -1401,7 +1401,8 @@
 <li>Downloads the input bundle and the latest checkpoint (if one exists) from object storage</li>
 <li>Launches the MD engine as a subprocess</li>
 <li>Sends heartbeats to the orchestrator every <code>worker_heartbeat_interval_seconds</code> (default 60s) while the worker process is alive (polling + running)</li>
-<li>On wall-time margin (<code>slurm_sigterm_margin_seconds</code>, default 300s via <code>#SBATCH --signal=TERM@300</code>): sends SIGTERM to the subprocess, waits for a checkpoint strictly newer than a pre-shutdown baseline mtime, uploads/reports only if newer state exists, then exits cleanly</li>
+<li>On proactive wall-time handoff trigger (<code>RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS - RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS</code>, default margin 600s): reports <code>POST /jobs/{id}/handoff/start</code>, gracefully stops the subprocess, runs a final non-destructive checkpoint sync, reports <code>POST /jobs/{id}/handoff/complete</code>, deregisters, and exits with status code <code>0</code></li>
+<li>On SLURM fallback signal (<code>slurm_sigterm_margin_seconds</code>, default 300s via <code>#SBATCH --signal=TERM@300</code>): sends SIGTERM to the subprocess and performs best-effort final checkpoint reporting when proactive handoff was not available or did not complete</li>
 <li>On clean subprocess exit: reports job completion and loops back to poll for another job</li>
 </ol>
 <p>The worker has no persistent state. If it dies mid-run, the orchestrator detects the missed heartbeat, marks the job as re-queued, and assigns it to the next available worker. That worker picks up from the last checkpoint as if nothing happened.</p>
