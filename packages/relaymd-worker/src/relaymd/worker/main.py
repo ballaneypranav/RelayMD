@@ -678,6 +678,21 @@ def _read_progress(*, bundle_root: Path, progress_file_path: str) -> tuple[float
     return progress, codes
 
 
+def _parse_proactive_handoff_trigger() -> tuple[float | None, float | None]:
+    deadline_raw = os.environ.get("RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS")
+    margin_raw = os.environ.get("RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS")
+    if not deadline_raw or not margin_raw:
+        return None, None
+    try:
+        deadline = float(deadline_raw)
+        margin = float(margin_raw)
+    except ValueError:
+        return None, None
+    if margin < 0:
+        return None, None
+    return max(0.0, deadline - margin), deadline
+
+
 def _sync_checkpoint_manifest_cycle(
     *,
     context: WorkerContext,
@@ -702,18 +717,8 @@ def _sync_checkpoint_manifest_cycle(
     processed_files = 0
     uploaded_files = 0
     unchanged_files = 0
-    deleted_files = 0
     failed_files = len(resolve_failures)
-    previous_rel_paths = set(files_state.keys())
-    current_rel_paths = {
-        str(path.relative_to(bundle_root)).replace(os.sep, "/") for path in matched_files
-    }
-    preserve_existing_files_once = bool(manifest.pop("_preserve_existing_files_once", False))
-    if not preserve_existing_files_once:
-        for deleted_rel in sorted(previous_rel_paths - current_rel_paths):
-            files_state.pop(deleted_rel, None)
-            deleted_files += 1
-            logger.info("checkpoint_file_deleted", relative_path=deleted_rel)
+    manifest.pop("_preserve_existing_files_once", None)
 
     matched_files_count = len(matched_files)
     if matched_files_count > CHECKPOINT_WATCH_FILE_CAP:
@@ -822,7 +827,7 @@ def _sync_checkpoint_manifest_cycle(
         "processed_files": processed_files,
         "uploaded_files": uploaded_files,
         "unchanged_files": unchanged_files,
-        "deleted_files": deleted_files,
+        "deleted_files": 0,
         "failed_files": failed_files,
         "status": status,
     }
@@ -954,7 +959,7 @@ def _run_assigned_job(
     *,
     context: WorkerContext,
     assignment: ApiJobAssigned,
-) -> None:
+) -> bool:
     job_log = context.logger.bind(job_id=str(assignment.job_id))
     checkpoint_manifest_key = _checkpoint_manifest_key(assignment.job_id)
 
@@ -972,9 +977,7 @@ def _run_assigned_job(
             job_id=assignment.job_id,
             workdir=workdir,
         )
-        checkpoint_manifest_path = getattr(
-            assignment, "latest_checkpoint_manifest_path", None
-        ) or getattr(assignment, "latest_checkpoint_path", None)
+        checkpoint_manifest_path = getattr(assignment, "latest_checkpoint_manifest_path", None)
         if checkpoint_manifest_path:
             try:
                 _capture_resume_preserved_outputs(
@@ -1001,7 +1004,7 @@ def _run_assigned_job(
                     error=str(exc),
                 )
                 context.gateway.fail_job(job_id=assignment.job_id)
-                return
+                return False
 
         required_platform = _required_openmm_platform(bundle_root)
         if required_platform is not None and required_platform not in context.openmm_platforms:
@@ -1011,7 +1014,7 @@ def _run_assigned_job(
                 available_platforms=context.openmm_platforms,
             )
             context.gateway.fail_job(job_id=assignment.job_id)
-            return
+            return False
 
         execution = JobExecution(
             command=execution_config.command,
@@ -1028,6 +1031,8 @@ def _run_assigned_job(
         try:
             execution.start()
             context.gateway.start_job(job_id=assignment.job_id)
+            should_exit_loop = False
+            handoff_completed = False
             degraded_mode_active = False
             degraded_mode_grace_logged = False
             heartbeat_grace_seconds = max(
@@ -1054,6 +1059,7 @@ def _run_assigned_job(
             checkpoint_poll_interval_seconds = float(effective_checkpoint_poll_interval_seconds)
             checkpoint_health_threshold_seconds = max(0.0, checkpoint_poll_interval_seconds * 3.0)
             next_checkpoint_poll_time = time.monotonic()
+            handoff_trigger_time, handoff_deadline = _parse_proactive_handoff_trigger()
             last_checkpoint_storage_success_at: float | None = None
             latest_progress = 0.0
             latest_progress_codes = [PROGRESS_MISSING]
@@ -1107,7 +1113,8 @@ def _run_assigned_job(
                         if status_uploaded:
                             last_checkpoint_storage_success_at = time.monotonic()
                     execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
-                    return
+                    should_exit_loop = True
+                    break
 
                 now = time.monotonic()
 
@@ -1202,7 +1209,8 @@ def _run_assigned_job(
                                 if status_uploaded:
                                     last_checkpoint_storage_success_at = time.monotonic()
                             execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
-                            return
+                            should_exit_loop = True
+                            break
                     elif degraded_mode_active and snapshot is not None:
                         degraded_mode_active = False
                         degraded_mode_grace_logged = False
@@ -1224,6 +1232,62 @@ def _run_assigned_job(
                         )
 
                 if now >= next_checkpoint_poll_time:
+                    if (
+                        handoff_trigger_time is not None
+                        and handoff_deadline is not None
+                        and now >= handoff_trigger_time
+                    ):
+                        context.gateway.start_handoff(
+                            job_id=assignment.job_id,
+                            reason="allocation_deadline",
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            deadline_epoch_seconds=handoff_deadline,
+                        )
+                        execution.request_terminate()
+                        execution.wait(timeout_seconds=context.sigterm_process_wait_seconds)
+                        checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
+                            context=context,
+                            logger=job_log,
+                            job_id=assignment.job_id,
+                            bundle_root=bundle_root,
+                            workdir=workdir,
+                            watch_paths=execution_config.checkpoint_watch_paths
+                            + execution_config.resume_preserved_output_paths,
+                            manifest=checkpoint_manifest,
+                        )
+                        checkpoint_cycle_status: str | None = None
+                        checkpoint_cycle_failures: list[dict[str, str]] = []
+                        if manifest_uploaded:
+                            checkpoint_cycle_status, checkpoint_cycle_failures = (
+                                _checkpoint_diagnostics_from_manifest(checkpoint_manifest)
+                            )
+                            _upload_checkpoint_status(
+                                context=context,
+                                assignment=assignment,
+                                workdir=workdir,
+                                checkpoint_manifest_key=checkpoint_manifest_key,
+                                checkpoint_poll_interval_seconds=effective_checkpoint_poll_interval_seconds,
+                                progress=latest_progress,
+                                progress_codes=latest_progress_codes,
+                                checkpoint_cycle_status=checkpoint_cycle_status or "unknown",
+                            )
+                        context.gateway.complete_handoff(
+                            job_id=assignment.job_id,
+                            checkpoint_manifest_path=(
+                                checkpoint_manifest_key if manifest_uploaded else None
+                            ),
+                            checkpoint_path=(
+                                checkpoint_manifest_key if manifest_uploaded else None
+                            ),
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            checkpoint_cycle_status=checkpoint_cycle_status,
+                            checkpoint_cycle_failures=checkpoint_cycle_failures,
+                        )
+                        handoff_completed = True
+                        should_exit_loop = True
+                        break
                     cancellation_requested = False
                     is_cancellation_requested = getattr(
                         context.gateway, "is_cancellation_requested", None
@@ -1279,7 +1343,8 @@ def _run_assigned_job(
                                 checkpoint_cycle_status=checkpoint_cycle_status,
                                 checkpoint_cycle_failures=checkpoint_cycle_failures,
                             )
-                        return
+                        should_exit_loop = True
+                        break
                     checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
                         context=context,
                         logger=job_log,
@@ -1381,7 +1446,8 @@ def _run_assigned_job(
                             if status_uploaded:
                                 last_checkpoint_storage_success_at = time.monotonic()
                         context.gateway.fail_job(job_id=assignment.job_id)
-                        return
+                        should_exit_loop = True
+                        break
 
                 process_exit = execution.poll_exit_code()
                 if process_exit is not None:
@@ -1396,6 +1462,9 @@ def _run_assigned_job(
                         until_next_checkpoint_poll,
                     )
                 context.shutdown_event.wait(timeout=wait_timeout)
+
+            if should_exit_loop:
+                return handoff_completed
 
             checkpoint_manifest, manifest_uploaded = _sync_checkpoint_manifest_cycle(
                 context=context,
@@ -1436,6 +1505,7 @@ def _run_assigned_job(
                 context.gateway.complete_job(job_id=assignment.job_id)
             elif result.status == "failed":
                 context.gateway.fail_job(job_id=assignment.job_id)
+            return False
         finally:
             if context.heartbeat_thread is not None:
                 context.heartbeat_thread.set_job_progress(
@@ -1450,6 +1520,7 @@ def _run_assigned_job(
                     job_log.warning("job_execution_cleanup_killing_process")
                     execution.kill()
                     execution.wait(timeout_seconds=5)
+    return False
 
 
 def run_worker(config: WorkerConfig) -> None:
@@ -1585,7 +1656,10 @@ def run_worker(config: WorkerConfig) -> None:
                     worker_log.info("job_found_during_poll")
                     idle_start_time = None
 
-                _run_assigned_job(context=context, assignment=request_response)
+                handoff_exit = _run_assigned_job(context=context, assignment=request_response)
+                if handoff_exit:
+                    worker_log.info("planned_handoff_exit")
+                    break
 
             shutdown_event.set()
             if worker_id is not None:

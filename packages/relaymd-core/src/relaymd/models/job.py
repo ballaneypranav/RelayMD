@@ -34,14 +34,6 @@ class Job(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow_naive)
     updated_at: datetime = Field(default_factory=utcnow_naive)
 
-    @property
-    def latest_checkpoint_path(self) -> str | None:
-        return self.latest_checkpoint_manifest_path
-
-    @latest_checkpoint_path.setter
-    def latest_checkpoint_path(self, value: str | None) -> None:
-        self.latest_checkpoint_manifest_path = value
-
 
 class JobCreate(SQLModel):
     id: uuid.UUID | None = None
@@ -63,7 +55,6 @@ class JobRead(SQLModel):
     started_at: datetime | None
     status_changed_at: datetime
     latest_checkpoint_manifest_path: str | None
-    latest_checkpoint_path: str | None = None
     cancellation_requested_at: datetime | None = None
     last_checkpoint_at: datetime | None
     progress: float | None = None
@@ -79,6 +70,23 @@ class JobRead(SQLModel):
 
 
 class CheckpointReport(SQLModel):
+    checkpoint_manifest_path: str | None = None
+    checkpoint_path: str | None = None
+    progress: float | None = None
+    progress_codes: list[str] = []
+    checkpoint_cycle_status: str | None = None
+    checkpoint_cycle_failures: list[dict[str, str]] = []
+
+
+class HandoffStart(SQLModel):
+    reason: str
+    progress: float | None = None
+    progress_codes: list[str] = []
+    deadline_epoch_seconds: float | None = None
+    message: str | None = None
+
+
+class HandoffComplete(SQLModel):
     checkpoint_manifest_path: str | None = None
     checkpoint_path: str | None = None
     progress: float | None = None

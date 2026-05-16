@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
@@ -18,9 +17,6 @@ from relaymd_api_client.api.default import (
 )
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
-from relaymd_api_client.models.http_validation_error import (
-    HTTPValidationError as ApiHTTPValidationError,
-)
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
@@ -38,41 +34,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_WORKER_REGISTER_MAX_ATTEMPTS,
 )
 from relaymd.worker import bootstrap as worker_bootstrap
-
-
-class OrchestratorGateway(Protocol):
-    def register_worker(
-        self,
-        *,
-        platform: ApiPlatform,
-        gpu_model: str,
-        gpu_count: int,
-        vram_gb: int,
-    ) -> UUID: ...
-
-    def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable: ...
-
-    def report_checkpoint(
-        self,
-        *,
-        job_id: UUID,
-        checkpoint_manifest_path: str | None = None,
-        checkpoint_path: str | None = None,
-        progress: float | None = None,
-        progress_codes: list[str] | None = None,
-        checkpoint_cycle_status: str | None = None,
-        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
-    ) -> None: ...
-
-    def start_job(self, *, job_id: UUID) -> None: ...
-
-    def is_cancellation_requested(self, *, job_id: UUID) -> bool: ...
-
-    def complete_job(self, *, job_id: UUID) -> None: ...
-
-    def fail_job(self, *, job_id: UUID) -> None: ...
-
-    def deregister_worker(self, *, worker_id: UUID) -> None: ...
+from relaymd.worker import gateway_control_plane, gateway_helpers
 
 
 class ApiOrchestratorGateway:
@@ -132,49 +94,6 @@ class ApiOrchestratorGateway:
             raise RuntimeError("Gateway client is not initialized")
         return self._client
 
-    @staticmethod
-    def _raise_if_validation_error(response: object) -> None:
-        if isinstance(response, ApiHTTPValidationError):
-            raise RuntimeError(response.to_dict())
-
-    @staticmethod
-    def _is_conflict_response(response: object) -> bool:
-        if response is None:
-            return False
-        if getattr(response, "error", None) == "job_transition_conflict":
-            return True
-        if isinstance(response, dict) and response.get("error") == "job_transition_conflict":
-            return True
-        to_dict = getattr(response, "to_dict", None)
-        if callable(to_dict):
-            payload = cast(dict[str, object], to_dict())
-            return payload.get("error") == "job_transition_conflict"
-        return False
-
-    def _is_conflict_exception(self, exc: Exception) -> bool:
-        if not isinstance(exc, api_errors.UnexpectedStatus):
-            return False
-        return exc.status_code == 409
-
-    def _call_with_conflict_handling(
-        self,
-        *,
-        job_id: UUID,
-        log_event: str,
-        api_call: Callable[[], object],
-    ) -> None:
-        try:
-            response = api_call()
-        except Exception as exc:  # noqa: BLE001
-            if self._is_conflict_exception(exc):
-                self._logger.warning(log_event, job_id=str(job_id))
-                return
-            raise
-
-        self._raise_if_validation_error(response)
-        if self._is_conflict_response(response):
-            self._logger.warning(log_event, job_id=str(job_id))
-
     def _log_register_worker_retry(self, retry_state: RetryCallState) -> None:
         if retry_state.outcome is None:
             return
@@ -223,7 +142,7 @@ class ApiOrchestratorGateway:
             ),
             x_api_token=self._api_token,
         )
-        self._raise_if_validation_error(response)
+        gateway_helpers.raise_if_validation_error(response)
         if response is None:
             raise RuntimeError("Failed to register worker")
         try:
@@ -273,7 +192,7 @@ class ApiOrchestratorGateway:
             worker_id=worker_id,
             x_api_token=self._api_token,
         )
-        self._raise_if_validation_error(response)
+        gateway_helpers.raise_if_validation_error(response)
         if not isinstance(response, (ApiJobAssigned, ApiNoJobAvailable)):
             raise RuntimeError("Failed to parse job assignment response")
         return response
@@ -302,7 +221,8 @@ class ApiOrchestratorGateway:
             body["checkpoint_cycle_status"] = checkpoint_cycle_status
         if checkpoint_cycle_failures is not None:
             body["checkpoint_cycle_failures"] = checkpoint_cycle_failures
-        self._call_with_conflict_handling(
+        gateway_helpers.call_with_conflict_handling(
+            logger=self._logger,
             job_id=job_id,
             log_event="checkpoint_conflict_ignored",
             api_call=lambda: report_checkpoint_jobs_job_id_checkpoint_post.sync(
@@ -314,7 +234,8 @@ class ApiOrchestratorGateway:
         )
 
     def start_job(self, *, job_id: UUID) -> None:
-        self._call_with_conflict_handling(
+        gateway_helpers.call_with_conflict_handling(
+            logger=self._logger,
             job_id=job_id,
             log_event="start_conflict_ignored",
             api_call=lambda: start_job_jobs_job_id_start_post.sync(
@@ -324,29 +245,52 @@ class ApiOrchestratorGateway:
             ),
         )
 
+    def start_handoff(
+        self,
+        *,
+        job_id: UUID,
+        reason: str,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+        deadline_epoch_seconds: float | None = None,
+        message: str | None = None,
+    ) -> None:
+        payload: dict[str, object] = {"reason": reason}
+        if progress is not None:
+            payload["progress"] = progress
+        if progress_codes is not None:
+            payload["progress_codes"] = progress_codes
+        if deadline_epoch_seconds is not None:
+            payload["deadline_epoch_seconds"] = deadline_epoch_seconds
+        if message is not None:
+            payload["message"] = message
+        started = gateway_control_plane.start_handoff(
+            request_context=gateway_control_plane.ControlPlaneRequestContext(
+                orchestrator_url=self._orchestrator_url,
+                api_token=self._api_token,
+                timeout_seconds=self._timeout_seconds,
+                proxy_url=self._proxy_url(),
+            ),
+            job_id=job_id,
+            payload=payload,
+        )
+        if not started:
+            self._logger.warning("handoff_start_conflict_ignored", job_id=str(job_id))
+
     def is_cancellation_requested(self, *, job_id: UUID) -> bool:
-        proxy_url = self._proxy_url()
-        if proxy_url is None:
-            response = httpx.get(
-                f"{self._orchestrator_url}/jobs/{job_id}/control",
-                headers={"x-api-token": self._api_token},
-                timeout=self._timeout_seconds,
-            )
-        else:
-            response = httpx.get(
-                f"{self._orchestrator_url}/jobs/{job_id}/control",
-                headers={"x-api-token": self._api_token},
-                timeout=self._timeout_seconds,
-                proxy=proxy_url,
-            )
-        response.raise_for_status()
-        payload = response.json()
-        if not isinstance(payload, dict):
-            return False
-        return bool(payload.get("cancellation_requested", False))
+        return gateway_control_plane.is_cancellation_requested(
+            request_context=gateway_control_plane.ControlPlaneRequestContext(
+                orchestrator_url=self._orchestrator_url,
+                api_token=self._api_token,
+                timeout_seconds=self._timeout_seconds,
+                proxy_url=self._proxy_url(),
+            ),
+            job_id=job_id,
+        )
 
     def complete_job(self, *, job_id: UUID) -> None:
-        self._call_with_conflict_handling(
+        gateway_helpers.call_with_conflict_handling(
+            logger=self._logger,
             job_id=job_id,
             log_event="complete_conflict_ignored",
             api_call=lambda: complete_job_jobs_job_id_complete_post.sync(
@@ -356,8 +300,46 @@ class ApiOrchestratorGateway:
             ),
         )
 
+    def complete_handoff(
+        self,
+        *,
+        job_id: UUID,
+        checkpoint_manifest_path: str | None = None,
+        checkpoint_path: str | None = None,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+        checkpoint_cycle_status: str | None = None,
+        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
+    ) -> None:
+        payload: dict[str, object] = {}
+        if checkpoint_manifest_path is not None:
+            payload["checkpoint_manifest_path"] = checkpoint_manifest_path
+        if checkpoint_path is not None:
+            payload["checkpoint_path"] = checkpoint_path
+        if progress is not None:
+            payload["progress"] = progress
+        if progress_codes is not None:
+            payload["progress_codes"] = progress_codes
+        if checkpoint_cycle_status is not None:
+            payload["checkpoint_cycle_status"] = checkpoint_cycle_status
+        if checkpoint_cycle_failures is not None:
+            payload["checkpoint_cycle_failures"] = checkpoint_cycle_failures
+        completed = gateway_control_plane.complete_handoff(
+            request_context=gateway_control_plane.ControlPlaneRequestContext(
+                orchestrator_url=self._orchestrator_url,
+                api_token=self._api_token,
+                timeout_seconds=self._timeout_seconds,
+                proxy_url=self._proxy_url(),
+            ),
+            job_id=job_id,
+            payload=payload,
+        )
+        if not completed:
+            self._logger.warning("handoff_complete_conflict_ignored", job_id=str(job_id))
+
     def fail_job(self, *, job_id: UUID) -> None:
-        self._call_with_conflict_handling(
+        gateway_helpers.call_with_conflict_handling(
+            logger=self._logger,
             job_id=job_id,
             log_event="fail_conflict_ignored",
             api_call=lambda: fail_job_jobs_job_id_fail_post.sync(
@@ -380,4 +362,4 @@ class ApiOrchestratorGateway:
                 return
             raise
 
-        self._raise_if_validation_error(response)
+        gateway_helpers.raise_if_validation_error(response)
