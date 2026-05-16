@@ -221,6 +221,7 @@ def _render_sbatch_script(
         worker_sigterm_checkpoint_wait_seconds=settings.worker_sigterm_checkpoint_wait_seconds,
         worker_sigterm_checkpoint_poll_seconds=settings.worker_sigterm_checkpoint_poll_seconds,
         worker_sigterm_process_wait_seconds=settings.worker_sigterm_process_wait_seconds,
+        worker_proactive_handoff_margin_seconds=settings.worker_proactive_handoff_margin_seconds,
         worker_heartbeat_failure_grace_multiplier=(
             settings.worker_heartbeat_failure_grace_multiplier
         ),

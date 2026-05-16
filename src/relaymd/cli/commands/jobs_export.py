@@ -224,9 +224,7 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         else "-",
         "progress_percent": f"{progress_percent}%",
         "progress_codes_text": progress_codes_text or "-",
-        "latest_checkpoint": str(
-            job.get("latest_checkpoint_manifest_path") or job.get("latest_checkpoint_path") or "-"
-        ),
+        "latest_checkpoint": str(job.get("latest_checkpoint_manifest_path") or "-"),
         "checkpoint_cycle_status_text": str(job.get("checkpoint_cycle_status") or "-"),
         "checkpoint_failures_text": checkpoint_failures_text,
         "checkpoint_age": format_duration((now - checkpoint_at).total_seconds())

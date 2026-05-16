@@ -133,7 +133,7 @@ export function buildWorkerRows(rawWorkers: WorkerRead[], now: Date, rawJobs: Jo
     if (!job.assigned_worker_id) {
       continue;
     }
-    if (job.status !== "running" && job.status !== "assigned") {
+    if (job.status !== "running" && job.status !== "assigned" && job.status !== "handoff") {
       continue;
     }
     workerJob.set(

@@ -274,7 +274,7 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
         assert requeued_job["title"] == "job-requeue"
         assert requeued_job["status"] == "queued"
         assert requeued_job["input_bundle_path"] == "jobs/requeue/input/bundle.tar.gz"
-        assert requeued_job["latest_checkpoint_path"] == "jobs/requeue/checkpoints/latest"
+        assert requeued_job["latest_checkpoint_manifest_path"] == "jobs/requeue/checkpoints/latest"
         assert requeued_job["last_checkpoint_at"] is not None
         assert requeued_job["assigned_worker_id"] is None
 

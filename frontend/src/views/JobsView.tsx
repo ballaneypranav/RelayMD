@@ -19,7 +19,7 @@ const BLOCKED_REASON_LABELS: Record<string, string> = {
   no_matching_pinned_clusters: "Pinned clusters unavailable",
 };
 
-const BULK_CANCEL_STATUSES = new Set(["queued", "assigned", "running"]);
+const BULK_CANCEL_STATUSES = new Set(["queued", "assigned", "running", "handoff"]);
 const BULK_REQUEUE_STATUSES = new Set(["failed", "cancelled"]);
 
 interface JobTableRow extends JobRow {
@@ -230,7 +230,7 @@ function JobExpandedDetails({
         </div>
         <div>
           <dt>Latest Checkpoint</dt>
-          <dd>{job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-"}</dd>
+          <dd>{job.latest_checkpoint_manifest_path || "-"}</dd>
         </div>
         <div>
           <dt>Checkpoint Cycle Status</dt>
@@ -396,7 +396,7 @@ export function JobsView({
             assigned_at_iso: parseDate(job.assigned_at)?.toISOString() ?? "-",
             started_at_iso: parseDate(job.started_at)?.toISOString() ?? "-",
             status_changed_at_iso: parseDate(job.status_changed_at)?.toISOString() ?? "-",
-            latest_checkpoint: job.latest_checkpoint_manifest_path || job.latest_checkpoint_path || "-",
+            latest_checkpoint: job.latest_checkpoint_manifest_path || "-",
             runtime: formatDuration(
               totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
             ),

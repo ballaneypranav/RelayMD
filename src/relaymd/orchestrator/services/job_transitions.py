@@ -22,6 +22,7 @@ ACTIVE_CHECKPOINT_JOB_STATUSES = {
     JobStatus.assigned,
     JobStatus.running,
     JobStatus.cancelling,
+    JobStatus.handoff,
 }
 
 ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
@@ -35,11 +36,16 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
         JobStatus.queued,
     },
     JobStatus.running: {
+        JobStatus.handoff,
         JobStatus.completed,
         JobStatus.failed,
         JobStatus.cancelled,
         JobStatus.cancelling,
         JobStatus.queued,
+    },
+    JobStatus.handoff: {
+        JobStatus.queued,
+        JobStatus.cancelled,
     },
     JobStatus.cancelling: {JobStatus.cancelled},
     JobStatus.completed: set(),
@@ -130,6 +136,43 @@ class JobTransitionService:
     def requeue_in_place(self, job: Job) -> Job:
         return self._transition(job, JobStatus.queued, clear_assigned_worker=True)
 
+    def start_handoff(self, job: Job) -> Job:
+        return self._transition(job, JobStatus.handoff)
+
+    def complete_handoff(
+        self,
+        job: Job,
+        *,
+        checkpoint_manifest_path: str | None = None,
+        checkpoint_path: str | None = None,
+        progress: float | None = None,
+        progress_codes: list[str] | None = None,
+        checkpoint_cycle_status: str | None = None,
+        checkpoint_cycle_failures: list[dict[str, str]] | None = None,
+    ) -> Job:
+        if checkpoint_manifest_path is not None or checkpoint_path is not None:
+            self.report_checkpoint(
+                job,
+                checkpoint_manifest_path=checkpoint_manifest_path,
+                checkpoint_path=checkpoint_path,
+                progress=progress,
+                progress_codes=progress_codes,
+                checkpoint_cycle_status=checkpoint_cycle_status,
+                checkpoint_cycle_failures=checkpoint_cycle_failures,
+            )
+        else:
+            now = utcnow_naive()
+            if progress is not None:
+                job.progress = progress
+            if progress_codes is not None:
+                job.progress_codes_json = json.dumps(progress_codes)
+            if checkpoint_cycle_status is not None:
+                job.checkpoint_cycle_status = checkpoint_cycle_status
+            if checkpoint_cycle_failures is not None:
+                job.checkpoint_cycle_failures_json = json.dumps(checkpoint_cycle_failures)
+            job.updated_at = now
+        return self.requeue_in_place(job)
+
     def report_checkpoint(
         self,
         job: Job,
@@ -152,7 +195,8 @@ class JobTransitionService:
         if job.status not in ACTIVE_CHECKPOINT_JOB_STATUSES:
             raise JobTransitionConflictError(
                 message=(
-                    "Checkpoint updates are allowed only for jobs in assigned or running state"
+                    "Checkpoint updates are allowed only for jobs in assigned, running, "
+                    "cancelling, or handoff state"
                 ),
                 job_id=job.id,
                 current_status=job.status,

@@ -16,7 +16,7 @@ import { WorkersView } from "./views/WorkersView";
 type ViewName = "jobs" | "workers" | "clusters" | "settings";
 const DEFAULT_VIEW: ViewName = "jobs";
 const APP_BASE_PATH = "/app";
-const ACTIVE_JOB_STATUSES = new Set(["queued", "assigned", "running", "cancelling"]);
+const ACTIVE_JOB_STATUSES = new Set(["queued", "assigned", "running", "handoff", "cancelling"]);
 const JOB_HISTORY_REFRESH_MS = 30_000;
 
 const PATH_TO_VIEW: Record<string, ViewName> = {

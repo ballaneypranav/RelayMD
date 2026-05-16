@@ -7,6 +7,7 @@ interface StatusPillProps {
     | "queued"
     | "assigned"
     | "running"
+    | "handoff"
     | "cancelling"
     | "completed"
     | "failed"

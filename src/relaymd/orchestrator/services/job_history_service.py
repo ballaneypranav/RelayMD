@@ -23,6 +23,8 @@ JobEventType = Literal[
     "created",
     "assigned",
     "running",
+    "handoff_started",
+    "handoff_completed",
     "checkpoint",
     "requeued_with",
     "requeued_from",
@@ -34,7 +36,10 @@ JobEventType = Literal[
 ]
 
 TERMINAL_EVENT_TYPES = {"completed", "failed", "cancelled"}
-SEGMENT_CLOSING_EVENT_TYPES = TERMINAL_EVENT_TYPES | {"worker_deregistered_requeue"}
+SEGMENT_CLOSING_EVENT_TYPES = TERMINAL_EVENT_TYPES | {
+    "worker_deregistered_requeue",
+    "handoff_completed",
+}
 # Use a fixed-size striped lock pool to avoid unbounded per-job lock growth.
 _JOB_EVENT_SEQ_LOCK_STRIPES = 256
 _job_event_seq_locks: tuple[asyncio.Lock, ...] = tuple(

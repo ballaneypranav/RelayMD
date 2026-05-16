@@ -29,6 +29,14 @@
 
 set -euo pipefail
 
+_RELAYMD_DEADLINE_EPOCH=""
+if command -v squeue >/dev/null 2>&1; then
+  _END_TIME="$(squeue -j "${SLURM_JOB_ID}" -h --Format=EndTime 2>/dev/null | head -n1 | xargs || true)"
+  if [[ -n "${_END_TIME}" && "${_END_TIME}" != "N/A" ]]; then
+    _RELAYMD_DEADLINE_EPOCH="$(date -d "${_END_TIME}" +%s 2>/dev/null || true)"
+  fi
+fi
+
 export INFISICAL_BOOTSTRAP_TOKEN={{ infisical_token_shell_quoted }}
 export INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
 export APPTAINERENV_INFISICAL_TOKEN="${INFISICAL_BOOTSTRAP_TOKEN}"
@@ -132,6 +140,10 @@ apptainer_args=(
   --env IDLE_POLL_MAX_SECONDS="{{ worker_idle_poll_max_seconds | default(600) }}"
   --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}"
   --env SLURM_JOB_ID="${SLURM_JOB_ID}"
+  --env RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS="{{ worker_proactive_handoff_margin_seconds | default(600) }}"
 )
+if [[ -n "${_RELAYMD_DEADLINE_EPOCH}" ]]; then
+  apptainer_args+=(--env RELAYMD_ALLOCATION_DEADLINE_EPOCH_SECONDS="${_RELAYMD_DEADLINE_EPOCH}")
+fi
 
 apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc {{ worker_command_shell_quoted }}

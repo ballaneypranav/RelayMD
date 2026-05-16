@@ -172,9 +172,9 @@ class JobsService:
         )
 
     def _latest_checkpoint_key(self, job: JobRead) -> str:
-        if not job.latest_checkpoint_path:
+        if not job.latest_checkpoint_manifest_path:
             raise RuntimeError(json_dumps_error("no_checkpoint", "Job has no checkpoint yet"))
-        return job.latest_checkpoint_path
+        return job.latest_checkpoint_manifest_path
 
     def _download_checkpoint_manifest(
         self, *, job_id: UUID, output_path: Path | None = None

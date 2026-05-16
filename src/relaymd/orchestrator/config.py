@@ -18,6 +18,7 @@ from relaymd.runtime_defaults import (
     DEFAULT_HEARTBEAT_TIMEOUT_MULTIPLIER,
     DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS,
     DEFAULT_ORPHANED_JOB_REQUEUE_INTERVAL_SECONDS,
+    DEFAULT_PROACTIVE_HANDOFF_MARGIN_SECONDS,
     DEFAULT_SALAD_API_TIMEOUT_SECONDS,
     DEFAULT_SBATCH_SUBMISSION_INTERVAL_SECONDS,
     DEFAULT_SBATCH_SUBMIT_TIMEOUT_SECONDS,
@@ -157,6 +158,7 @@ class OrchestratorSettings(BaseSettings):
     worker_sigterm_checkpoint_wait_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_WAIT_SECONDS
     worker_sigterm_checkpoint_poll_seconds: int = DEFAULT_SIGTERM_CHECKPOINT_POLL_SECONDS
     worker_sigterm_process_wait_seconds: int = DEFAULT_SIGTERM_PROCESS_WAIT_SECONDS
+    worker_proactive_handoff_margin_seconds: int = DEFAULT_PROACTIVE_HANDOFF_MARGIN_SECONDS
     worker_heartbeat_failure_grace_multiplier: int = (
         DEFAULT_WORKER_HEARTBEAT_FAILURE_GRACE_MULTIPLIER
     )
