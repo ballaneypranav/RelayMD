@@ -46,6 +46,7 @@ ALLOWED_TRANSITIONS: dict[JobStatus, set[JobStatus]] = {
     JobStatus.handoff: {
         JobStatus.queued,
         JobStatus.cancelled,
+        JobStatus.cancelling,
     },
     JobStatus.cancelling: {JobStatus.cancelled},
     JobStatus.completed: set(),

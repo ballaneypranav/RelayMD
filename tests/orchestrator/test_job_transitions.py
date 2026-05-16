@@ -26,6 +26,7 @@ from relaymd.orchestrator.services import JobTransitionConflictError, JobTransit
         (JobStatus.running, JobStatus.handoff),
         (JobStatus.handoff, JobStatus.queued),
         (JobStatus.handoff, JobStatus.cancelled),
+        (JobStatus.handoff, JobStatus.cancelling),
     ],
 )
 def test_transition_matrix_allows_expected_edges(start: JobStatus, target: JobStatus) -> None:

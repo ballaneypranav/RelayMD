@@ -1232,10 +1232,11 @@ def _run_assigned_job(
                         )
 
                 if now >= next_checkpoint_poll_time:
+                    now_epoch_seconds = time.time()
                     if (
                         handoff_trigger_time is not None
                         and handoff_deadline is not None
-                        and now >= handoff_trigger_time
+                        and now_epoch_seconds >= handoff_trigger_time
                     ):
                         context.gateway.start_handoff(
                             job_id=assignment.job_id,
