@@ -8,6 +8,7 @@ MAX_LINES=400
 LEGACY_LARGE_FILES=(
     "tests/orchestrator/test_sbatch.py"
     "packages/relaymd-worker/src/relaymd/worker/main.py"
+    "packages/relaymd-worker/tests/test_main_loop.py"
     "packages/relaymd-worker/src/relaymd/worker/bootstrap.py"
     "src/relaymd/orchestrator/services/slurm_provisioning_service.py"
     "src/relaymd/orchestrator/services/worker_lifecycle_service.py"
