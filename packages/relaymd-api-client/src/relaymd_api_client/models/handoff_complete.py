@@ -1,33 +1,38 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
+
 if TYPE_CHECKING:
-    from ..models.handoff_complete_checkpoint_cycle_failures_item import (
-        HandoffCompleteCheckpointCycleFailuresItem,
-    )
+  from ..models.handoff_complete_checkpoint_cycle_failures_item import HandoffCompleteCheckpointCycleFailuresItem
+
+
+
 
 
 T = TypeVar("T", bound="HandoffComplete")
 
 
+
 @_attrs_define
 class HandoffComplete:
-    """
-    Attributes:
-        checkpoint_manifest_path (None | str | Unset):
-        checkpoint_path (None | str | Unset):
-        progress (float | None | Unset):
-        progress_codes (list[str] | Unset):
-        checkpoint_cycle_status (None | str | Unset):
-        checkpoint_cycle_failures (list[HandoffCompleteCheckpointCycleFailuresItem] | Unset):
-    """
+    """ 
+        Attributes:
+            checkpoint_manifest_path (None | str | Unset):
+            checkpoint_path (None | str | Unset):
+            progress (float | None | Unset):
+            progress_codes (list[str] | Unset):
+            checkpoint_cycle_status (None | str | Unset):
+            checkpoint_cycle_failures (list[HandoffCompleteCheckpointCycleFailuresItem] | Unset):
+     """
 
     checkpoint_manifest_path: None | str | Unset = UNSET
     checkpoint_path: None | str | Unset = UNSET
@@ -37,7 +42,12 @@ class HandoffComplete:
     checkpoint_cycle_failures: list[HandoffCompleteCheckpointCycleFailuresItem] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
+
+
+
+
     def to_dict(self) -> dict[str, Any]:
+        from ..models.handoff_complete_checkpoint_cycle_failures_item import HandoffCompleteCheckpointCycleFailuresItem
         checkpoint_manifest_path: None | str | Unset
         if isinstance(self.checkpoint_manifest_path, Unset):
             checkpoint_manifest_path = UNSET
@@ -60,6 +70,8 @@ class HandoffComplete:
         if not isinstance(self.progress_codes, Unset):
             progress_codes = self.progress_codes
 
+
+
         checkpoint_cycle_status: None | str | Unset
         if isinstance(self.checkpoint_cycle_status, Unset):
             checkpoint_cycle_status = UNSET
@@ -73,9 +85,13 @@ class HandoffComplete:
                 checkpoint_cycle_failures_item = checkpoint_cycle_failures_item_data.to_dict()
                 checkpoint_cycle_failures.append(checkpoint_cycle_failures_item)
 
+
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({})
+        field_dict.update({
+        })
         if checkpoint_manifest_path is not UNSET:
             field_dict["checkpoint_manifest_path"] = checkpoint_manifest_path
         if checkpoint_path is not UNSET:
@@ -91,14 +107,12 @@ class HandoffComplete:
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.handoff_complete_checkpoint_cycle_failures_item import (
-            HandoffCompleteCheckpointCycleFailuresItem,
-        )
-
+        from ..models.handoff_complete_checkpoint_cycle_failures_item import HandoffCompleteCheckpointCycleFailuresItem
         d = dict(src_dict)
-
         def _parse_checkpoint_manifest_path(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -106,9 +120,8 @@ class HandoffComplete:
                 return data
             return cast(None | str | Unset, data)
 
-        checkpoint_manifest_path = _parse_checkpoint_manifest_path(
-            d.pop("checkpoint_manifest_path", UNSET)
-        )
+        checkpoint_manifest_path = _parse_checkpoint_manifest_path(d.pop("checkpoint_manifest_path", UNSET))
+
 
         def _parse_checkpoint_path(data: object) -> None | str | Unset:
             if data is None:
@@ -119,6 +132,7 @@ class HandoffComplete:
 
         checkpoint_path = _parse_checkpoint_path(d.pop("checkpoint_path", UNSET))
 
+
         def _parse_progress(data: object) -> float | None | Unset:
             if data is None:
                 return data
@@ -128,7 +142,9 @@ class HandoffComplete:
 
         progress = _parse_progress(d.pop("progress", UNSET))
 
+
         progress_codes = cast(list[str], d.pop("progress_codes", UNSET))
+
 
         def _parse_checkpoint_cycle_status(data: object) -> None | str | Unset:
             if data is None:
@@ -137,22 +153,20 @@ class HandoffComplete:
                 return data
             return cast(None | str | Unset, data)
 
-        checkpoint_cycle_status = _parse_checkpoint_cycle_status(
-            d.pop("checkpoint_cycle_status", UNSET)
-        )
+        checkpoint_cycle_status = _parse_checkpoint_cycle_status(d.pop("checkpoint_cycle_status", UNSET))
+
 
         _checkpoint_cycle_failures = d.pop("checkpoint_cycle_failures", UNSET)
         checkpoint_cycle_failures: list[HandoffCompleteCheckpointCycleFailuresItem] | Unset = UNSET
         if _checkpoint_cycle_failures is not UNSET:
             checkpoint_cycle_failures = []
             for checkpoint_cycle_failures_item_data in _checkpoint_cycle_failures:
-                checkpoint_cycle_failures_item = (
-                    HandoffCompleteCheckpointCycleFailuresItem.from_dict(
-                        checkpoint_cycle_failures_item_data
-                    )
-                )
+                checkpoint_cycle_failures_item = HandoffCompleteCheckpointCycleFailuresItem.from_dict(checkpoint_cycle_failures_item_data)
+
+
 
                 checkpoint_cycle_failures.append(checkpoint_cycle_failures_item)
+
 
         handoff_complete = cls(
             checkpoint_manifest_path=checkpoint_manifest_path,
@@ -162,6 +176,7 @@ class HandoffComplete:
             checkpoint_cycle_status=checkpoint_cycle_status,
             checkpoint_cycle_failures=checkpoint_cycle_failures,
         )
+
 
         handoff_complete.additional_properties = d
         return handoff_complete

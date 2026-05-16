@@ -1,39 +1,48 @@
 from __future__ import annotations
 
-import datetime
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
-from uuid import UUID
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
+
+from ..types import UNSET, Unset
 
 from ..models.platform import Platform
 from ..models.worker_status import WorkerStatus
 from ..types import UNSET, Unset
+from dateutil.parser import isoparse
+from typing import cast
+from uuid import UUID
+import datetime
+
+
+
+
+
 
 T = TypeVar("T", bound="WorkerRead")
 
 
+
 @_attrs_define
 class WorkerRead:
-    """
-    Attributes:
-        id (UUID):
-        platform (Platform):
-        gpu_model (str):
-        gpu_count (int):
-        vram_gb (int):
-        status (WorkerStatus):
-        last_heartbeat (datetime.datetime):
-        registered_at (datetime.datetime):
-        provider_id (None | str | Unset):
-        provider_state (None | str | Unset):
-        provider_state_raw (None | str | Unset):
-        provider_reason (None | str | Unset):
-        provider_last_checked_at (datetime.datetime | None | Unset):
-    """
+    """ 
+        Attributes:
+            id (UUID):
+            platform (Platform):
+            gpu_model (str):
+            gpu_count (int):
+            vram_gb (int):
+            status (WorkerStatus):
+            last_heartbeat (datetime.datetime):
+            registered_at (datetime.datetime):
+            provider_id (None | str | Unset):
+            provider_state (None | str | Unset):
+            provider_state_raw (None | str | Unset):
+            provider_reason (None | str | Unset):
+            provider_last_checked_at (datetime.datetime | None | Unset):
+     """
 
     id: UUID
     platform: Platform
@@ -49,6 +58,10 @@ class WorkerRead:
     provider_reason: None | str | Unset = UNSET
     provider_last_checked_at: datetime.datetime | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         id = str(self.id)
@@ -99,20 +112,19 @@ class WorkerRead:
         else:
             provider_last_checked_at = self.provider_last_checked_at
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "id": id,
-                "platform": platform,
-                "gpu_model": gpu_model,
-                "gpu_count": gpu_count,
-                "vram_gb": vram_gb,
-                "status": status,
-                "last_heartbeat": last_heartbeat,
-                "registered_at": registered_at,
-            }
-        )
+        field_dict.update({
+            "id": id,
+            "platform": platform,
+            "gpu_model": gpu_model,
+            "gpu_count": gpu_count,
+            "vram_gb": vram_gb,
+            "status": status,
+            "last_heartbeat": last_heartbeat,
+            "registered_at": registered_at,
+        })
         if provider_id is not UNSET:
             field_dict["provider_id"] = provider_id
         if provider_state is not UNSET:
@@ -126,12 +138,20 @@ class WorkerRead:
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         id = UUID(d.pop("id"))
 
+
+
+
         platform = Platform(d.pop("platform"))
+
+
+
 
         gpu_model = d.pop("gpu_model")
 
@@ -141,9 +161,18 @@ class WorkerRead:
 
         status = WorkerStatus(d.pop("status"))
 
+
+
+
         last_heartbeat = isoparse(d.pop("last_heartbeat"))
 
+
+
+
         registered_at = isoparse(d.pop("registered_at"))
+
+
+
 
         def _parse_provider_id(data: object) -> None | str | Unset:
             if data is None:
@@ -154,6 +183,7 @@ class WorkerRead:
 
         provider_id = _parse_provider_id(d.pop("provider_id", UNSET))
 
+
         def _parse_provider_state(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -162,6 +192,7 @@ class WorkerRead:
             return cast(None | str | Unset, data)
 
         provider_state = _parse_provider_state(d.pop("provider_state", UNSET))
+
 
         def _parse_provider_state_raw(data: object) -> None | str | Unset:
             if data is None:
@@ -172,6 +203,7 @@ class WorkerRead:
 
         provider_state_raw = _parse_provider_state_raw(d.pop("provider_state_raw", UNSET))
 
+
         def _parse_provider_reason(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -180,6 +212,7 @@ class WorkerRead:
             return cast(None | str | Unset, data)
 
         provider_reason = _parse_provider_reason(d.pop("provider_reason", UNSET))
+
 
         def _parse_provider_last_checked_at(data: object) -> datetime.datetime | None | Unset:
             if data is None:
@@ -191,14 +224,15 @@ class WorkerRead:
                     raise TypeError()
                 provider_last_checked_at_type_0 = isoparse(data)
 
+
+
                 return provider_last_checked_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
             return cast(datetime.datetime | None | Unset, data)
 
-        provider_last_checked_at = _parse_provider_last_checked_at(
-            d.pop("provider_last_checked_at", UNSET)
-        )
+        provider_last_checked_at = _parse_provider_last_checked_at(d.pop("provider_last_checked_at", UNSET))
+
 
         worker_read = cls(
             id=id,
@@ -215,6 +249,7 @@ class WorkerRead:
             provider_reason=provider_reason,
             provider_last_checked_at=provider_last_checked_at,
         )
+
 
         worker_read.additional_properties = d
         return worker_read

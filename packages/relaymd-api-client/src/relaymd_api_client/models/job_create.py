@@ -1,27 +1,36 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
-from uuid import UUID
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
+from uuid import UUID
+
+
+
+
+
+
 T = TypeVar("T", bound="JobCreate")
+
 
 
 @_attrs_define
 class JobCreate:
-    """
-    Attributes:
-        title (str):
-        input_bundle_path (str):
-        id (None | Unset | UUID):
-        preferred_clusters (list[str] | Unset):
-        comment (None | str | Unset):
-    """
+    """ 
+        Attributes:
+            title (str):
+            input_bundle_path (str):
+            id (None | Unset | UUID):
+            preferred_clusters (list[str] | Unset):
+            comment (None | str | Unset):
+     """
 
     title: str
     input_bundle_path: str
@@ -29,6 +38,10 @@ class JobCreate:
     preferred_clusters: list[str] | Unset = UNSET
     comment: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         title = self.title
@@ -47,20 +60,21 @@ class JobCreate:
         if not isinstance(self.preferred_clusters, Unset):
             preferred_clusters = self.preferred_clusters
 
+
+
         comment: None | str | Unset
         if isinstance(self.comment, Unset):
             comment = UNSET
         else:
             comment = self.comment
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "title": title,
-                "input_bundle_path": input_bundle_path,
-            }
-        )
+        field_dict.update({
+            "title": title,
+            "input_bundle_path": input_bundle_path,
+        })
         if id is not UNSET:
             field_dict["id"] = id
         if preferred_clusters is not UNSET:
@@ -69,6 +83,8 @@ class JobCreate:
             field_dict["comment"] = comment
 
         return field_dict
+
+
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
@@ -87,6 +103,8 @@ class JobCreate:
                     raise TypeError()
                 id_type_0 = UUID(data)
 
+
+
                 return id_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
@@ -94,7 +112,9 @@ class JobCreate:
 
         id = _parse_id(d.pop("id", UNSET))
 
+
         preferred_clusters = cast(list[str], d.pop("preferred_clusters", UNSET))
+
 
         def _parse_comment(data: object) -> None | str | Unset:
             if data is None:
@@ -105,6 +125,7 @@ class JobCreate:
 
         comment = _parse_comment(d.pop("comment", UNSET))
 
+
         job_create = cls(
             title=title,
             input_bundle_path=input_bundle_path,
@@ -112,6 +133,7 @@ class JobCreate:
             preferred_clusters=preferred_clusters,
             comment=comment,
         )
+
 
         job_create.additional_properties = d
         return job_create

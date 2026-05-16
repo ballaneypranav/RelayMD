@@ -1,26 +1,35 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
+
+
+
+
+
+
 T = TypeVar("T", bound="HandoffStart")
+
 
 
 @_attrs_define
 class HandoffStart:
-    """
-    Attributes:
-        reason (str):
-        progress (float | None | Unset):
-        progress_codes (list[str] | Unset):
-        deadline_epoch_seconds (float | None | Unset):
-        message (None | str | Unset):
-    """
+    """ 
+        Attributes:
+            reason (str):
+            progress (float | None | Unset):
+            progress_codes (list[str] | Unset):
+            deadline_epoch_seconds (float | None | Unset):
+            message (None | str | Unset):
+     """
 
     reason: str
     progress: float | None | Unset = UNSET
@@ -28,6 +37,10 @@ class HandoffStart:
     deadline_epoch_seconds: float | None | Unset = UNSET
     message: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         reason = self.reason
@@ -42,6 +55,8 @@ class HandoffStart:
         if not isinstance(self.progress_codes, Unset):
             progress_codes = self.progress_codes
 
+
+
         deadline_epoch_seconds: float | None | Unset
         if isinstance(self.deadline_epoch_seconds, Unset):
             deadline_epoch_seconds = UNSET
@@ -54,13 +69,12 @@ class HandoffStart:
         else:
             message = self.message
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "reason": reason,
-            }
-        )
+        field_dict.update({
+            "reason": reason,
+        })
         if progress is not UNSET:
             field_dict["progress"] = progress
         if progress_codes is not UNSET:
@@ -71,6 +85,8 @@ class HandoffStart:
             field_dict["message"] = message
 
         return field_dict
+
+
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
@@ -86,7 +102,9 @@ class HandoffStart:
 
         progress = _parse_progress(d.pop("progress", UNSET))
 
+
         progress_codes = cast(list[str], d.pop("progress_codes", UNSET))
+
 
         def _parse_deadline_epoch_seconds(data: object) -> float | None | Unset:
             if data is None:
@@ -95,9 +113,8 @@ class HandoffStart:
                 return data
             return cast(float | None | Unset, data)
 
-        deadline_epoch_seconds = _parse_deadline_epoch_seconds(
-            d.pop("deadline_epoch_seconds", UNSET)
-        )
+        deadline_epoch_seconds = _parse_deadline_epoch_seconds(d.pop("deadline_epoch_seconds", UNSET))
+
 
         def _parse_message(data: object) -> None | str | Unset:
             if data is None:
@@ -108,6 +125,7 @@ class HandoffStart:
 
         message = _parse_message(d.pop("message", UNSET))
 
+
         handoff_start = cls(
             reason=reason,
             progress=progress,
@@ -115,6 +133,7 @@ class HandoffStart:
             deadline_epoch_seconds=deadline_epoch_seconds,
             message=message,
         )
+
 
         handoff_start.additional_properties = d
         return handoff_start

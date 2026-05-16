@@ -1,6 +1,5 @@
 from enum import Enum
 
-
 class Platform(str, Enum):
     HPC = "hpc"
     SALAD = "salad"

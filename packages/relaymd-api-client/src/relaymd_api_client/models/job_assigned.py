@@ -1,32 +1,46 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal, TypeVar, cast
-from uuid import UUID
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
+from typing import Literal, cast
+from uuid import UUID
+
+
+
+
+
+
 T = TypeVar("T", bound="JobAssigned")
+
 
 
 @_attrs_define
 class JobAssigned:
-    """
-    Attributes:
-        job_id (UUID):
-        input_bundle_path (str):
-        latest_checkpoint_manifest_path (None | str):
-        status (Literal['assigned'] | Unset):  Default: 'assigned'.
-    """
+    """ 
+        Attributes:
+            job_id (UUID):
+            input_bundle_path (str):
+            latest_checkpoint_manifest_path (None | str):
+            status (Literal['assigned'] | Unset):  Default: 'assigned'.
+     """
 
     job_id: UUID
     input_bundle_path: str
     latest_checkpoint_manifest_path: None | str
-    status: Literal["assigned"] | Unset = "assigned"
+    status: Literal['assigned'] | Unset = 'assigned'
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         job_id = str(self.job_id)
@@ -38,24 +52,28 @@ class JobAssigned:
 
         status = self.status
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "job_id": job_id,
-                "input_bundle_path": input_bundle_path,
-                "latest_checkpoint_manifest_path": latest_checkpoint_manifest_path,
-            }
-        )
+        field_dict.update({
+            "job_id": job_id,
+            "input_bundle_path": input_bundle_path,
+            "latest_checkpoint_manifest_path": latest_checkpoint_manifest_path,
+        })
         if status is not UNSET:
             field_dict["status"] = status
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         job_id = UUID(d.pop("job_id"))
+
+
+
 
         input_bundle_path = d.pop("input_bundle_path")
 
@@ -64,12 +82,11 @@ class JobAssigned:
                 return data
             return cast(None | str, data)
 
-        latest_checkpoint_manifest_path = _parse_latest_checkpoint_manifest_path(
-            d.pop("latest_checkpoint_manifest_path")
-        )
+        latest_checkpoint_manifest_path = _parse_latest_checkpoint_manifest_path(d.pop("latest_checkpoint_manifest_path"))
 
-        status = cast(Literal["assigned"] | Unset, d.pop("status", UNSET))
-        if status != "assigned" and not isinstance(status, Unset):
+
+        status = cast(Literal['assigned'] | Unset , d.pop("status", UNSET))
+        if status != 'assigned'and not isinstance(status, Unset):
             raise ValueError(f"status must match const 'assigned', got '{status}'")
 
         job_assigned = cls(
@@ -78,6 +95,7 @@ class JobAssigned:
             latest_checkpoint_manifest_path=latest_checkpoint_manifest_path,
             status=status,
         )
+
 
         job_assigned.additional_properties = d
         return job_assigned

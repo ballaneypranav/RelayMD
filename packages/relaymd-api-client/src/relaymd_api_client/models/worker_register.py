@@ -1,27 +1,36 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..types import UNSET, Unset
+
 from ..models.platform import Platform
 from ..types import UNSET, Unset
+from typing import cast
+
+
+
+
+
 
 T = TypeVar("T", bound="WorkerRegister")
 
 
+
 @_attrs_define
 class WorkerRegister:
-    """
-    Attributes:
-        platform (Platform):
-        gpu_model (str):
-        gpu_count (int):
-        vram_gb (int):
-        provider_id (None | str | Unset):
-    """
+    """ 
+        Attributes:
+            platform (Platform):
+            gpu_model (str):
+            gpu_count (int):
+            vram_gb (int):
+            provider_id (None | str | Unset):
+     """
 
     platform: Platform
     gpu_model: str
@@ -29,6 +38,10 @@ class WorkerRegister:
     vram_gb: int
     provider_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         platform = self.platform.value
@@ -45,25 +58,29 @@ class WorkerRegister:
         else:
             provider_id = self.provider_id
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "platform": platform,
-                "gpu_model": gpu_model,
-                "gpu_count": gpu_count,
-                "vram_gb": vram_gb,
-            }
-        )
+        field_dict.update({
+            "platform": platform,
+            "gpu_model": gpu_model,
+            "gpu_count": gpu_count,
+            "vram_gb": vram_gb,
+        })
         if provider_id is not UNSET:
             field_dict["provider_id"] = provider_id
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         platform = Platform(d.pop("platform"))
+
+
+
 
         gpu_model = d.pop("gpu_model")
 
@@ -80,6 +97,7 @@ class WorkerRegister:
 
         provider_id = _parse_provider_id(d.pop("provider_id", UNSET))
 
+
         worker_register = cls(
             platform=platform,
             gpu_model=gpu_model,
@@ -87,6 +105,7 @@ class WorkerRegister:
             vram_gb=vram_gb,
             provider_id=provider_id,
         )
+
 
         worker_register.additional_properties = d
         return worker_register

@@ -1,40 +1,49 @@
 from http import HTTPStatus
 from typing import Any, cast
 from urllib.parse import quote
-from uuid import UUID
 
 import httpx
 
-from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...types import Response, UNSET
+from ... import errors
+
 from ...models.http_validation_error import HTTPValidationError
 from ...models.job_conflict import JobConflict
-from ...types import UNSET, Response, Unset
+from ...types import UNSET, Unset
+from typing import cast
+from uuid import UUID
+
 
 
 def _get_kwargs(
     worker_id: UUID,
     *,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
     if not isinstance(x_api_token, Unset):
         headers["X-API-Token"] = x_api_token
 
+
+
+    
+
+    
+
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/workers/{worker_id}/deregister".format(
-            worker_id=quote(str(worker_id), safe=""),
-        ),
+        "url": "/workers/{worker_id}/deregister".format(worker_id=quote(str(worker_id), safe=""),),
     }
+
 
     _kwargs["headers"] = headers
     return _kwargs
 
 
-def _parse_response(
-    *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Any | HTTPValidationError | JobConflict | None:
+
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Any | HTTPValidationError | JobConflict | None:
     if response.status_code == 204:
         response_204 = cast(Any, None)
         return response_204
@@ -42,10 +51,14 @@ def _parse_response(
     if response.status_code == 409:
         response_409 = JobConflict.from_dict(response.json())
 
+
+
         return response_409
 
     if response.status_code == 422:
         response_422 = HTTPValidationError.from_dict(response.json())
+
+
 
         return response_422
 
@@ -55,9 +68,7 @@ def _parse_response(
         return None
 
 
-def _build_response(
-    *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Any | HTTPValidationError | JobConflict]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[Any | HTTPValidationError | JobConflict]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -71,8 +82,9 @@ def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+    """ Deregister Worker
 
     Args:
         worker_id (UUID):
@@ -84,11 +96,13 @@ def sync_detailed(
 
     Returns:
         Response[Any | HTTPValidationError | JobConflict]
-    """
+     """
+
 
     kwargs = _get_kwargs(
         worker_id=worker_id,
-        x_api_token=x_api_token,
+x_api_token=x_api_token,
+
     )
 
     response = client.get_httpx_client().request(
@@ -97,14 +111,14 @@ def sync_detailed(
 
     return _build_response(client=client, response=response)
 
-
 def sync(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+    """ Deregister Worker
 
     Args:
         worker_id (UUID):
@@ -116,22 +130,24 @@ def sync(
 
     Returns:
         Any | HTTPValidationError | JobConflict
-    """
+     """
+
 
     return sync_detailed(
         worker_id=worker_id,
-        client=client,
-        x_api_token=x_api_token,
-    ).parsed
+client=client,
+x_api_token=x_api_token,
 
+    ).parsed
 
 async def asyncio_detailed(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Response[Any | HTTPValidationError | JobConflict]:
-    """Deregister Worker
+    """ Deregister Worker
 
     Args:
         worker_id (UUID):
@@ -143,25 +159,29 @@ async def asyncio_detailed(
 
     Returns:
         Response[Any | HTTPValidationError | JobConflict]
-    """
+     """
+
 
     kwargs = _get_kwargs(
         worker_id=worker_id,
-        x_api_token=x_api_token,
+x_api_token=x_api_token,
+
     )
 
-    response = await client.get_async_httpx_client().request(**kwargs)
+    response = await client.get_async_httpx_client().request(
+        **kwargs
+    )
 
     return _build_response(client=client, response=response)
-
 
 async def asyncio(
     worker_id: UUID,
     *,
     client: AuthenticatedClient | Client,
     x_api_token: None | str | Unset = UNSET,
+
 ) -> Any | HTTPValidationError | JobConflict | None:
-    """Deregister Worker
+    """ Deregister Worker
 
     Args:
         worker_id (UUID):
@@ -173,12 +193,12 @@ async def asyncio(
 
     Returns:
         Any | HTTPValidationError | JobConflict
-    """
+     """
 
-    return (
-        await asyncio_detailed(
-            worker_id=worker_id,
-            client=client,
-            x_api_token=x_api_token,
-        )
-    ).parsed
+
+    return (await asyncio_detailed(
+        worker_id=worker_id,
+client=client,
+x_api_token=x_api_token,
+
+    )).parsed

@@ -1,29 +1,38 @@
 from __future__ import annotations
 
-import datetime
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
-from uuid import UUID
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..types import UNSET, Unset
+
+from ..types import UNSET, Unset
+from dateutil.parser import isoparse
+from typing import cast
+from uuid import UUID
+import datetime
+
+
+
+
+
 
 T = TypeVar("T", bound="JobWorkerSegmentRead")
 
 
+
 @_attrs_define
 class JobWorkerSegmentRead:
-    """
-    Attributes:
-        started_at (datetime.datetime):
-        ended_at (datetime.datetime):
-        duration_seconds (float):
-        worker_id (None | Unset | UUID):
-        open_ (bool | Unset):  Default: False.
-    """
+    """ 
+        Attributes:
+            started_at (datetime.datetime):
+            ended_at (datetime.datetime):
+            duration_seconds (float):
+            worker_id (None | Unset | UUID):
+            open_ (bool | Unset):  Default: False.
+     """
 
     started_at: datetime.datetime
     ended_at: datetime.datetime
@@ -31,6 +40,10 @@ class JobWorkerSegmentRead:
     worker_id: None | Unset | UUID = UNSET
     open_: bool | Unset = False
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         started_at = self.started_at.isoformat()
@@ -49,15 +62,14 @@ class JobWorkerSegmentRead:
 
         open_ = self.open_
 
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update(
-            {
-                "started_at": started_at,
-                "ended_at": ended_at,
-                "duration_seconds": duration_seconds,
-            }
-        )
+        field_dict.update({
+            "started_at": started_at,
+            "ended_at": ended_at,
+            "duration_seconds": duration_seconds,
+        })
         if worker_id is not UNSET:
             field_dict["worker_id"] = worker_id
         if open_ is not UNSET:
@@ -65,12 +77,20 @@ class JobWorkerSegmentRead:
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
         started_at = isoparse(d.pop("started_at"))
 
+
+
+
         ended_at = isoparse(d.pop("ended_at"))
+
+
+
 
         duration_seconds = d.pop("duration_seconds")
 
@@ -84,12 +104,15 @@ class JobWorkerSegmentRead:
                     raise TypeError()
                 worker_id_type_0 = UUID(data)
 
+
+
                 return worker_id_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
             return cast(None | Unset | UUID, data)
 
         worker_id = _parse_worker_id(d.pop("worker_id", UNSET))
+
 
         open_ = d.pop("open", UNSET)
 
@@ -100,6 +123,7 @@ class JobWorkerSegmentRead:
             worker_id=worker_id,
             open_=open_,
         )
+
 
         job_worker_segment_read.additional_properties = d
         return job_worker_segment_read

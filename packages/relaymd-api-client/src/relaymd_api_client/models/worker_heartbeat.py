@@ -1,30 +1,43 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
-from uuid import UUID
+from typing import Any, TypeVar, BinaryIO, TextIO, TYPE_CHECKING, Generator
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..types import UNSET, Unset
+from typing import cast
+from uuid import UUID
+
+
+
+
+
+
 T = TypeVar("T", bound="WorkerHeartbeat")
+
 
 
 @_attrs_define
 class WorkerHeartbeat:
-    """
-    Attributes:
-        job_id (None | Unset | UUID):
-        progress (float | None | Unset):
-        progress_codes (list[str] | Unset):
-    """
+    """ 
+        Attributes:
+            job_id (None | Unset | UUID):
+            progress (float | None | Unset):
+            progress_codes (list[str] | Unset):
+     """
 
     job_id: None | Unset | UUID = UNSET
     progress: float | None | Unset = UNSET
     progress_codes: list[str] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+
+
+
+
 
     def to_dict(self) -> dict[str, Any]:
         job_id: None | str | Unset
@@ -45,9 +58,13 @@ class WorkerHeartbeat:
         if not isinstance(self.progress_codes, Unset):
             progress_codes = self.progress_codes
 
+
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
-        field_dict.update({})
+        field_dict.update({
+        })
         if job_id is not UNSET:
             field_dict["job_id"] = job_id
         if progress is not UNSET:
@@ -57,10 +74,11 @@ class WorkerHeartbeat:
 
         return field_dict
 
+
+
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-
         def _parse_job_id(data: object) -> None | Unset | UUID:
             if data is None:
                 return data
@@ -71,12 +89,15 @@ class WorkerHeartbeat:
                     raise TypeError()
                 job_id_type_0 = UUID(data)
 
+
+
                 return job_id_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
             return cast(None | Unset | UUID, data)
 
         job_id = _parse_job_id(d.pop("job_id", UNSET))
+
 
         def _parse_progress(data: object) -> float | None | Unset:
             if data is None:
@@ -87,13 +108,16 @@ class WorkerHeartbeat:
 
         progress = _parse_progress(d.pop("progress", UNSET))
 
+
         progress_codes = cast(list[str], d.pop("progress_codes", UNSET))
+
 
         worker_heartbeat = cls(
             job_id=job_id,
             progress=progress,
             progress_codes=progress_codes,
         )
+
 
         worker_heartbeat.additional_properties = d
         return worker_heartbeat
