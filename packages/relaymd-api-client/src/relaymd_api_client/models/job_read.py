@@ -38,9 +38,11 @@ class JobRead:
         preferred_clusters (list[str] | Unset):
         comment (None | str | Unset):
         queue_blocked_reason (None | str | Unset):
-        latest_checkpoint_path (None | str | Unset):
         cancellation_requested_at (datetime.datetime | None | Unset):
         progress (float | None | Unset):
+        runtime_seconds (float | Unset):  Default: 0.0.
+        etc_seconds (float | None | Unset):
+        ett_seconds (float | None | Unset):
         progress_codes (list[str] | Unset):
         checkpoint_cycle_status (None | str | Unset):
         checkpoint_cycle_failures (list[JobReadCheckpointCycleFailuresItem] | Unset):
@@ -61,9 +63,11 @@ class JobRead:
     preferred_clusters: list[str] | Unset = UNSET
     comment: None | str | Unset = UNSET
     queue_blocked_reason: None | str | Unset = UNSET
-    latest_checkpoint_path: None | str | Unset = UNSET
     cancellation_requested_at: datetime.datetime | None | Unset = UNSET
     progress: float | None | Unset = UNSET
+    runtime_seconds: float | Unset = 0.0
+    etc_seconds: float | None | Unset = UNSET
+    ett_seconds: float | None | Unset = UNSET
     progress_codes: list[str] | Unset = UNSET
     checkpoint_cycle_status: None | str | Unset = UNSET
     checkpoint_cycle_failures: list[JobReadCheckpointCycleFailuresItem] | Unset = UNSET
@@ -127,12 +131,6 @@ class JobRead:
         else:
             queue_blocked_reason = self.queue_blocked_reason
 
-        latest_checkpoint_path: None | str | Unset
-        if isinstance(self.latest_checkpoint_path, Unset):
-            latest_checkpoint_path = UNSET
-        else:
-            latest_checkpoint_path = self.latest_checkpoint_path
-
         cancellation_requested_at: None | str | Unset
         if isinstance(self.cancellation_requested_at, Unset):
             cancellation_requested_at = UNSET
@@ -146,6 +144,20 @@ class JobRead:
             progress = UNSET
         else:
             progress = self.progress
+
+        runtime_seconds = self.runtime_seconds
+
+        etc_seconds: float | None | Unset
+        if isinstance(self.etc_seconds, Unset):
+            etc_seconds = UNSET
+        else:
+            etc_seconds = self.etc_seconds
+
+        ett_seconds: float | None | Unset
+        if isinstance(self.ett_seconds, Unset):
+            ett_seconds = UNSET
+        else:
+            ett_seconds = self.ett_seconds
 
         progress_codes: list[str] | Unset = UNSET
         if not isinstance(self.progress_codes, Unset):
@@ -188,12 +200,16 @@ class JobRead:
             field_dict["comment"] = comment
         if queue_blocked_reason is not UNSET:
             field_dict["queue_blocked_reason"] = queue_blocked_reason
-        if latest_checkpoint_path is not UNSET:
-            field_dict["latest_checkpoint_path"] = latest_checkpoint_path
         if cancellation_requested_at is not UNSET:
             field_dict["cancellation_requested_at"] = cancellation_requested_at
         if progress is not UNSET:
             field_dict["progress"] = progress
+        if runtime_seconds is not UNSET:
+            field_dict["runtime_seconds"] = runtime_seconds
+        if etc_seconds is not UNSET:
+            field_dict["etc_seconds"] = etc_seconds
+        if ett_seconds is not UNSET:
+            field_dict["ett_seconds"] = ett_seconds
         if progress_codes is not UNSET:
             field_dict["progress_codes"] = progress_codes
         if checkpoint_cycle_status is not UNSET:
@@ -313,17 +329,6 @@ class JobRead:
 
         queue_blocked_reason = _parse_queue_blocked_reason(d.pop("queue_blocked_reason", UNSET))
 
-        def _parse_latest_checkpoint_path(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        latest_checkpoint_path = _parse_latest_checkpoint_path(
-            d.pop("latest_checkpoint_path", UNSET)
-        )
-
         def _parse_cancellation_requested_at(data: object) -> datetime.datetime | None | Unset:
             if data is None:
                 return data
@@ -351,6 +356,26 @@ class JobRead:
             return cast(float | None | Unset, data)
 
         progress = _parse_progress(d.pop("progress", UNSET))
+
+        runtime_seconds = d.pop("runtime_seconds", UNSET)
+
+        def _parse_etc_seconds(data: object) -> float | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(float | None | Unset, data)
+
+        etc_seconds = _parse_etc_seconds(d.pop("etc_seconds", UNSET))
+
+        def _parse_ett_seconds(data: object) -> float | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(float | None | Unset, data)
+
+        ett_seconds = _parse_ett_seconds(d.pop("ett_seconds", UNSET))
 
         progress_codes = cast(list[str], d.pop("progress_codes", UNSET))
 
@@ -392,9 +417,11 @@ class JobRead:
             preferred_clusters=preferred_clusters,
             comment=comment,
             queue_blocked_reason=queue_blocked_reason,
-            latest_checkpoint_path=latest_checkpoint_path,
             cancellation_requested_at=cancellation_requested_at,
             progress=progress,
+            runtime_seconds=runtime_seconds,
+            etc_seconds=etc_seconds,
+            ett_seconds=ett_seconds,
             progress_codes=progress_codes,
             checkpoint_cycle_status=checkpoint_cycle_status,
             checkpoint_cycle_failures=checkpoint_cycle_failures,

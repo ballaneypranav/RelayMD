@@ -72,6 +72,7 @@ RELAYMD_DISABLE_AXIOM_UPLOAD = "1"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+force-exclude = true
 extend-exclude = ["packages/relaymd-api-client/src/relaymd_api_client"]
 
 [tool.ruff.lint]

@@ -13,6 +13,11 @@ from .frontend_config_config_frontend_get_response_frontend_config_config_fronte
 from .get_slurm_clusters_config_slurm_clusters_get_response_get_slurm_clusters_config_slurm_clusters_get import (
     GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet,
 )
+from .handoff_complete import HandoffComplete
+from .handoff_complete_checkpoint_cycle_failures_item import (
+    HandoffCompleteCheckpointCycleFailuresItem,
+)
+from .handoff_start import HandoffStart
 from .healthz_healthz_get_response_healthz_healthz_get import (
     HealthzHealthzGetResponseHealthzHealthzGet,
 )
@@ -53,6 +58,9 @@ __all__ = (
     "ClusterEnabledMapUpdateEnabled",
     "FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet",
     "GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet",
+    "HandoffComplete",
+    "HandoffCompleteCheckpointCycleFailuresItem",
+    "HandoffStart",
     "HealthzHealthzGetResponseHealthzHealthzGet",
     "HTTPValidationError",
     "JobAssigned",

@@ -529,6 +529,144 @@
         }
       }
     },
+    "/jobs/{job_id}/handoff/start": {
+      "post": {
+        "summary": "Start Handoff",
+        "operationId": "start_handoff_jobs__job_id__handoff_start_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "X-API-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffStart"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Job transition conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobConflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/jobs/{job_id}/handoff/complete": {
+      "post": {
+        "summary": "Complete Handoff",
+        "operationId": "complete_handoff_jobs__job_id__handoff_complete_post",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "X-API-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandoffComplete"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Job transition conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobConflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/jobs/{job_id}/complete": {
       "post": {
         "summary": "Complete Job",
@@ -1379,6 +1517,129 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HandoffComplete": {
+        "properties": {
+          "checkpoint_manifest_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Manifest Path"
+          },
+          "checkpoint_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Path"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "progress_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Progress Codes",
+            "default": []
+          },
+          "checkpoint_cycle_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Cycle Status"
+          },
+          "checkpoint_cycle_failures": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Checkpoint Cycle Failures",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "HandoffComplete"
+      },
+      "HandoffStart": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress"
+          },
+          "progress_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Progress Codes",
+            "default": []
+          },
+          "deadline_epoch_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Epoch Seconds"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "HandoffStart"
+      },
       "JobAssigned": {
         "properties": {
           "status": {
@@ -1406,17 +1667,6 @@
               }
             ],
             "title": "Latest Checkpoint Manifest Path"
-          },
-          "latest_checkpoint_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Checkpoint Path"
           }
         },
         "type": "object",
@@ -1760,17 +2010,6 @@
             ],
             "title": "Latest Checkpoint Manifest Path"
           },
-          "latest_checkpoint_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Checkpoint Path"
-          },
           "cancellation_requested_at": {
             "anyOf": [
               {
@@ -1805,6 +2044,33 @@
               }
             ],
             "title": "Progress"
+          },
+          "runtime_seconds": {
+            "type": "number",
+            "title": "Runtime Seconds",
+            "default": 0.0
+          },
+          "etc_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etc Seconds"
+          },
+          "ett_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ett Seconds"
           },
           "progress_codes": {
             "items": {
@@ -1882,6 +2148,7 @@
           "queued",
           "assigned",
           "running",
+          "handoff",
           "cancelling",
           "completed",
           "failed",

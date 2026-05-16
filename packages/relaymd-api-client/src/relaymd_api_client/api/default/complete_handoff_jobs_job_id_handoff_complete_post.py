@@ -1,5 +1,5 @@
 from http import HTTPStatus
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 from uuid import UUID
 
@@ -7,15 +7,16 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...models.handoff_complete import HandoffComplete
 from ...models.http_validation_error import HTTPValidationError
 from ...models.job_conflict import JobConflict
-from ...models.job_read import JobRead
 from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     job_id: UUID,
     *,
+    body: HandoffComplete,
     x_api_token: None | str | Unset = UNSET,
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
@@ -24,10 +25,14 @@ def _get_kwargs(
 
     _kwargs: dict[str, Any] = {
         "method": "post",
-        "url": "/jobs/{job_id}/requeue".format(
+        "url": "/jobs/{job_id}/handoff/complete".format(
             job_id=quote(str(job_id), safe=""),
         ),
     }
+
+    _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
 
     _kwargs["headers"] = headers
     return _kwargs
@@ -35,11 +40,10 @@ def _get_kwargs(
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> HTTPValidationError | JobConflict | JobRead | None:
-    if response.status_code == 200:
-        response_200 = JobRead.from_dict(response.json())
-
-        return response_200
+) -> Any | HTTPValidationError | JobConflict | None:
+    if response.status_code == 204:
+        response_204 = cast(Any, None)
+        return response_204
 
     if response.status_code == 409:
         response_409 = JobConflict.from_dict(response.json())
@@ -59,7 +63,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
+) -> Response[Any | HTTPValidationError | JobConflict]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -72,24 +76,27 @@ def sync_detailed(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: HandoffComplete,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
-    """Requeue Job
+) -> Response[Any | HTTPValidationError | JobConflict]:
+    """Complete Handoff
 
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (HandoffComplete):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | JobConflict | JobRead]
+        Response[Any | HTTPValidationError | JobConflict]
     """
 
     kwargs = _get_kwargs(
         job_id=job_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -104,25 +111,28 @@ def sync(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: HandoffComplete,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | JobConflict | JobRead | None:
-    """Requeue Job
+) -> Any | HTTPValidationError | JobConflict | None:
+    """Complete Handoff
 
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (HandoffComplete):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | JobConflict | JobRead
+        Any | HTTPValidationError | JobConflict
     """
 
     return sync_detailed(
         job_id=job_id,
         client=client,
+        body=body,
         x_api_token=x_api_token,
     ).parsed
 
@@ -131,24 +141,27 @@ async def asyncio_detailed(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: HandoffComplete,
     x_api_token: None | str | Unset = UNSET,
-) -> Response[HTTPValidationError | JobConflict | JobRead]:
-    """Requeue Job
+) -> Response[Any | HTTPValidationError | JobConflict]:
+    """Complete Handoff
 
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (HandoffComplete):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[HTTPValidationError | JobConflict | JobRead]
+        Response[Any | HTTPValidationError | JobConflict]
     """
 
     kwargs = _get_kwargs(
         job_id=job_id,
+        body=body,
         x_api_token=x_api_token,
     )
 
@@ -161,26 +174,29 @@ async def asyncio(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: HandoffComplete,
     x_api_token: None | str | Unset = UNSET,
-) -> HTTPValidationError | JobConflict | JobRead | None:
-    """Requeue Job
+) -> Any | HTTPValidationError | JobConflict | None:
+    """Complete Handoff
 
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (HandoffComplete):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        HTTPValidationError | JobConflict | JobRead
+        Any | HTTPValidationError | JobConflict
     """
 
     return (
         await asyncio_detailed(
             job_id=job_id,
             client=client,
+            body=body,
             x_api_token=x_api_token,
         )
     ).parsed
