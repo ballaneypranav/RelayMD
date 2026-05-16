@@ -12,7 +12,7 @@ class StorageClientProtocol(Protocol):
 
 
 def json_dumps_error(code: str, message: str) -> str:
-    return f'{{"error": {{"code": "{code}", "message": "{message}"}}}}'
+    return json.dumps({"error": {"code": code, "message": message}})
 
 
 def validate_relative_path(value: str) -> str:

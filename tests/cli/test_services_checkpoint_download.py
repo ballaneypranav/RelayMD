@@ -113,7 +113,7 @@ def test_jobs_service_download_all_checkpoint_files_rejects_traversal_paths(
         isinstance(result, dict) and result.get("relative_path") == "../escape.chk"
         for result in results
     )
-    assert not (tmp_path.parent / "escape.chk").exists()
+    assert not (tmp_path / "escape.chk").exists()
 
 
 def test_jobs_service_download_all_checkpoint_files_includes_preserved_output(
