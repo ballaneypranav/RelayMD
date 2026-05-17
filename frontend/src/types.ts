@@ -20,6 +20,7 @@ export interface JobRead {
   started_at: string | null;
   status_changed_at: string;
   latest_checkpoint_manifest_path: string | null;
+  latest_failure_artifact_path?: string | null;
   last_checkpoint_at: string | null;
   progress: number | null;
   runtime_seconds: number;
