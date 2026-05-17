@@ -1379,6 +1379,9 @@ def test_run_assigned_job_resume_preserved_capture_runs_before_hydration(monkeyp
         ),
     )
     job_execution = Mock()
+    execution_instance = job_execution.return_value
+    execution_instance.supervision_failure.return_value = None
+    execution_instance.poll_exit_code.return_value = 0
     monkeypatch.setattr("relaymd.worker.main.JobExecution", job_execution)
 
     _run_assigned_job(context=context, assignment=assignment)
