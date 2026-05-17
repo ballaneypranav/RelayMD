@@ -61,6 +61,13 @@ class OrchestratorGateway(Protocol):
         checkpoint_cycle_failures: list[dict[str, str]] | None = None,
     ) -> None: ...
 
-    def fail_job(self, *, job_id: UUID) -> None: ...
+    def fail_job(
+        self,
+        *,
+        job_id: UUID,
+        failure_artifact_path: str | None = None,
+        reason: str | None = None,
+        detail: str | None = None,
+    ) -> None: ...
 
     def deregister_worker(self, *, worker_id: UUID) -> None: ...

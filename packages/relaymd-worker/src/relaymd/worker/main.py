@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType, ModuleType
@@ -37,7 +37,9 @@ LOG = get_logger(__name__)
 PROCESS_EXIT_POLL_INTERVAL_SECONDS = 2.0
 CHECKPOINT_MANIFEST_SCHEMA_VERSION = 1
 CHECKPOINT_STATUS_SCHEMA_VERSION = 1
+FAILURE_ARTIFACT_SCHEMA_VERSION = 1
 CHECKPOINT_WATCH_FILE_CAP = 250
+PROGRESS_ROLLBACK_TOLERANCE = 0.05
 PROGRESS_MISSING = "progress_missing"
 PROGRESS_EMPTY = "progress_empty"
 PROGRESS_INVALID_FORMAT = "progress_invalid_format"
@@ -50,6 +52,7 @@ class BundleExecutionConfig:
     checkpoint_watch_paths: list[str]
     resume_preserved_output_paths: list[str]
     progress_file_path: str
+    failure_artifact_paths: list[str] = field(default_factory=list)
     checkpoint_poll_interval_seconds: int | None = None
     progress_glob_patterns: list[str] | None = None
     startup_progress_timeout_seconds: int | None = None
@@ -182,12 +185,14 @@ def _load_bundle_execution_config(bundle_root: Path) -> BundleExecutionConfig:
         progress_glob_patterns = _optional_string_list(parsed, "progress_glob_pattern")
         fatal_log_path = _optional_string(parsed, "fatal_log_path")
         fatal_log_patterns = _optional_string_list(parsed, "fatal_log_patterns")
+        failure_artifact_paths = _optional_string_list(parsed, "failure_artifact_paths") or []
 
         return BundleExecutionConfig(
             command=command,
             checkpoint_watch_paths=watch_paths,
             resume_preserved_output_paths=resume_preserved_output_paths,
             progress_file_path=progress_file_path,
+            failure_artifact_paths=failure_artifact_paths,
             checkpoint_poll_interval_seconds=bundle_interval,
             progress_glob_patterns=progress_glob_patterns,
             startup_progress_timeout_seconds=startup_progress_timeout_seconds,
@@ -268,6 +273,22 @@ def _validate_resume_preserved_path_overlap(
             "Invalid bundle config: paths cannot appear in both checkpoint_watch_paths "
             "and resume_preserved_output_paths"
         )
+
+
+def _effective_checkpoint_watch_paths(execution_config: BundleExecutionConfig) -> list[str]:
+    combined = (
+        execution_config.checkpoint_watch_paths
+        + [execution_config.progress_file_path]
+        + execution_config.resume_preserved_output_paths
+    )
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for raw_path in combined:
+        normalized = Path(raw_path).as_posix()
+        if normalized not in seen:
+            seen.add(normalized)
+            deduped.append(raw_path)
+    return deduped
 
 
 def _utc_now_iso() -> str:
@@ -955,6 +976,141 @@ def _fatal_log_artifact(bundle_root: Path, execution_config: BundleExecutionConf
     return path
 
 
+def _failure_artifact_key(job_id: UUID, failure_id: str, relative_path: str) -> str:
+    return f"jobs/{job_id}/failures/{failure_id}/files/{relative_path}"
+
+
+def _upload_failure_artifact(
+    *,
+    context: WorkerContext,
+    logger,
+    assignment: ApiJobAssigned,
+    bundle_root: Path,
+    workdir: Path,
+    execution_config: BundleExecutionConfig,
+    reason: str,
+    detail: str | None,
+    progress: float,
+    progress_codes: list[str],
+    resume_progress_baseline: float | None,
+    checkpoint_manifest_path: str | None,
+) -> str | None:
+    worker_suffix = str(context.worker_id) if context.worker_id is not None else "unknown-worker"
+    failure_id = f"{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{worker_suffix}"
+    base_path = f"jobs/{assignment.job_id}/failures/{failure_id}"
+    files, resolve_failures = _resolve_watch_files(
+        bundle_root=bundle_root, watch_paths=execution_config.failure_artifact_paths
+    )
+    file_records: list[dict[str, Any]] = []
+    upload_failures: list[dict[str, str]] = [
+        {"code": item.get("code", ""), "detail": item.get("detail", "")}
+        for item in resolve_failures
+    ]
+    for path in files:
+        relative_path = str(path.relative_to(bundle_root)).replace(os.sep, "/")
+        remote_key = _failure_artifact_key(assignment.job_id, failure_id, relative_path)
+        try:
+            context.storage.upload_file(path, remote_key)
+            file_records.append(
+                {
+                    "relative_path": relative_path,
+                    "remote_key": remote_key,
+                    "size_bytes": path.stat().st_size,
+                    "sha256": _compute_sha256(path),
+                    "captured_at": _utc_now_iso(),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            upload_failures.append(
+                {"code": "upload_failed", "detail": f"{relative_path}: {type(exc).__name__}"}
+            )
+            logger.warning("failure_artifact_file_upload_failed", relative_path=relative_path)
+
+    diagnostics = {
+        "job_id": str(assignment.job_id),
+        "worker_id": str(context.worker_id) if context.worker_id is not None else None,
+        "provider_id": context.provider_id,
+        "reason": reason,
+        "detail": detail,
+        "progress": progress,
+        "progress_codes": progress_codes,
+        "resume_progress_baseline": resume_progress_baseline,
+        "progress_regression_tolerance": PROGRESS_ROLLBACK_TOLERANCE,
+        "checkpoint_manifest_path": checkpoint_manifest_path,
+        "latest_checkpoint_manifest_path": checkpoint_manifest_path,
+        "failure_artifact_paths": execution_config.failure_artifact_paths,
+        "fatal_log_path": execution_config.fatal_log_path,
+        "created_at": _utc_now_iso(),
+    }
+    diagnostics_path = workdir / "relaymd-failure-diagnostics.json"
+    _atomic_write_json(diagnostics_path, diagnostics)
+    diagnostics_key = f"{base_path}/diagnostics.json"
+    try:
+        context.storage.upload_file(diagnostics_path, diagnostics_key)
+    except Exception:
+        logger.warning("failure_artifact_diagnostics_upload_failed", key=diagnostics_key)
+        upload_failures.append({"code": "diagnostics_upload_failed", "detail": diagnostics_key})
+
+    failure_artifact_path = f"{base_path}/manifest.json"
+    manifest = {
+        "schema_version": FAILURE_ARTIFACT_SCHEMA_VERSION,
+        "job_id": str(assignment.job_id),
+        "worker_id": str(context.worker_id) if context.worker_id is not None else None,
+        "provider_id": context.provider_id,
+        "created_at": _utc_now_iso(),
+        "reason": reason,
+        "detail": detail,
+        "failure_artifact_path": failure_artifact_path,
+        "files": file_records,
+        "upload_failures": upload_failures,
+    }
+    manifest_path = workdir / "relaymd-failure-manifest.json"
+    _atomic_write_json(manifest_path, manifest)
+    try:
+        context.storage.upload_file(manifest_path, failure_artifact_path)
+    except Exception:
+        logger.warning("failure_artifact_manifest_upload_failed", key=failure_artifact_path)
+        return None
+    return failure_artifact_path
+
+
+def _fail_assigned_job(
+    *,
+    context: WorkerContext,
+    logger,
+    assignment: ApiJobAssigned,
+    bundle_root: Path,
+    workdir: Path,
+    execution_config: BundleExecutionConfig,
+    reason: str,
+    detail: str | None,
+    progress: float,
+    progress_codes: list[str],
+    resume_progress_baseline: float | None,
+    checkpoint_manifest_path: str | None,
+) -> None:
+    failure_artifact_path = _upload_failure_artifact(
+        context=context,
+        logger=logger,
+        assignment=assignment,
+        bundle_root=bundle_root,
+        workdir=workdir,
+        execution_config=execution_config,
+        reason=reason,
+        detail=detail,
+        progress=progress,
+        progress_codes=progress_codes,
+        resume_progress_baseline=resume_progress_baseline,
+        checkpoint_manifest_path=checkpoint_manifest_path,
+    )
+    context.gateway.fail_job(
+        job_id=assignment.job_id,
+        failure_artifact_path=failure_artifact_path,
+        reason=reason,
+        detail=detail,
+    )
+
+
 def _run_assigned_job(
     *,
     context: WorkerContext,
@@ -978,6 +1134,7 @@ def _run_assigned_job(
             workdir=workdir,
         )
         checkpoint_manifest_path = getattr(assignment, "latest_checkpoint_manifest_path", None)
+        resume_progress_baseline: float | None = None
         if checkpoint_manifest_path:
             try:
                 _capture_resume_preserved_outputs(
@@ -996,6 +1153,12 @@ def _run_assigned_job(
                     manifest=checkpoint_manifest,
                 )
                 checkpoint_manifest["_preserve_existing_files_once"] = True
+                resumed_progress, resumed_progress_codes = _read_progress(
+                    bundle_root=bundle_root,
+                    progress_file_path=execution_config.progress_file_path,
+                )
+                if not resumed_progress_codes:
+                    resume_progress_baseline = resumed_progress
             except Exception as exc:
                 job_log.warning(
                     "checkpoint_hydration_failed",
@@ -1003,7 +1166,20 @@ def _run_assigned_job(
                     error_type=type(exc).__name__,
                     error=str(exc),
                 )
-                context.gateway.fail_job(job_id=assignment.job_id)
+                _fail_assigned_job(
+                    context=context,
+                    logger=job_log,
+                    assignment=assignment,
+                    bundle_root=bundle_root,
+                    workdir=workdir,
+                    execution_config=execution_config,
+                    reason="checkpoint_hydration_failed",
+                    detail=str(exc),
+                    progress=0.0,
+                    progress_codes=[PROGRESS_MISSING],
+                    resume_progress_baseline=resume_progress_baseline,
+                    checkpoint_manifest_path=checkpoint_manifest_path,
+                )
                 return False
 
         required_platform = _required_openmm_platform(bundle_root)
@@ -1013,7 +1189,20 @@ def _run_assigned_job(
                 required_platform=required_platform,
                 available_platforms=context.openmm_platforms,
             )
-            context.gateway.fail_job(job_id=assignment.job_id)
+            _fail_assigned_job(
+                context=context,
+                logger=job_log,
+                assignment=assignment,
+                bundle_root=bundle_root,
+                workdir=workdir,
+                execution_config=execution_config,
+                reason="openmm_platform_unavailable",
+                detail=f"required={required_platform}",
+                progress=0.0,
+                progress_codes=[PROGRESS_MISSING],
+                resume_progress_baseline=resume_progress_baseline,
+                checkpoint_manifest_path=checkpoint_manifest_path,
+            )
             return False
 
         execution = JobExecution(
@@ -1083,8 +1272,7 @@ def _run_assigned_job(
                         job_id=assignment.job_id,
                         bundle_root=bundle_root,
                         workdir=workdir,
-                        watch_paths=execution_config.checkpoint_watch_paths
-                        + execution_config.resume_preserved_output_paths,
+                        watch_paths=_effective_checkpoint_watch_paths(execution_config),
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
@@ -1178,8 +1366,7 @@ def _run_assigned_job(
                                     job_id=assignment.job_id,
                                     bundle_root=bundle_root,
                                     workdir=workdir,
-                                    watch_paths=execution_config.checkpoint_watch_paths
-                                    + execution_config.resume_preserved_output_paths,
+                                    watch_paths=_effective_checkpoint_watch_paths(execution_config),
                                     manifest=checkpoint_manifest,
                                 )
                             )
@@ -1232,6 +1419,29 @@ def _run_assigned_job(
                         )
 
                 if now >= next_checkpoint_poll_time:
+                    if resume_progress_baseline is not None and latest_progress < (
+                        resume_progress_baseline - PROGRESS_ROLLBACK_TOLERANCE
+                    ):
+                        execution.request_terminate()
+                        _fail_assigned_job(
+                            context=context,
+                            logger=job_log,
+                            assignment=assignment,
+                            bundle_root=bundle_root,
+                            workdir=workdir,
+                            execution_config=execution_config,
+                            reason="excessive_progress_rollback",
+                            detail=(
+                                f"baseline={resume_progress_baseline}, "
+                                f"latest={latest_progress}, tolerance={PROGRESS_ROLLBACK_TOLERANCE}"
+                            ),
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            resume_progress_baseline=resume_progress_baseline,
+                            checkpoint_manifest_path=checkpoint_manifest_path,
+                        )
+                        should_exit_loop = True
+                        break
                     now_epoch_seconds = time.time()
                     if (
                         handoff_trigger_time is not None
@@ -1253,8 +1463,7 @@ def _run_assigned_job(
                             job_id=assignment.job_id,
                             bundle_root=bundle_root,
                             workdir=workdir,
-                            watch_paths=execution_config.checkpoint_watch_paths
-                            + execution_config.resume_preserved_output_paths,
+                            watch_paths=_effective_checkpoint_watch_paths(execution_config),
                             manifest=checkpoint_manifest,
                         )
                         checkpoint_cycle_status: str | None = None
@@ -1317,8 +1526,7 @@ def _run_assigned_job(
                             job_id=assignment.job_id,
                             bundle_root=bundle_root,
                             workdir=workdir,
-                            watch_paths=execution_config.checkpoint_watch_paths
-                            + execution_config.resume_preserved_output_paths,
+                            watch_paths=_effective_checkpoint_watch_paths(execution_config),
                             manifest=checkpoint_manifest,
                         )
                         if manifest_uploaded:
@@ -1352,8 +1560,7 @@ def _run_assigned_job(
                         job_id=assignment.job_id,
                         bundle_root=bundle_root,
                         workdir=workdir,
-                        watch_paths=execution_config.checkpoint_watch_paths
-                        + execution_config.resume_preserved_output_paths,
+                        watch_paths=_effective_checkpoint_watch_paths(execution_config),
                         manifest=checkpoint_manifest,
                     )
                     if manifest_uploaded:
@@ -1417,8 +1624,7 @@ def _run_assigned_job(
                             job_id=assignment.job_id,
                             bundle_root=bundle_root,
                             workdir=workdir,
-                            watch_paths=execution_config.checkpoint_watch_paths
-                            + execution_config.resume_preserved_output_paths,
+                            watch_paths=_effective_checkpoint_watch_paths(execution_config),
                             manifest=checkpoint_manifest,
                         )
                         if manifest_uploaded:
@@ -1446,7 +1652,20 @@ def _run_assigned_job(
                             )
                             if status_uploaded:
                                 last_checkpoint_storage_success_at = time.monotonic()
-                        context.gateway.fail_job(job_id=assignment.job_id)
+                        _fail_assigned_job(
+                            context=context,
+                            logger=job_log,
+                            assignment=assignment,
+                            bundle_root=bundle_root,
+                            workdir=workdir,
+                            execution_config=execution_config,
+                            reason=supervision_failure.reason,
+                            detail=supervision_failure.detail,
+                            progress=latest_progress,
+                            progress_codes=latest_progress_codes,
+                            resume_progress_baseline=resume_progress_baseline,
+                            checkpoint_manifest_path=checkpoint_manifest_path,
+                        )
                         should_exit_loop = True
                         break
 
@@ -1473,8 +1692,7 @@ def _run_assigned_job(
                 job_id=assignment.job_id,
                 bundle_root=bundle_root,
                 workdir=workdir,
-                watch_paths=execution_config.checkpoint_watch_paths
-                + execution_config.resume_preserved_output_paths,
+                watch_paths=_effective_checkpoint_watch_paths(execution_config),
                 manifest=checkpoint_manifest,
             )
             if manifest_uploaded:
@@ -1505,7 +1723,20 @@ def _run_assigned_job(
             if result.status == "completed":
                 context.gateway.complete_job(job_id=assignment.job_id)
             elif result.status == "failed":
-                context.gateway.fail_job(job_id=assignment.job_id)
+                _fail_assigned_job(
+                    context=context,
+                    logger=job_log,
+                    assignment=assignment,
+                    bundle_root=bundle_root,
+                    workdir=workdir,
+                    execution_config=execution_config,
+                    reason="payload_failed",
+                    detail=None,
+                    progress=latest_progress,
+                    progress_codes=latest_progress_codes,
+                    resume_progress_baseline=resume_progress_baseline,
+                    checkpoint_manifest_path=checkpoint_manifest_path,
+                )
             return False
         finally:
             if context.heartbeat_thread is not None:

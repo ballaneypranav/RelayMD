@@ -1050,7 +1050,7 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
     execution = execution_holder["execution"]
     assert execution.request_terminate_calls == 1
     assert execution.kill_calls == 1
-    assert storage.upload_file.call_count == 4
+    assert storage.upload_file.call_count == 6
     uploaded_keys = [call_args.args[1] for call_args in storage.upload_file.call_args_list]
     assert f"jobs/{assignment.job_id}/checkpoints/manifest.json" in uploaded_keys
     assert f"jobs/{assignment.job_id}/checkpoints/status.json" in uploaded_keys
@@ -1065,7 +1065,8 @@ def test_run_assigned_job_fatal_log_failure_uploads_log_as_checkpoint(monkeypatc
         for method_call in report_calls
     )
     gateway.start_job.assert_called_once_with(job_id=assignment.job_id)
-    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.fail_job.assert_called_once()
+    assert gateway.fail_job.call_args.kwargs["job_id"] == assignment.job_id
     gateway.complete_job.assert_not_called()
 
 
@@ -1432,7 +1433,8 @@ def test_run_assigned_job_fails_when_checkpoint_hydration_fails(monkeypatch) -> 
 
     _run_assigned_job(context=context, assignment=assignment)
 
-    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.fail_job.assert_called_once()
+    assert gateway.fail_job.call_args.kwargs["job_id"] == assignment.job_id
     gateway.start_job.assert_not_called()
     job_execution.assert_not_called()
 
@@ -2246,7 +2248,8 @@ def test_run_assigned_job_fails_fast_when_cuda_required_but_unavailable(
 
     _run_assigned_job(context=context, assignment=assignment)
 
-    gateway.fail_job.assert_called_once_with(job_id=assignment.job_id)
+    gateway.fail_job.assert_called_once()
+    assert gateway.fail_job.call_args.kwargs["job_id"] == assignment.job_id
     gateway.complete_job.assert_not_called()
 
 
