@@ -5,6 +5,7 @@ from .checkpoint_report_checkpoint_cycle_failures_item import CheckpointReportCh
 from .cluster_config_read import ClusterConfigRead
 from .cluster_enabled_map_update import ClusterEnabledMapUpdate
 from .cluster_enabled_map_update_enabled import ClusterEnabledMapUpdateEnabled
+from .fail_job_report import FailJobReport
 from .frontend_config_config_frontend_get_response_frontend_config_config_frontend_get import FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet
 from .get_slurm_clusters_config_slurm_clusters_get_response_get_slurm_clusters_config_slurm_clusters_get import GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet
 from .handoff_complete import HandoffComplete
@@ -42,6 +43,7 @@ __all__ = (
     "ClusterConfigRead",
     "ClusterEnabledMapUpdate",
     "ClusterEnabledMapUpdateEnabled",
+    "FailJobReport",
     "FrontendConfigConfigFrontendGetResponseFrontendConfigConfigFrontendGet",
     "GetSlurmClustersConfigSlurmClustersGetResponseGetSlurmClustersConfigSlurmClustersGet",
     "HandoffComplete",

@@ -758,6 +758,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FailJobReport"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "204": {
             "description": "Successful Response"
@@ -1504,6 +1521,45 @@
         ],
         "title": "ClusterEnabledMapUpdate"
       },
+      "FailJobReport": {
+        "properties": {
+          "failure_artifact_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Artifact Path"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "FailJobReport"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -2010,6 +2066,17 @@
             ],
             "title": "Latest Checkpoint Manifest Path"
           },
+          "latest_failure_artifact_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Failure Artifact Path"
+          },
           "cancellation_requested_at": {
             "anyOf": [
               {
@@ -2135,6 +2202,7 @@
           "started_at",
           "status_changed_at",
           "latest_checkpoint_manifest_path",
+          "latest_failure_artifact_path",
           "last_checkpoint_at",
           "assigned_worker_id",
           "created_at",
