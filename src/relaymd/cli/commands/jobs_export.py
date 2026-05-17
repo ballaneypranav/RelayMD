@@ -33,6 +33,7 @@ JOB_EXPORT_COLUMNS: list[str] = [
     "progress_percent",
     "progress_codes_text",
     "latest_checkpoint",
+    "latest_failure_artifact",
     "checkpoint_cycle_status_text",
     "checkpoint_failures_text",
     "checkpoint_age",
@@ -225,6 +226,7 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         "progress_percent": f"{progress_percent}%",
         "progress_codes_text": progress_codes_text or "-",
         "latest_checkpoint": str(job.get("latest_checkpoint_manifest_path") or "-"),
+        "latest_failure_artifact": str(job.get("latest_failure_artifact_path") or "-"),
         "checkpoint_cycle_status_text": str(job.get("checkpoint_cycle_status") or "-"),
         "checkpoint_failures_text": checkpoint_failures_text,
         "checkpoint_age": format_duration((now - checkpoint_at).total_seconds())

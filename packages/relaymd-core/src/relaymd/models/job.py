@@ -23,6 +23,7 @@ class Job(SQLModel, table=True):
     comment: str | None = None
     queue_blocked_reason: str | None = None
     latest_checkpoint_manifest_path: str | None = None
+    latest_failure_artifact_path: str | None = None
     last_checkpoint_at: datetime | None = None
     cancellation_requested_at: datetime | None = None
     progress: float | None = None
@@ -55,6 +56,7 @@ class JobRead(SQLModel):
     started_at: datetime | None
     status_changed_at: datetime
     latest_checkpoint_manifest_path: str | None
+    latest_failure_artifact_path: str | None
     cancellation_requested_at: datetime | None = None
     last_checkpoint_at: datetime | None
     progress: float | None = None
@@ -93,6 +95,12 @@ class HandoffComplete(SQLModel):
     progress_codes: list[str] = []
     checkpoint_cycle_status: str | None = None
     checkpoint_cycle_failures: list[dict[str, str]] = []
+
+
+class FailJobReport(SQLModel):
+    failure_artifact_path: str | None = None
+    reason: str | None = None
+    detail: str | None = None
 
 
 class JobEvent(SQLModel, table=True):

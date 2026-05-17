@@ -8,9 +8,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from relaymd.models import (
     CheckpointReport,
+    FailJobReport,
     HandoffComplete,
     HandoffStart,
-    Job,
     JobAssigned,
     JobConflict,
     JobControl,
@@ -27,6 +27,7 @@ from relaymd.orchestrator.services import (
 )
 from relaymd.orchestrator.services.job_history_service import append_job_event
 
+from ._job_router_utils import get_job_or_404, model_fields_dict
 from ._responses import job_transition_conflict_response
 
 router = APIRouter(prefix="/jobs", dependencies=[Depends(require_worker_api_token)])
@@ -64,9 +65,7 @@ async def get_job_control(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> JobControl:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
     return JobControl(
         job_id=job.id,
         status=job.status,
@@ -88,9 +87,7 @@ async def start_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     if job.status == JobStatus.running:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -130,9 +127,7 @@ async def report_checkpoint(
     payload: CheckpointReport,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     transitions = JobTransitionService()
     try:
@@ -168,14 +163,17 @@ async def report_checkpoint(
         "checkpoint_manifest_path": checkpoint_manifest_path,
         "checkpoint_path": checkpoint_manifest_path,
     }
-    for field_name in (
-        "progress",
-        "progress_codes",
-        "checkpoint_cycle_status",
-        "checkpoint_cycle_failures",
-    ):
-        if field_name in payload.model_fields_set:
-            event_payload[field_name] = getattr(payload, field_name)
+    event_payload.update(
+        model_fields_dict(
+            payload,
+            (
+                "progress",
+                "progress_codes",
+                "checkpoint_cycle_status",
+                "checkpoint_cycle_failures",
+            ),
+        )
+    )
     await append_job_event(
         session,
         job_id=job.id,
@@ -204,9 +202,7 @@ async def start_handoff(
     payload: HandoffStart,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     transitions = JobTransitionService()
     try:
@@ -220,9 +216,9 @@ async def start_handoff(
         "reason": payload.reason,
         "progress_codes": payload.progress_codes,
     }
-    for field_name in ("progress", "deadline_epoch_seconds", "message"):
-        if field_name in payload.model_fields_set:
-            event_payload[field_name] = getattr(payload, field_name)
+    event_payload.update(
+        model_fields_dict(payload, ("progress", "deadline_epoch_seconds", "message"))
+    )
     await append_job_event(
         session,
         job_id=job.id,
@@ -251,9 +247,7 @@ async def complete_handoff(
     payload: HandoffComplete,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     transitions = JobTransitionService()
     try:
@@ -288,17 +282,17 @@ async def complete_handoff(
         return job_transition_conflict_response(exc)
 
     session.add(job)
-    event_payload: dict[str, object] = {}
-    for field_name in (
-        "checkpoint_manifest_path",
-        "checkpoint_path",
-        "progress",
-        "progress_codes",
-        "checkpoint_cycle_status",
-        "checkpoint_cycle_failures",
-    ):
-        if field_name in payload.model_fields_set:
-            event_payload[field_name] = getattr(payload, field_name)
+    event_payload = model_fields_dict(
+        payload,
+        (
+            "checkpoint_manifest_path",
+            "checkpoint_path",
+            "progress",
+            "progress_codes",
+            "checkpoint_cycle_status",
+            "checkpoint_cycle_failures",
+        ),
+    )
     await append_job_event(
         session,
         job_id=job.id,
@@ -326,9 +320,7 @@ async def complete_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     transitions = JobTransitionService()
     try:
@@ -363,19 +355,30 @@ async def complete_job(
 async def fail_job(
     job_id: UUID,
     session: Annotated[AsyncSession, Depends(get_session)],
+    payload: FailJobReport | None = None,
 ) -> Response:
-    job = await session.get(Job, job_id)
-    if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    job = await get_job_or_404(session, job_id)
 
     transitions = JobTransitionService()
     try:
         previous_status = job.status
-        transitions.mark_job_failed(job)
+        transitions.mark_job_failed(
+            job,
+            failure_artifact_path=(
+                payload.failure_artifact_path
+                if payload is not None and "failure_artifact_path" in payload.model_fields_set
+                else None
+            ),
+        )
     except JobTransitionConflictError as exc:
         return job_transition_conflict_response(exc)
 
     session.add(job)
+    event_payload = (
+        model_fields_dict(payload, ("failure_artifact_path", "reason", "detail"))
+        if payload is not None
+        else {}
+    )
     await append_job_event(
         session,
         job_id=job.id,
@@ -383,6 +386,7 @@ async def fail_job(
         worker_id=job.assigned_worker_id,
         status_from=previous_status,
         status_to=JobStatus.failed,
+        payload=event_payload or None,
     )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

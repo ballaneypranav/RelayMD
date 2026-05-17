@@ -38,6 +38,7 @@ class JobRead:
             started_at (datetime.datetime | None):
             status_changed_at (datetime.datetime):
             latest_checkpoint_manifest_path (None | str):
+            latest_failure_artifact_path (None | str):
             last_checkpoint_at (datetime.datetime | None):
             assigned_worker_id (None | UUID):
             created_at (datetime.datetime):
@@ -63,6 +64,7 @@ class JobRead:
     started_at: datetime.datetime | None
     status_changed_at: datetime.datetime
     latest_checkpoint_manifest_path: None | str
+    latest_failure_artifact_path: None | str
     last_checkpoint_at: datetime.datetime | None
     assigned_worker_id: None | UUID
     created_at: datetime.datetime
@@ -110,6 +112,9 @@ class JobRead:
 
         latest_checkpoint_manifest_path: None | str
         latest_checkpoint_manifest_path = self.latest_checkpoint_manifest_path
+
+        latest_failure_artifact_path: None | str
+        latest_failure_artifact_path = self.latest_failure_artifact_path
 
         last_checkpoint_at: None | str
         if isinstance(self.last_checkpoint_at, datetime.datetime):
@@ -206,6 +211,7 @@ class JobRead:
             "started_at": started_at,
             "status_changed_at": status_changed_at,
             "latest_checkpoint_manifest_path": latest_checkpoint_manifest_path,
+            "latest_failure_artifact_path": latest_failure_artifact_path,
             "last_checkpoint_at": last_checkpoint_at,
             "assigned_worker_id": assigned_worker_id,
             "created_at": created_at,
@@ -303,6 +309,14 @@ class JobRead:
             return cast(None | str, data)
 
         latest_checkpoint_manifest_path = _parse_latest_checkpoint_manifest_path(d.pop("latest_checkpoint_manifest_path"))
+
+
+        def _parse_latest_failure_artifact_path(data: object) -> None | str:
+            if data is None:
+                return data
+            return cast(None | str, data)
+
+        latest_failure_artifact_path = _parse_latest_failure_artifact_path(d.pop("latest_failure_artifact_path"))
 
 
         def _parse_last_checkpoint_at(data: object) -> datetime.datetime | None:
@@ -460,6 +474,7 @@ class JobRead:
             started_at=started_at,
             status_changed_at=status_changed_at,
             latest_checkpoint_manifest_path=latest_checkpoint_manifest_path,
+            latest_failure_artifact_path=latest_failure_artifact_path,
             last_checkpoint_at=last_checkpoint_at,
             assigned_worker_id=assigned_worker_id,
             created_at=created_at,

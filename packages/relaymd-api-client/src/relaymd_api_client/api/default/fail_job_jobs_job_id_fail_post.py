@@ -8,6 +8,7 @@ from ...client import AuthenticatedClient, Client
 from ...types import Response, UNSET
 from ... import errors
 
+from ...models.fail_job_report import FailJobReport
 from ...models.http_validation_error import HTTPValidationError
 from ...models.job_conflict import JobConflict
 from ...types import UNSET, Unset
@@ -19,6 +20,7 @@ from uuid import UUID
 def _get_kwargs(
     job_id: UUID,
     *,
+    body: FailJobReport | None | Unset = UNSET,
     x_api_token: None | str | Unset = UNSET,
 
 ) -> dict[str, Any]:
@@ -37,6 +39,14 @@ def _get_kwargs(
         "url": "/jobs/{job_id}/fail".format(job_id=quote(str(job_id), safe=""),),
     }
 
+    
+    if isinstance(body, FailJobReport):
+        _kwargs["json"] = body.to_dict()
+    else:
+        _kwargs["json"] = body
+
+
+    headers["Content-Type"] = "application/json"
 
     _kwargs["headers"] = headers
     return _kwargs
@@ -81,6 +91,7 @@ def sync_detailed(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: FailJobReport | None | Unset = UNSET,
     x_api_token: None | str | Unset = UNSET,
 
 ) -> Response[Any | HTTPValidationError | JobConflict]:
@@ -89,6 +100,7 @@ def sync_detailed(
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (FailJobReport | None | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -101,6 +113,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         job_id=job_id,
+body=body,
 x_api_token=x_api_token,
 
     )
@@ -115,6 +128,7 @@ def sync(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: FailJobReport | None | Unset = UNSET,
     x_api_token: None | str | Unset = UNSET,
 
 ) -> Any | HTTPValidationError | JobConflict | None:
@@ -123,6 +137,7 @@ def sync(
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (FailJobReport | None | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -136,6 +151,7 @@ def sync(
     return sync_detailed(
         job_id=job_id,
 client=client,
+body=body,
 x_api_token=x_api_token,
 
     ).parsed
@@ -144,6 +160,7 @@ async def asyncio_detailed(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: FailJobReport | None | Unset = UNSET,
     x_api_token: None | str | Unset = UNSET,
 
 ) -> Response[Any | HTTPValidationError | JobConflict]:
@@ -152,6 +169,7 @@ async def asyncio_detailed(
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (FailJobReport | None | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -164,6 +182,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         job_id=job_id,
+body=body,
 x_api_token=x_api_token,
 
     )
@@ -178,6 +197,7 @@ async def asyncio(
     job_id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    body: FailJobReport | None | Unset = UNSET,
     x_api_token: None | str | Unset = UNSET,
 
 ) -> Any | HTTPValidationError | JobConflict | None:
@@ -186,6 +206,7 @@ async def asyncio(
     Args:
         job_id (UUID):
         x_api_token (None | str | Unset):
+        body (FailJobReport | None | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -199,6 +220,7 @@ async def asyncio(
     return (await asyncio_detailed(
         job_id=job_id,
 client=client,
+body=body,
 x_api_token=x_api_token,
 
     )).parsed

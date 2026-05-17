@@ -66,6 +66,7 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
         ("Status", f"[{_status_style(status)}]{status}[/{_status_style(status)}]"),
         ("Input Bundle", str(job.get("input_bundle_path", "-"))),
         ("Latest Checkpoint", str(job.get("latest_checkpoint_manifest_path") or "-")),
+        ("Latest Failure Artifact", str(job.get("latest_failure_artifact_path") or "-")),
         ("Last Checkpoint", str(job.get("last_checkpoint_at") or "-")),
         ("Assigned Worker", str(job.get("assigned_worker_id") or "-")),
         ("Created", str(job.get("created_at") or "-")),

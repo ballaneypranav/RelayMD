@@ -17,6 +17,7 @@ from relaymd_api_client.api.default import (
 )
 from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.checkpoint_report import CheckpointReport as ApiCheckpointReport
+from relaymd_api_client.models.fail_job_report import FailJobReport as ApiFailJobReport
 from relaymd_api_client.models.job_assigned import JobAssigned as ApiJobAssigned
 from relaymd_api_client.models.no_job_available import NoJobAvailable as ApiNoJobAvailable
 from relaymd_api_client.models.platform import Platform as ApiPlatform
@@ -340,7 +341,23 @@ class ApiOrchestratorGateway:
         if not completed:
             self._logger.warning("handoff_complete_conflict_ignored", job_id=str(job_id))
 
-    def fail_job(self, *, job_id: UUID) -> None:
+    def fail_job(
+        self,
+        *,
+        job_id: UUID,
+        failure_artifact_path: str | None = None,
+        reason: str | None = None,
+        detail: str | None = None,
+    ) -> None:
+        body: ApiFailJobReport | None = None
+        if failure_artifact_path is not None or reason is not None or detail is not None:
+            body = ApiFailJobReport()
+            if failure_artifact_path is not None:
+                body["failure_artifact_path"] = failure_artifact_path
+            if reason is not None:
+                body["reason"] = reason
+            if detail is not None:
+                body["detail"] = detail
         gateway_helpers.call_with_conflict_handling(
             logger=self._logger,
             job_id=job_id,
@@ -348,6 +365,7 @@ class ApiOrchestratorGateway:
             api_call=lambda: fail_job_jobs_job_id_fail_post.sync(
                 job_id=job_id,
                 client=self.client,
+                body=body,
                 x_api_token=self._api_token,
             ),
         )

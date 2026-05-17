@@ -111,8 +111,15 @@ class JobTransitionService:
         )
         return updated_job
 
-    def mark_job_failed(self, job: Job) -> Job:
+    def mark_job_failed(
+        self,
+        job: Job,
+        *,
+        failure_artifact_path: str | None = None,
+    ) -> Job:
         updated_job = self._transition(job, JobStatus.failed)
+        if failure_artifact_path is not None:
+            updated_job.latest_failure_artifact_path = failure_artifact_path
         logger.info(
             "job_failed_reported", job_id=str(job.id), worker_id=str(job.assigned_worker_id)
         )
