@@ -36,6 +36,7 @@ def _make_job_read(
             "started_at": None,
             "status_changed_at": updated.isoformat(),
             "latest_checkpoint_manifest_path": None,
+            "latest_failure_artifact_path": None,
             "last_checkpoint_at": None,
             "assigned_worker_id": None,
             "created_at": updated.isoformat(),

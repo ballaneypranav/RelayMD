@@ -44,6 +44,7 @@ interface JobTableRow extends JobRow {
   progress_percent: string;
   progress_codes_text: string;
   latest_checkpoint: string;
+  latest_failure_artifact: string;
   checkpoint_cycle_status_text: string;
   checkpoint_failures_text: string;
   checkpoint_age: string;
@@ -77,6 +78,7 @@ export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
   "progress_percent",
   "progress_codes_text",
   "latest_checkpoint",
+  "latest_failure_artifact",
   "checkpoint_cycle_status_text",
   "checkpoint_failures_text",
   "checkpoint_age",
@@ -397,6 +399,7 @@ export function JobsView({
             started_at_iso: parseDate(job.started_at)?.toISOString() ?? "-",
             status_changed_at_iso: parseDate(job.status_changed_at)?.toISOString() ?? "-",
             latest_checkpoint: job.latest_checkpoint_manifest_path || "-",
+            latest_failure_artifact: job.latest_failure_artifact_path || "-",
             runtime: formatDuration(
               totalRuntimeSeconds(job, new Date(), jobHistoryById[job.id]?.worker_segments),
             ),
