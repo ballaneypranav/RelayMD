@@ -178,7 +178,7 @@ Pull and activate using explicit image URIs (backward-compatible mode):
 ```bash
 relaymd upgrade <release-version> \
   --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  --worker-image docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
+  --worker-image docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha>
 ```
 
 Each pull also installs a host-side `relaymd` CLI into the active release
@@ -198,7 +198,7 @@ relaymd upgrade latest
 
 `latest` first resolves from release manifest
 `relaymd-release-manifest.json` (published to GitHub release tag `latest`),
-which pins orchestrator image, worker image, and CLI URI together.
+which pins the orchestrator, every required worker-image profile, and CLI URI together.
 Docker image URIs remain the SaladCloud runtime contract. HPC upgrades use the
 matching prebuilt SIF artifacts when available before falling back to local
 `apptainer pull`.

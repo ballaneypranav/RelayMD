@@ -15,9 +15,14 @@ Per-cluster required keys:
 - `account`
 - `gpu_type`
 - `gpu_count`
-- exactly one of:
+- `worker_images`, mapping each supported profile key to exactly one of:
   - `sif_path` (shared filesystem path to a `.sif`)
-  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker:sha-abc1234`)
+  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker-gcncmcmd:sha-abc1234`)
+
+The root configuration declares `worker_image_profiles` and
+`default_worker_image`. Jobs persist one profile key, and the scheduler only
+provisions workers from a matching `worker_images` source. Legacy cluster-level
+`sif_path`/`image_uri` is temporarily translated to `worker_images.atom-openmm`.
 
 Optional keys:
 
@@ -29,7 +34,7 @@ Optional keys:
 - at most one of:
   - `memory` (renders `#SBATCH --mem=<value>`)
   - `memory_per_gpu` (renders `#SBATCH --mem-per-gpu=<value>`)
-- `sif_cache_dir` (directory for cached pulled SIFs when using `image_uri`; defaults to `$RELAYMD_SIF_CACHE_DIR` or `~/.apptainer/relaymd-sif-cache`)
+- `worker_images.<key>.sif_cache_dir` (directory for cached pulled SIFs when using `image_uri`; defaults to `$RELAYMD_SIF_CACHE_DIR` or `~/.apptainer/relaymd-sif-cache`)
 
 ## Template Rendering
 

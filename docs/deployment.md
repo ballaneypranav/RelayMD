@@ -214,7 +214,7 @@ Pull and activate a release:
 ```bash
 relaymd upgrade <release-version> \
   --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  --worker-image docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
+  --worker-image docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha>
 ```
 
 This also downloads and activates a host-side `relaymd` CLI binary under
@@ -245,7 +245,7 @@ git push origin vX.Y.Z
 On protected-branch CI, GitHub Actions publishes immutable `sha-<shortsha>`
 release artifacts, refreshes the `latest` GitHub Release, and uploads
 `relaymd-release-manifest.json`. The manifest is the source of truth tying the
-orchestrator image, worker image, optional reusable base SIF URIs, CLI URI, CLI
+orchestrator image, per-profile worker images, optional reusable base SIF URIs, CLI URI, CLI
 version, and source commit together. Do not hand-edit release manifests or reuse
 an old tag for new artifacts.
 
