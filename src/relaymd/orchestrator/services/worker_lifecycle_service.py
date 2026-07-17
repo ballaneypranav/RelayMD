@@ -128,6 +128,7 @@ class WorkerLifecycleService:
                     select(Worker).where(
                         Worker.provider_id == payload.provider_id,
                         Worker.status == WorkerStatus.queued,
+                        Worker.worker_image_key == payload.worker_image_key,
                     )
                 )
             ).first()
@@ -157,6 +158,7 @@ class WorkerLifecycleService:
             gpu_model=payload.gpu_model,
             gpu_count=payload.gpu_count,
             vram_gb=payload.vram_gb,
+            worker_image_key=payload.worker_image_key,
             provider_id=payload.provider_id,
             status=WorkerStatus.active,
         )
@@ -168,6 +170,7 @@ class WorkerLifecycleService:
             worker_id=str(worker.id),
             provider_id=worker.provider_id,
             platform=str(worker.platform),
+            worker_image_key=worker.worker_image_key,
         )
         return worker
 

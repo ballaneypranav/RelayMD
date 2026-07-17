@@ -33,6 +33,8 @@ from .register_worker_workers_register_post_response_register_worker_workers_reg
 from .validation_error import ValidationError
 from .validation_error_context import ValidationErrorContext
 from .worker_heartbeat import WorkerHeartbeat
+from .worker_image_catalog_read import WorkerImageCatalogRead
+from .worker_image_profile_read import WorkerImageProfileRead
 from .worker_read import WorkerRead
 from .worker_register import WorkerRegister
 from .worker_status import WorkerStatus
@@ -71,6 +73,8 @@ __all__ = (
     "ValidationError",
     "ValidationErrorContext",
     "WorkerHeartbeat",
+    "WorkerImageCatalogRead",
+    "WorkerImageProfileRead",
     "WorkerRead",
     "WorkerRegister",
     "WorkerStatus",

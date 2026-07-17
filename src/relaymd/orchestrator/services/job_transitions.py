@@ -247,6 +247,7 @@ class JobTransitionService:
         return Job(
             title=job.title,
             input_bundle_path=job.input_bundle_path,
+            worker_image_key=job.worker_image_key,
             preferred_clusters_json=job.preferred_clusters_json,
             comment=job.comment,
             queue_blocked_reason=None,

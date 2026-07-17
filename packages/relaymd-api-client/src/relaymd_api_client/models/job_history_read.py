@@ -45,8 +45,8 @@ class JobHistoryRead:
 
 
     def to_dict(self) -> dict[str, Any]:
-        from ..models.job_history_event_read import JobHistoryEventRead
         from ..models.job_worker_total_read import JobWorkerTotalRead
+        from ..models.job_history_event_read import JobHistoryEventRead
         from ..models.job_worker_segment_read import JobWorkerSegmentRead
         events = []
         for events_item_data in self.events:

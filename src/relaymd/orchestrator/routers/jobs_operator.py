@@ -134,6 +134,7 @@ def _job_to_read(job: Job) -> JobRead:
         title=job.title,
         status=job.status,
         input_bundle_path=job.input_bundle_path,
+        worker_image_key=job.worker_image_key,
         preferred_clusters=preferred_clusters,
         comment=job.comment,
         queue_blocked_reason=job.queue_blocked_reason,
@@ -212,6 +213,12 @@ async def create_job(
         payload.preferred_clusters, known_cluster_names=known_cluster_names
     )
     normalized_comment = _normalize_comment(payload.comment)
+    worker_image_key = payload.worker_image_key or settings.default_worker_image
+    if worker_image_key not in settings.worker_image_profiles:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Unknown worker image profile: {worker_image_key}",
+        )
     enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(
         settings.slurm_cluster_configs
     )
@@ -225,6 +232,7 @@ async def create_job(
         id=payload.id if payload.id is not None else uuid4(),
         title=payload.title,
         input_bundle_path=payload.input_bundle_path,
+        worker_image_key=worker_image_key,
         preferred_clusters_json=(json.dumps(normalized_clusters) if normalized_clusters else None),
         comment=normalized_comment,
         queue_blocked_reason=queue_blocked_reason,
@@ -241,6 +249,7 @@ async def create_job(
         worker_id=None,
         status_from=None,
         status_to=JobStatus.queued,
+        payload={"worker_image_key": worker_image_key},
     )
     try:
         await session.commit()
@@ -264,6 +273,7 @@ async def create_job(
         job_id=str(job.id),
         title=job.title,
         input_bundle_path=job.input_bundle_path,
+        worker_image_key=job.worker_image_key,
     )
     return await _job_to_read_with_runtime(session, job)
 

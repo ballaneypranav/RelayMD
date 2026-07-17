@@ -9,13 +9,15 @@ from relaymd_api_client.models.platform import Platform as ApiPlatform
 
 
 class OrchestratorGateway(Protocol):
-    def register_worker(
+    def register_worker(  # noqa: PLR0913
         self,
         *,
         platform: ApiPlatform,
         gpu_model: str,
         gpu_count: int,
         vram_gb: int,
+        provider_id: str | None = None,
+        worker_image_key: str = "atom-openmm",
     ) -> UUID: ...
 
     def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable: ...

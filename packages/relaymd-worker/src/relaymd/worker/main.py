@@ -1825,6 +1825,7 @@ def run_worker(config: WorkerConfig) -> None:
                 gpu_count=gpu_count,
                 vram_gb=vram_gb,
                 provider_id=provider_id,
+                worker_image_key=runtime_settings.worker_image_key,
             )
             worker_log = LOG.bind(worker_id=str(worker_id))
 

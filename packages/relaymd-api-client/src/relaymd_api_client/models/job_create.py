@@ -28,6 +28,7 @@ class JobCreate:
             title (str):
             input_bundle_path (str):
             id (None | Unset | UUID):
+            worker_image_key (None | str | Unset):
             preferred_clusters (list[str] | Unset):
             comment (None | str | Unset):
      """
@@ -35,6 +36,7 @@ class JobCreate:
     title: str
     input_bundle_path: str
     id: None | Unset | UUID = UNSET
+    worker_image_key: None | str | Unset = UNSET
     preferred_clusters: list[str] | Unset = UNSET
     comment: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -55,6 +57,12 @@ class JobCreate:
             id = str(self.id)
         else:
             id = self.id
+
+        worker_image_key: None | str | Unset
+        if isinstance(self.worker_image_key, Unset):
+            worker_image_key = UNSET
+        else:
+            worker_image_key = self.worker_image_key
 
         preferred_clusters: list[str] | Unset = UNSET
         if not isinstance(self.preferred_clusters, Unset):
@@ -77,6 +85,8 @@ class JobCreate:
         })
         if id is not UNSET:
             field_dict["id"] = id
+        if worker_image_key is not UNSET:
+            field_dict["worker_image_key"] = worker_image_key
         if preferred_clusters is not UNSET:
             field_dict["preferred_clusters"] = preferred_clusters
         if comment is not UNSET:
@@ -113,6 +123,16 @@ class JobCreate:
         id = _parse_id(d.pop("id", UNSET))
 
 
+        def _parse_worker_image_key(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        worker_image_key = _parse_worker_image_key(d.pop("worker_image_key", UNSET))
+
+
         preferred_clusters = cast(list[str], d.pop("preferred_clusters", UNSET))
 
 
@@ -130,6 +150,7 @@ class JobCreate:
             title=title,
             input_bundle_path=input_bundle_path,
             id=id,
+            worker_image_key=worker_image_key,
             preferred_clusters=preferred_clusters,
             comment=comment,
         )
