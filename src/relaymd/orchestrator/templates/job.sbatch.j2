@@ -139,6 +139,7 @@ apptainer_args=(
   --env IDLE_POLL_INTERVAL_SECONDS="{{ worker_idle_poll_interval_seconds | default(30) }}"
   --env IDLE_POLL_MAX_SECONDS="{{ worker_idle_poll_max_seconds | default(600) }}"
   --env RELAYMD_CLUSTER_NAME="{{ cluster_name }}"
+  --env RELAYMD_WORKER_IMAGE_KEY="{{ worker_image_key }}"
   --env SLURM_JOB_ID="${SLURM_JOB_ID}"
   --env RELAYMD_PROACTIVE_HANDOFF_MARGIN_SECONDS="{{ worker_proactive_handoff_margin_seconds | default(600) }}"
 )

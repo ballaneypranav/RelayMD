@@ -40,6 +40,7 @@ class QueuedJobCandidate(NamedTuple):
     id: UUID
     created_at: datetime
     preferred_clusters_json: str | None
+    worker_image_key: str
 
 
 def _squeue_stderr_has_invalid_job_id(stderr_text: str) -> bool:
@@ -267,11 +268,16 @@ class SlurmProvisioningService:
             (
                 job
                 for job in queued_jobs
-                if (
-                    preferred_clusters := self._preferred_clusters_json(job.preferred_clusters_json)
+                if job.worker_image_key in cluster.worker_images
+                and (
+                    (
+                        preferred_clusters := self._preferred_clusters_json(
+                            job.preferred_clusters_json
+                        )
+                    )
+                    == []
+                    or cluster.name in preferred_clusters
                 )
-                == []
-                or cluster.name in preferred_clusters
             ),
             None,
         )
@@ -283,6 +289,7 @@ class SlurmProvisioningService:
             "provisioning_evaluated",
             cluster_name=cluster.name,
             job_id=str(queued_job.id),
+            worker_image_key=queued_job.worker_image_key,
             strategy=cluster.strategy,
         )
 
@@ -314,6 +321,7 @@ class SlurmProvisioningService:
                     select(Worker).where(
                         Worker.platform == Platform.hpc,
                         Worker.status == WorkerStatus.active,
+                        Worker.worker_image_key == queued_job.worker_image_key,
                         col(Worker.last_heartbeat) >= self._stale_cutoff,
                     )
                 )
@@ -336,6 +344,7 @@ class SlurmProvisioningService:
                     Worker.platform == Platform.hpc,
                     Worker.status == WorkerStatus.queued,
                     col(Worker.provider_id).startswith(cluster_prefix),
+                    Worker.worker_image_key == queued_job.worker_image_key,
                 )
             )
         ).all()
@@ -365,6 +374,7 @@ class SlurmProvisioningService:
             cluster,
             self._settings,
             worker_id=placeholder_id,
+            worker_image_key=queued_job.worker_image_key,
         )
         now = datetime.now(UTC).replace(tzinfo=None)
         placeholder = Worker(
@@ -373,6 +383,7 @@ class SlurmProvisioningService:
             gpu_model=cluster.gpu_type,
             gpu_count=cluster.gpu_count,
             vram_gb=0,
+            worker_image_key=queued_job.worker_image_key,
             status=WorkerStatus.queued,
             provider_id=slurm_provider_id(cluster.name, raw_slurm_id),
             provider_state="submitted",
@@ -387,6 +398,7 @@ class SlurmProvisioningService:
             job_id=str(queued_job.id),
             provider_id=placeholder.provider_id,
             worker_id=str(placeholder.id),
+            worker_image_key=queued_job.worker_image_key,
         )
         logger.info(
             "slurm_cluster_submission_succeeded",
@@ -545,6 +557,7 @@ async def submit_pending_slurm_jobs(
                 id=job.id,
                 created_at=job.created_at,
                 preferred_clusters_json=job.preferred_clusters_json,
+                worker_image_key=job.worker_image_key,
             )
             for job in queued_jobs
         ]
