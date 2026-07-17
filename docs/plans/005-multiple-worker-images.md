@@ -333,7 +333,10 @@ using the software contract from `gcncmcmd-production.def`.
    before environment creation, matching the source definition.
 6. Create `/opt/gcncmcmd` from that file. Its Python 3.12 satisfies
    `relaymd-worker`'s current `>=3.11,<3.13` constraint.
-7. Install the selected GRAND source into `/opt/gcncmcmd` with `--no-deps`.
+7. Install GRAND directly from the ADR-pinned public HTTPS source
+   `https://github.com/essex-lab/grand.git` at commit
+   `f58784faeaaabbe054b306f7a474e0eaec5ff878`, with `--no-deps`; do not copy
+   or vendor a GRAND source tree into the build context.
 8. Install the RelayMD worker runtime dependencies missing from the exported
    environment (`boto3`, `infisical-python`, `nvidia-ml-py`, `orjson`,
    `pydantic-settings`, `structlog`, `tenacity`, and any transitive packages
@@ -553,7 +556,8 @@ Work:
 
 - Rename the generic RelayMD app layer and AToM base recipes.
 - Add explicit image labels and `RELAYMD_WORKER_IMAGE_KEY` defaults.
-- Add the GCNCMC Docker and Apptainer base recipes from the pinned inputs.
+- Add the GCNCMC Docker and Apptainer base recipes from the committed
+  `openmm.yml` and the ADR-pinned upstream GRAND source.
 - Apply the shared RelayMD app layer to both bases.
 - Update local build/conversion scripts for one profile or all profiles.
 - Add import, version, entrypoint, and available GPU smoke checks.
@@ -769,7 +773,8 @@ Images:
 - Both OCI images build from a clean checkout.
 - Both SIFs build from the published bases.
 - AToM smoke test imports AToM-OpenMM and OpenMM 8.4.
-- GCNCMC smoke test imports local GRAND 1.1.0, OpenMM 8.2, and openmmtools.
+- GCNCMC smoke test imports the ADR-pinned upstream GRAND 1.1.0, OpenMM 8.2,
+  and openmmtools.
 - Both final images start/import the RelayMD worker with their intended
   environment Python.
 - A GPU smoke run confirms OpenMM reports `CUDA` under Docker GPU runtime and
