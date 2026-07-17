@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: local_build_images.sh [--engine auto|docker|podman] [--tag <tag>] [--worker-image <name>] [--orchestrator-image <name>] [--base-image <name>]
+Usage: local_build_images.sh [--engine auto|docker|podman] [--tag <tag>] [--worker-profile atom-openmm|gcncmcmd|all] [--worker-image <name>] [--orchestrator-image <name>] [--base-image <name>]
 
 Build worker + orchestrator Docker images from the current workspace for local Apptainer conversion.
 Defaults:
@@ -19,6 +19,7 @@ TAG="${TAG:-local-dev}"
 WORKER_IMAGE_NAME="${WORKER_IMAGE_NAME:-relaymd-worker}"
 ORCHESTRATOR_IMAGE_NAME="${ORCHESTRATOR_IMAGE_NAME:-relaymd-orchestrator}"
 BASE_IMAGE="${BASE_IMAGE:-ghcr.io/your-org/relaymd-base:latest}"
+WORKER_PROFILE="${WORKER_PROFILE:-atom-openmm}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +33,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --worker-image)
             WORKER_IMAGE_NAME="$2"
+            shift 2
+            ;;
+        --worker-profile)
+            WORKER_PROFILE="$2"
             shift 2
             ;;
         --orchestrator-image)
@@ -82,22 +87,32 @@ elif ! command -v "${BUILD_ENGINE}" >/dev/null 2>&1; then
     exit 1
 fi
 
-WORKER_REF="${WORKER_IMAGE_NAME}:${TAG}"
 ORCHESTRATOR_REF="${ORCHESTRATOR_IMAGE_NAME}:${TAG}"
 
 printf 'Using build engine: %s\n' "${BUILD_ENGINE}"
-printf 'Building worker image: %s\n' "${WORKER_REF}"
-"${BUILD_ENGINE}" build --build-arg BASE_IMAGE="${BASE_IMAGE}" -t "${WORKER_REF}" .
+if [[ "${WORKER_PROFILE}" != "atom-openmm" && "${WORKER_PROFILE}" != "gcncmcmd" && "${WORKER_PROFILE}" != "all" ]]; then
+    echo "Invalid --worker-profile '${WORKER_PROFILE}'. Expected atom-openmm|gcncmcmd|all." >&2
+    exit 1
+fi
+for profile in atom-openmm gcncmcmd; do
+    [[ "${WORKER_PROFILE}" == "all" || "${WORKER_PROFILE}" == "${profile}" ]] || continue
+    base_ref="${WORKER_IMAGE_NAME}-${profile}-base:${TAG}"
+    worker_ref="${WORKER_IMAGE_NAME}-${profile}:${TAG}"
+    printf 'Building %s worker base: %s\n' "${profile}" "${base_ref}"
+    "${BUILD_ENGINE}" build -f "Dockerfile.worker-${profile}-base" -t "${base_ref}" .
+    printf 'Building %s worker image: %s\n' "${profile}" "${worker_ref}"
+    "${BUILD_ENGINE}" build -f Dockerfile.worker --build-arg BASE_IMAGE="${base_ref}" -t "${worker_ref}" .
+done
 
 printf 'Building orchestrator image: %s\n' "${ORCHESTRATOR_REF}"
 "${BUILD_ENGINE}" build -f Dockerfile.orchestrator -t "${ORCHESTRATOR_REF}" .
 
 cat <<OUT
 Built local images:
-  worker:       ${WORKER_REF}
+  worker:       ${WORKER_IMAGE_NAME}-{atom-openmm,gcncmcmd}:${TAG}
   orchestrator: ${ORCHESTRATOR_REF}
 
 Apptainer source URIs:
-  worker:       docker-daemon://${WORKER_REF}
+  worker:       docker-daemon://${WORKER_IMAGE_NAME}-{atom-openmm,gcncmcmd}:${TAG}
   orchestrator: docker-daemon://${ORCHESTRATOR_REF}
 OUT

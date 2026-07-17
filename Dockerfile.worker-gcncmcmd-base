@@ -1,0 +1,22 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+LABEL relaymd.component=worker \
+      relaymd.worker_image_key=gcncmcmd \
+      relaymd.worker_image_name=GCNCMC-MD
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/gcncmcmd/bin:${PATH} \
+    PYTHONNOUSERSITE=1 OPENMM_CPU_THREADS=1 RELAYMD_WORKER_IMAGE_KEY=gcncmcmd
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bzip2 bash coreutils tar procps tailscale \
+    && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY images/gcncmcmd/openmm.yml /tmp/openmm.yml
+RUN sed -i '/^prefix:/d; /grand==1.1.0/d' /tmp/openmm.yml \
+    && micromamba create -y -p /opt/gcncmcmd -f /tmp/openmm.yml \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir --no-deps git+https://github.com/essex-lab/grand.git@f58784faeaaabbe054b306f7a474e0eaec5ff878 \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir uv boto3 infisical-python nvidia-ml-py orjson pydantic-settings structlog tenacity \
+    && micromamba clean -a -y
+
+RUN python -c "import grand, openmm, openmmtools; assert grand.__version__ == '1.1.0'; assert openmm.version.version.startswith('8.2')"
