@@ -457,6 +457,9 @@ async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> Non
             _ = fmt
             self.messages.append(rendered)
 
+        def warning(self, *args, **kwargs) -> None:
+            _ = (args, kwargs)
+
     fake_logger = FakeLogger()
 
     class FakeProcess:
@@ -833,6 +836,7 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
         "provisioning_evaluated",
         cluster_name="gilbreth",
         job_id=ANY,
+        worker_image_key="atom-openmm",
         strategy="reactive",
     )
     info_mock.assert_any_call(
@@ -846,12 +850,14 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
         job_id=ANY,
         provider_id=worker.provider_id,
         worker_id=str(worker.id),
+        worker_image_key="atom-openmm",
     )
     info_mock.assert_any_call(
         "slurm_cluster_submission_succeeded",
         slurm_job_id="44444",
         provider_id=worker.provider_id,
         worker_id=str(worker.id),
+        worker_image_key="atom-openmm",
         cluster_name="gilbreth",
         partition="gpu",
         account="lab-account",
@@ -1395,8 +1401,9 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
         _settings: OrchestratorSettings,
         *,
         worker_id: UUID | None = None,
+        worker_image_key: str = "atom-openmm",
     ) -> str:
-        _ = worker_id
+        _ = (worker_id, worker_image_key)
         if cluster.name == "gilbreth":
             raise SlurmSubmissionError(
                 "sbatch submission failed: rc=1, stderr=sbatch: error: QOSMinGRES",

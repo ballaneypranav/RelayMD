@@ -9,6 +9,7 @@ def test_build_monitor_snapshot_lines_includes_jobs_and_workers_sections() -> No
             "id": "11111111-1111-1111-1111-111111111111",
             "title": "job-one",
             "status": "queued",
+            "worker_image_key": "atom-openmm",
             "created_at": "2026-01-01T00:00:00Z",
             "assigned_worker_id": None,
         }
@@ -17,6 +18,7 @@ def test_build_monitor_snapshot_lines_includes_jobs_and_workers_sections() -> No
         {
             "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             "platform": "linux",
+            "worker_image_key": "atom-openmm",
             "gpu_model": "A100",
             "vram_gb": 80,
             "last_heartbeat": "2026-01-01T00:00:00Z",
@@ -33,9 +35,12 @@ def test_build_monitor_snapshot_lines_includes_jobs_and_workers_sections() -> No
 
     assert lines[0] == "updated_at\t2026-01-01T00:00:01Z"
     assert "[jobs]" in lines
-    assert "id\ttitle\tstatus\tcreated_at\tassigned_worker_id" in lines
+    assert "id\ttitle\tstatus\tworker_image_key\tcreated_at\tassigned_worker_id" in lines
     assert "[workers]" in lines
-    assert "id\tplatform\tgpu_model\tvram_gb\tlast_heartbeat\tjobs_completed\tstatus" in lines
+    assert (
+        "id\tplatform\tworker_image_key\tgpu_model\tvram_gb\tlast_heartbeat\tjobs_completed\tstatus"
+        in lines
+    )
 
 
 def test_monitor_renders_one_iteration_and_exits_on_keyboard_interrupt(monkeypatch) -> None:
@@ -45,6 +50,7 @@ def test_monitor_renders_one_iteration_and_exits_on_keyboard_interrupt(monkeypat
                 "id": "11111111-1111-1111-1111-111111111111",
                 "title": "job-one",
                 "status": "queued",
+                "worker_image_key": "atom-openmm",
                 "created_at": "2026-01-01T00:00:00Z",
                 "assigned_worker_id": None,
             }
@@ -54,6 +60,7 @@ def test_monitor_renders_one_iteration_and_exits_on_keyboard_interrupt(monkeypat
             return {
                 "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 "platform": "linux",
+                "worker_image_key": "atom-openmm",
                 "gpu_model": "A100",
                 "vram_gb": 80,
                 "last_heartbeat": "2026-01-01T00:00:00Z",
