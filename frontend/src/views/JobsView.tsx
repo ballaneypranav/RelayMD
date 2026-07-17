@@ -48,6 +48,7 @@ interface JobTableRow extends JobRow {
   checkpoint_cycle_status_text: string;
   checkpoint_failures_text: string;
   checkpoint_age: string;
+  worker_image_key: string;
 }
 
 export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
@@ -55,6 +56,7 @@ export const JOB_EXPORT_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job">> = [
   "job_id",
   "title",
   "status",
+  "worker_image_key",
   "age",
   "time_in_status",
   "assigned_worker_id",
@@ -91,6 +93,7 @@ export const JOB_EXPANDED_PANEL_COLUMN_KEYS: Array<keyof Omit<JobTableRow, "job"
   "assigned_at_iso",
   "started_at_iso",
   "status_changed_at_iso",
+  "worker_image_key",
   "runtime",
   "etc",
   "ett",
@@ -129,6 +132,14 @@ interface JobsViewProps {
   onBulkRequeueJobs: (jobs: JobRead[]) => void;
   loading: boolean;
   selectedJobHistory: JobHistoryRead | null;
+  workerImageDisplayNames: Record<string, string>;
+}
+
+function displayWorkerImage(key: string | undefined, displayNames: Record<string, string>): string {
+  if (!key) {
+    return "-";
+  }
+  return displayNames[key] ?? key;
 }
 
 function canCancel(job: JobRead): boolean {
@@ -147,9 +158,11 @@ function formatCheckpointAge(job: JobRead): string {
 function JobExpandedDetails({
   row,
   selectedJobHistory,
+  workerImageDisplayNames,
 }: {
   row: JobTableRow;
   selectedJobHistory: JobHistoryRead | null;
+  workerImageDisplayNames: Record<string, string>;
 }) {
   const job = row.job;
   const now = new Date();
@@ -160,6 +173,10 @@ function JobExpandedDetails({
   return (
     <div className="job-expanded-detail">
       <dl className="detail-list job-detail-grid">
+        <div>
+          <dt>Worker Image</dt>
+          <dd>{displayWorkerImage(job.worker_image_key, workerImageDisplayNames)}</dd>
+        </div>
         <div>
           <dt>Job ID</dt>
           <dd>{job.id}</dd>
@@ -374,6 +391,7 @@ export function JobsView({
   onBulkRequeueJobs,
   loading,
   selectedJobHistory,
+  workerImageDisplayNames,
 }: JobsViewProps) {
   const availableStatuses = Array.from(new Set(rows.map((job) => job.status))).sort();
   const filteredRows =
@@ -393,6 +411,7 @@ export function JobsView({
             ...row,
             job,
             job_id_full: job.id,
+            worker_image_key: job.worker_image_key || "-",
             assigned_worker_full: job.assigned_worker_id || "-",
             created_at_iso: parseDate(job.created_at)?.toISOString() ?? "-",
             assigned_at_iso: parseDate(job.assigned_at)?.toISOString() ?? "-",
@@ -443,7 +462,7 @@ export function JobsView({
           },
         ];
       }),
-    [filteredRows, jobById, selectedJobHistory, selectedJobId, jobHistoryById],
+    [filteredRows, jobById, selectedJobHistory, selectedJobId, jobHistoryById, workerImageDisplayNames],
   );
 
   const columns = useMemo<ColumnDef<JobTableRow>[]>(
@@ -486,6 +505,11 @@ export function JobsView({
             ) : null}
           </div>
         ),
+      },
+      {
+        accessorKey: "worker_image_key",
+        header: "Worker Image",
+        cell: ({ row }) => displayWorkerImage(row.original.worker_image_key, workerImageDisplayNames),
       },
       {
         accessorKey: "age",
@@ -702,6 +726,7 @@ export function JobsView({
           assigned_at_iso: false,
           started_at_iso: false,
           status_changed_at_iso: false,
+          worker_image_key: false,
           etc: false,
           updated_at_iso: false,
           input_bundle: false,
@@ -725,6 +750,7 @@ export function JobsView({
           <JobExpandedDetails
             row={row.original}
             selectedJobHistory={selectedJobId === row.original.job.id ? selectedHistory : null}
+            workerImageDisplayNames={workerImageDisplayNames}
           />
         )}
         searchPlaceholder="Search jobs"

@@ -10,6 +10,7 @@ JOB_EXPORT_COLUMNS: list[str] = [
     "job_id",
     "title",
     "status",
+    "worker_image_key",
     "age",
     "time_in_status",
     "assigned_worker_id",
@@ -197,6 +198,7 @@ def job_to_export_row(job: dict[str, Any], now: datetime) -> dict[str, str]:
         "job_id": _truncate_id(job.get("id")),
         "title": str(job.get("title") or "-"),
         "status": str(job.get("status") or "-"),
+        "worker_image_key": str(job.get("worker_image_key") or "-"),
         "age": format_duration((now - created_at).total_seconds()) if created_at else "-",
         "time_in_status": format_duration((now - status_changed_at).total_seconds())
         if status_changed_at

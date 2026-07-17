@@ -32,6 +32,7 @@ def _make_job_read(
             "title": title,
             "status": status.value,
             "input_bundle_path": "x",
+            "worker_image_key": "atom-openmm",
             "assigned_at": None,
             "started_at": None,
             "status_changed_at": updated.isoformat(),

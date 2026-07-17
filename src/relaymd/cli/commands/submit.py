@@ -152,6 +152,7 @@ def register_job(
     b2_key: str,
     preferred_clusters: list[str],
     comment: str | None,
+    worker_image_key: str | None,
     *,
     service: SubmitService | None = None,
 ) -> JobRead:
@@ -162,6 +163,7 @@ def register_job(
         b2_key=b2_key,
         preferred_clusters=preferred_clusters,
         comment=comment,
+        worker_image_key=worker_image_key,
     )
 
 
@@ -200,6 +202,28 @@ def normalize_submit_comment(raw_comment: str | None) -> str | None:
     return trimmed
 
 
+def normalize_worker_image_key(
+    requested_key: str | None, available_keys: set[str] | None
+) -> str | None:
+    if requested_key is None:
+        return None
+    normalized = requested_key.strip()
+    if not normalized:
+        raise SubmitCommandError(
+            code="invalid_worker_image",
+            message="--worker-image must not be blank.",
+        )
+    if available_keys is not None and normalized not in available_keys:
+        raise SubmitCommandError(
+            code="unknown_worker_image",
+            message=(
+                f"Unknown --worker-image value '{normalized}'. Available worker images: "
+                f"{', '.join(sorted(available_keys)) or '(none configured)'}"
+            ),
+        )
+    return normalized
+
+
 def submit(
     input_dir: Annotated[Path, typer.Argument(help="Input directory to pack and submit.")],
     title: Annotated[str, typer.Option("--title", help="Human-readable job title.")],
@@ -232,6 +256,10 @@ def submit(
     comment: Annotated[
         str | None,
         typer.Option("--comment", help="Optional operator note for the job."),
+    ] = None,
+    worker_image: Annotated[
+        str | None,
+        typer.Option("--worker-image", help="Configured worker image profile key."),
     ] = None,
 ) -> None:
     if not input_dir.exists() or not input_dir.is_dir():
@@ -266,6 +294,12 @@ def submit(
     try:
         normalized_clusters = normalize_submit_clusters(clusters or [], known_clusters)
         normalized_comment = normalize_submit_comment(comment)
+        catalog_getter = getattr(submit_service, "worker_image_catalog", None)
+        catalog = catalog_getter() if catalog_getter else None
+        normalized_worker_image = normalize_worker_image_key(
+            worker_image,
+            {profile.key for profile in catalog.worker_images} if catalog else None,
+        )
     except SubmitCommandError as exc:
         _exit_submit_error(json_mode=json_mode, code=exc.code, message=exc.message)
 
@@ -302,6 +336,7 @@ def submit(
             b2_key,
             normalized_clusters,
             normalized_comment,
+            normalized_worker_image,
             service=submit_service,
         )
     except Exception as exc:  # noqa: BLE001
@@ -321,6 +356,7 @@ def submit(
                     "status": str(created_job.status.value),
                     "preferred_clusters": created_job.preferred_clusters,
                     "comment": created_job.comment,
+                    "worker_image_key": created_job.worker_image_key,
                     "queue_blocked_reason": created_job.queue_blocked_reason,
                 }
             )
@@ -329,7 +365,9 @@ def submit(
 
     console.print(
         Panel.fit(
-            f"[bold green]Job submitted[/bold green]\n[bold]{created_job.id}[/bold]",
+            "[bold green]Job submitted[/bold green]\n"
+            f"[bold]{created_job.id}[/bold]\n"
+            f"Worker image: {created_job.worker_image_key}",
             title="RelayMD",
         )
     )

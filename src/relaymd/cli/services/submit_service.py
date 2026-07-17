@@ -3,12 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from relaymd_api_client.api.default import create_job_jobs_post
+from relaymd_api_client.api.default import (
+    create_job_jobs_post,
+    get_worker_images_config_worker_images_get,
+)
 from relaymd_api_client.errors import UnexpectedStatus
 from relaymd_api_client.models.http_validation_error import HTTPValidationError
 from relaymd_api_client.models.job_create import JobCreate
 from relaymd_api_client.models.job_create_conflict import JobCreateConflict
 from relaymd_api_client.models.job_read import JobRead
+from relaymd_api_client.models.worker_image_catalog_read import WorkerImageCatalogRead
 
 from relaymd.cli.context import CliContext
 
@@ -59,6 +63,28 @@ class SubmitService:
     def known_cluster_names(self) -> set[str]:
         return {cluster.name for cluster in self._context.settings.slurm_cluster_configs}
 
+    def worker_image_catalog(self) -> WorkerImageCatalogRead | None:
+        """Return the configured image catalog when supported by the server.
+
+        Older orchestrators do not provide this optional discovery endpoint;
+        submission remains server-validated in that case.
+        """
+        try:
+            with self._context.api_client() as client:
+                response = get_worker_images_config_worker_images_get.sync(
+                    client=client,
+                    x_api_token=self._context.settings.api_token,
+                )
+        except UnexpectedStatus as exc:
+            if exc.status_code == 404:
+                return None
+            raise
+        if isinstance(response, WorkerImageCatalogRead):
+            return response
+        if isinstance(response, HTTPValidationError):
+            raise RuntimeError(str(response.to_dict()))
+        return None
+
     def upload_bundle(self, *, local_archive: Path, b2_key: str) -> None:
         self._validate_storage_settings()
         self._context.storage_client().upload_file(local_archive, b2_key)
@@ -92,7 +118,7 @@ class SubmitService:
             raise RuntimeError("Failed to parse create job response")
         return response
 
-    def register_job_with_metadata(
+    def register_job_with_metadata(  # noqa: PLR0913
         self,
         *,
         job_id: UUID,
@@ -100,6 +126,7 @@ class SubmitService:
         b2_key: str,
         preferred_clusters: list[str],
         comment: str | None,
+        worker_image_key: str | None,
     ) -> JobRead:
         try:
             with self._context.api_client() as client:
@@ -109,6 +136,7 @@ class SubmitService:
                     input_bundle_path=b2_key,
                     preferred_clusters=preferred_clusters,
                     comment=comment,
+                    worker_image_key=worker_image_key,
                 )
                 response = create_job_jobs_post.sync(
                     client=client,

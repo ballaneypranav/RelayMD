@@ -25,6 +25,7 @@ JOB_LIST_COLUMNS: list[str] = [
     "id",
     "title",
     "status",
+    "worker_image_key",
     "created_at",
     "assigned_worker_id",
 ]
@@ -64,6 +65,7 @@ def _render_job_status_panel(job_id: str, job: dict[str, Any]) -> Panel:
         ("ID", str(job.get("id", "-"))),
         ("Title", str(job.get("title", "-"))),
         ("Status", f"[{_status_style(status)}]{status}[/{_status_style(status)}]"),
+        ("Worker Image", str(job.get("worker_image_key") or "-")),
         ("Input Bundle", str(job.get("input_bundle_path", "-"))),
         ("Latest Checkpoint", str(job.get("latest_checkpoint_manifest_path") or "-")),
         ("Latest Failure Artifact", str(job.get("latest_failure_artifact_path") or "-")),
@@ -109,6 +111,7 @@ def list_jobs(
         table.add_column("ID", style="cyan")
         table.add_column("Title")
         table.add_column("Status")
+        table.add_column("Worker Image")
         table.add_column("Created At")
         table.add_column("Worker ID")
         for job in jobs_payload:
@@ -118,6 +121,7 @@ def list_jobs(
                 str(job.get("id") or "-"),
                 str(job.get("title") or "-"),
                 status_formatted,
+                str(job.get("worker_image_key") or "-"),
                 str(job.get("created_at") or "-"),
                 str(job.get("assigned_worker_id") or "-"),
             )

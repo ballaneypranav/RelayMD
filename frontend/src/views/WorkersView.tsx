@@ -20,6 +20,7 @@ interface WorkersViewProps {
   onDownloadExport: (filename: string, text: string, mime: string) => void;
   toDelimited: (rows: WorkerRow[]) => string;
   toCsv: (rows: WorkerRow[]) => string;
+  workerImageDisplayNames: Record<string, string>;
 }
 
 interface WorkerTableRow extends WorkerRow {
@@ -30,11 +31,18 @@ interface WorkerTableRow extends WorkerRow {
   provider_last_checked: string;
   registered_at: string;
   heartbeat_timestamp: string;
+  worker_image: string;
 }
 
 const STATUS_FILTERS = ["active", "provisioning", "stale"] as const;
 
-function WorkerExpandedDetails({ row }: { row: WorkerTableRow }) {
+function WorkerExpandedDetails({
+  row,
+  workerImageDisplayNames,
+}: {
+  row: WorkerTableRow;
+  workerImageDisplayNames: Record<string, string>;
+}) {
   const worker = row.worker;
   const providerLastCheckedAt = parseDate(worker?.provider_last_checked_at);
   const registeredAt = parseDate(worker?.registered_at);
@@ -43,6 +51,14 @@ function WorkerExpandedDetails({ row }: { row: WorkerTableRow }) {
   return (
     <div className="job-expanded-detail">
       <dl className="detail-list job-detail-grid">
+        <div>
+          <dt>Worker Image</dt>
+          <dd>
+            {worker
+              ? (workerImageDisplayNames[worker.worker_image_key ?? ""] ?? worker.worker_image_key ?? "-")
+              : "-"}
+          </dd>
+        </div>
         <div>
           <dt>Worker ID</dt>
           <dd>{worker?.id ?? row.id}</dd>
@@ -126,6 +142,7 @@ export function WorkersView({
   onDownloadExport,
   toDelimited: _asDelimited,
   toCsv: _asCsv,
+  workerImageDisplayNames,
 }: WorkersViewProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>([...STATUS_FILTERS]);
   const workerById = useMemo(() => new Map(workers.map((worker) => [worker.id, worker])), [workers]);
@@ -146,6 +163,9 @@ export function WorkersView({
           ...row,
           worker,
           worker_id_full: worker?.id ?? row.id,
+          worker_image: worker
+            ? (workerImageDisplayNames[worker.worker_image_key ?? ""] ?? worker.worker_image_key ?? "-")
+            : "-",
           provider_raw_state: worker?.provider_state_raw || "-",
           provider_reason: worker?.provider_reason || "-",
           provider_last_checked: providerLastCheckedAt
@@ -155,7 +175,7 @@ export function WorkersView({
           heartbeat_timestamp: heartbeatAt ? formatEasternTimestamp(heartbeatAt) : "-",
         };
       }),
-    [filteredRows, workerById],
+    [filteredRows, workerById, workerImageDisplayNames],
   );
 
   const columns = useMemo<ColumnDef<WorkerTableRow>[]>(
@@ -180,6 +200,7 @@ export function WorkersView({
         ),
       },
       { accessorKey: "platform", header: "Platform" },
+      { accessorKey: "worker_image", header: "Worker Image" },
       { accessorKey: "gpu", header: "GPU" },
       { accessorKey: "provider_id", header: "Provider ID" },
       { accessorKey: "provider_state", header: "Provider State" },
@@ -241,7 +262,9 @@ export function WorkersView({
           registered_at: false,
           heartbeat_timestamp: false,
         }}
-        renderExpandedRow={(row: Row<WorkerTableRow>) => <WorkerExpandedDetails row={row.original} />}
+        renderExpandedRow={(row: Row<WorkerTableRow>) => (
+          <WorkerExpandedDetails row={row.original} workerImageDisplayNames={workerImageDisplayNames} />
+        )}
         searchPlaceholder="Search workers"
         toolbarActions={(context) => (
           <WorkersToolbar

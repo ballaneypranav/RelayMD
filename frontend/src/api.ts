@@ -6,6 +6,7 @@ import type {
   JobRead,
   JobHistoryRead,
   WorkerRead,
+  WorkerImageCatalog,
 } from "./types";
 
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -23,11 +24,15 @@ export async function fetchFrontendConfig(): Promise<FrontendConfig> {
 
 export async function fetchDashboardData(apiBaseUrl: string): Promise<DashboardPayload> {
   const base = apiBaseUrl || "";
-  const [jobs, workers, clustersPayload, health] = await Promise.all([
+  const [jobs, workers, clustersPayload, health, workerImageCatalog] = await Promise.all([
     readJson<JobRead[]>(`${base}/jobs`),
     readJson<WorkerRead[]>(`${base}/workers`),
     readJson<{ clusters: ClusterConfig[] }>(`${base}/config/slurm-clusters`),
     readJson<HealthStatus>(`${base}/healthz`),
+    readJson<WorkerImageCatalog>(`${base}/config/worker-images`).catch(() => ({
+      default_worker_image: "",
+      worker_images: [],
+    })),
   ]);
 
   return {
@@ -35,6 +40,7 @@ export async function fetchDashboardData(apiBaseUrl: string): Promise<DashboardP
     workers,
     clusters: clustersPayload.clusters,
     health,
+    workerImageCatalog,
   };
 }
 
