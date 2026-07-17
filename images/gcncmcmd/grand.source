@@ -1,0 +1,4 @@
+# Immutable GRAND source for the GCNCMC-MD worker image.
+url=https://github.com/essex-lab/grand.git
+commit=f58784faeaaabbe054b306f7a474e0eaec5ff878
+tag=v1.1.0

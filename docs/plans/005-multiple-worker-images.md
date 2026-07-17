@@ -50,9 +50,9 @@ provisioning and assignment.
    AToM currently uses Python 3.11 and OpenMM 8.4. Combining both environments
    in one base would create dependency conflicts and a much larger image.
 7. The referenced GCNCMC definition copies `openmm.yml` and a local `grand`
-   tree from its build context. The local GRAND checkout is at
-   `b7d6dad4e2638e9bf0ded5524ff32266dd06234b`, is one commit ahead of its
-   configured remote, and therefore is not yet a reproducible CI input.
+   tree from its build context. RelayMD replaces that local checkout with the
+   public HTTPS `essex-lab/grand` source pinned to the `v1.1.0` release commit
+   `f58784faeaaabbe054b306f7a474e0eaec5ff878`.
 
 ## Locked Decisions
 
@@ -351,15 +351,11 @@ and carrying AToM into the GCNCMC image provides no runtime value.
 The implementation must resolve GRAND provenance before enabling CI. Preferred
 order:
 
-1. Push commit `b7d6dad4e2638e9bf0ded5524ff32266dd06234b` to an HTTPS-accessible
-   repository and install that immutable commit.
-2. If that source cannot be published, add a versioned source archive with a
-   recorded SHA-256 checksum to the approved build inputs.
-
-Do not make CI depend on
+Install GRAND from the public HTTPS source at
+`https://github.com/essex-lab/grand.git` pinned to its `v1.1.0` release commit
+`f58784faeaaabbe054b306f7a474e0eaec5ff878`. Do not make CI depend on
 `/scratch/gilbreth/pballane/folate-alpha-beta/gcncmcmd/grand` or an SSH-only
-Git remote. Do not silently fall back to the public GRAND 1.1.0 package,
-because the source definition intentionally uses the repository copy.
+Git remote.
 
 ### Image tests
 
@@ -449,9 +445,8 @@ Work:
 
 - Confirm the stable keys `atom-openmm` and `gcncmcmd`, display names, artifact
   names, environment paths, and compatibility aliases.
-- Resolve GRAND provenance by publishing commit
-  `b7d6dad4e2638e9bf0ded5524ff32266dd06234b` over HTTPS or adding an approved
-  checksummed source archive.
+- Pin the GRAND source to `https://github.com/essex-lab/grand.git` at its
+  `v1.1.0` release commit `f58784faeaaabbe054b306f7a474e0eaec5ff878`.
 - Copy the pinned `openmm.yml` into an intentional RelayMD image-build input
   location.
 - Add the ADR for allowlisted image profiles and record the source-provenance
