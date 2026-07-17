@@ -283,7 +283,7 @@ resolve_latest_shared_sha_tag() {
 
 resolve_latest_release_manifest() {
     local manifest_uri="$1"
-    local manifest_json release_version manifest_orch manifest_worker manifest_cli
+    local manifest_json release_version manifest_orch manifest_worker manifest_cli manifest_worker_atom manifest_worker_gcn
 
     require_cmd jq "Install jq and rerun relaymd-service-pull latest"
 
@@ -297,11 +297,14 @@ resolve_latest_release_manifest() {
     release_version="$(jq -r '.release_version // empty' "${manifest_json}")"
     manifest_orch="$(jq -r '.orchestrator_image // empty' "${manifest_json}")"
     manifest_worker="$(jq -r '.worker_image // empty' "${manifest_json}")"
+    manifest_worker_atom="$(jq -r '.worker_images["atom-openmm"].image_uri // empty' "${manifest_json}")"
+    manifest_worker_gcn="$(jq -r '.worker_images.gcncmcmd.image_uri // empty' "${manifest_json}")"
     manifest_cli="$(jq -r '.cli_uri // empty' "${manifest_json}")"
     manifest_worker_sif="$(jq -r '.worker_sif_uri // empty' "${manifest_json}")"
     manifest_orch_sif="$(jq -r '.orchestrator_sif_uri // empty' "${manifest_json}")"
     rm -f "${manifest_json}" 2>/dev/null || true
 
+    manifest_worker="${manifest_worker_atom:-${manifest_worker}}"
     if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_cli}" ]]; then
         echo "Release manifest '${manifest_uri}' is missing required fields." >&2
         return 1
@@ -310,6 +313,8 @@ resolve_latest_release_manifest() {
     RELEASE_VERSION="${release_version}"
     ORCHESTRATOR_IMAGE_URI="${manifest_orch}"
     WORKER_IMAGE_URI="${manifest_worker}"
+    WORKER_ATOM_IMAGE_URI="${manifest_worker}"
+    WORKER_GCNCMC_IMAGE_URI="${manifest_worker_gcn}"
     AUTO_RESOLVED_CLI_URI="${manifest_cli}"
     AUTO_RESOLVED_WORKER_SIF_URI="${manifest_worker_sif}"
     AUTO_RESOLVED_ORCH_SIF_URI="${manifest_orch_sif}"
@@ -451,6 +456,8 @@ ensure_secure_private_dir "${APPTAINER_CACHEDIR}" "APPTAINER_CACHEDIR"
 
 ORCHESTRATOR_IMAGE_URI="${2:-${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}}"
 WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
+WORKER_ATOM_IMAGE_URI="${RELAYMD_WORKER_ATOM_OPENMM_IMAGE_URI:-${WORKER_IMAGE_URI}}"
+WORKER_GCNCMC_IMAGE_URI="${RELAYMD_WORKER_GCNCMC_IMAGE_URI:-}"
 
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
@@ -500,6 +507,11 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
     fi
 fi
 
+WORKER_ATOM_IMAGE_URI="${WORKER_ATOM_IMAGE_URI:-${WORKER_IMAGE_URI}}"
+if [[ -z "${WORKER_GCNCMC_IMAGE_URI}" && "${WORKER_ATOM_IMAGE_URI}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker:(sha-[A-Za-z0-9._-]+)$ ]]; then
+    WORKER_GCNCMC_IMAGE_URI="docker://ghcr.io/${BASH_REMATCH[1]}/relaymd-worker-gcncmcmd:${BASH_REMATCH[2]}"
+fi
+
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" ]]; then
     echo "Missing orchestrator image URI. Pass arg #2, set RELAYMD_ORCHESTRATOR_IMAGE_URI, or omit both URIs for auto mode." >&2
     exit 1
@@ -532,6 +544,8 @@ ORCH_TMP="${RELEASE_DIR}/relaymd-orchestrator.sif.tmp"
 WORKER_TMP="${RELEASE_DIR}/relaymd-worker.sif.tmp"
 ORCH_SIF="${RELEASE_DIR}/relaymd-orchestrator.sif"
 WORKER_SIF="${RELEASE_DIR}/relaymd-worker.sif"
+WORKER_ATOM_SIF="${RELEASE_DIR}/relaymd-worker-atom-openmm.sif"
+WORKER_GCNCMC_SIF="${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif"
 CLI_TMP="${RELEASE_DIR}/relaymd.tmp"
 CLI_BIN="${RELEASE_DIR}/relaymd"
 
@@ -598,14 +612,25 @@ _pull_sif() {
 
 _pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" "${AUTO_RESOLVED_ORCH_SIF_URI}" &
 ORCH_PID=$!
-_pull_sif "worker" "${WORKER_IMAGE_URI}" "${WORKER_SIF}" "${WORKER_TMP}" "${AUTO_RESOLVED_WORKER_SIF_URI}" &
+_pull_sif "worker-atom-openmm" "${WORKER_ATOM_IMAGE_URI}" "${WORKER_ATOM_SIF}" "${WORKER_ATOM_SIF}.tmp" "${AUTO_RESOLVED_WORKER_SIF_URI}" &
 WORKER_PID=$!
+if [[ -n "${WORKER_GCNCMC_IMAGE_URI}" ]]; then
+    _pull_sif "worker-gcncmcmd" "${WORKER_GCNCMC_IMAGE_URI}" "${WORKER_GCNCMC_SIF}" "${WORKER_GCNCMC_SIF}.tmp" &
+    GCNCMC_PID=$!
+else
+    GCNCMC_PID=""
+fi
 
 ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
 WORKER_EXIT=0; wait "${WORKER_PID}" || WORKER_EXIT=$?
+GCNCMC_EXIT=0
+if [[ -n "${GCNCMC_PID}" ]]; then
+    wait "${GCNCMC_PID}" || GCNCMC_EXIT=$?
+fi
 [[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] SIF pull failed (exit ${ORCH_EXIT})." >&2
 [[ "${WORKER_EXIT}" -eq 0 ]] || echo "[worker] SIF pull failed (exit ${WORKER_EXIT})." >&2
-[[ "${ORCH_EXIT}" -eq 0 && "${WORKER_EXIT}" -eq 0 ]] || exit 1
+[[ "${ORCH_EXIT}" -eq 0 && "${WORKER_EXIT}" -eq 0 && "${GCNCMC_EXIT}" -eq 0 ]] || exit 1
+ln -sfn "relaymd-worker-atom-openmm.sif" "${WORKER_SIF}"
 
 echo "Downloading relaymd CLI into ${CLI_BIN}"
 if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
@@ -654,7 +679,8 @@ fi
 
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
 echo "  orchestrator: ${ORCH_SIF}"
-echo "  worker:       ${WORKER_SIF}"
+echo "  worker (AToM-OpenMM): ${WORKER_ATOM_SIF}"
+[[ -z "${WORKER_GCNCMC_IMAGE_URI}" ]] || echo "  worker (GCNCMC-MD):  ${WORKER_GCNCMC_SIF}"
 echo "  cli:          ${CLI_BIN}"
 echo "  source images:"
 echo "    ${ORCHESTRATOR_IMAGE_URI}"
