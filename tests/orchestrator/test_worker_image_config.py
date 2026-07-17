@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+import pytest
+
+from relaymd.orchestrator.config import (
+    ClusterConfig,
+    OrchestratorSettings,
+    WorkerImageProfile,
+    WorkerImageSource,
+)
+
+
+def test_cluster_config_supports_multiple_named_worker_images() -> None:
+    cluster = ClusterConfig(
+        name="test",
+        partition="gpu",
+        account="lab",
+        ssh_host="test-host",
+        ssh_username="test-user",
+        worker_images={
+            "atom-openmm": WorkerImageSource(sif_path="/shared/atom-openmm.sif"),
+            "gcncmcmd": WorkerImageSource(
+                image_uri="ghcr.io/acme/relaymd-worker-gcncmcmd:sha-abc1234",
+                sif_cache_dir=" /shared/apptainer-cache ",
+            ),
+        },
+    )
+
+    assert cluster.apptainer_image == "/shared/atom-openmm.sif"
+    assert (
+        cluster.worker_image_source("gcncmcmd").apptainer_image
+        == "docker://ghcr.io/acme/relaymd-worker-gcncmcmd:sha-abc1234"
+    )
+    assert cluster.worker_image_source("gcncmcmd").sif_cache_dir == "/shared/apptainer-cache"
+
+
+def test_legacy_cluster_image_is_translated_to_atom_openmm() -> None:
+    with pytest.warns(DeprecationWarning, match="worker_images.atom-openmm"):
+        cluster = ClusterConfig(
+            name="test",
+            partition="gpu",
+            account="lab",
+            ssh_host="test-host",
+            ssh_username="test-user",
+            sif_path="/shared/relaymd-worker.sif",
+        )
+
+    assert cluster.worker_images["atom-openmm"].sif_path == "/shared/relaymd-worker.sif"
+
+
+def test_settings_reject_unknown_cluster_worker_image_key() -> None:
+    with pytest.raises(ValueError, match="unknown worker image keys: gcncmcmd"):
+        OrchestratorSettings(
+            axiom_token="test",
+            slurm_cluster_configs=[
+                ClusterConfig(
+                    name="test",
+                    partition="gpu",
+                    account="lab",
+                    ssh_host="test-host",
+                    ssh_username="test-user",
+                    worker_images={"gcncmcmd": WorkerImageSource(sif_path="/shared/gcncmcmd.sif")},
+                )
+            ],
+        )
+
+
+def test_settings_accepts_a_configured_two_image_catalog() -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        worker_image_profiles={
+            "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+            "gcncmcmd": WorkerImageProfile(display_name="GCNCMC-MD"),
+        },
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="test",
+                partition="gpu",
+                account="lab",
+                ssh_host="test-host",
+                ssh_username="test-user",
+                worker_images={
+                    "atom-openmm": WorkerImageSource(sif_path="/shared/atom-openmm.sif"),
+                    "gcncmcmd": WorkerImageSource(sif_path="/shared/gcncmcmd.sif"),
+                },
+            )
+        ],
+    )
+
+    assert settings.default_worker_image == "atom-openmm"
+    assert settings.worker_image_profiles["gcncmcmd"].display_name == "GCNCMC-MD"

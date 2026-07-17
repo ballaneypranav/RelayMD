@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,6 +41,49 @@ INFISICAL_ENVIRONMENT = "prod"
 INFISICAL_SECRET_PATH = "/RelayMD"
 
 
+class WorkerImageProfile(BaseModel):
+    """Operator-controlled compatibility contract for a worker image."""
+
+    display_name: str
+
+    @field_validator("display_name")
+    @classmethod
+    def _display_name_is_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("display_name must not be blank")
+        return value
+
+
+class WorkerImageSource(BaseModel):
+    """Cluster-local source for one configured worker image profile."""
+
+    sif_path: str | None = None
+    image_uri: str | None = None
+    sif_cache_dir: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_source(self) -> WorkerImageSource:
+        has_sif_path = bool(self.sif_path and self.sif_path.strip())
+        has_image_uri = bool(self.image_uri and self.image_uri.strip())
+        if has_sif_path == has_image_uri:
+            raise ValueError("set exactly one of 'sif_path' or 'image_uri'")
+        self.sif_path = self.sif_path.strip() if self.sif_path else None
+        self.image_uri = self.image_uri.strip() if self.image_uri else None
+        self.sif_cache_dir = self.sif_cache_dir.strip() if self.sif_cache_dir else None
+        return self
+
+    @property
+    def apptainer_image(self) -> str:
+        if self.sif_path:
+            return self.sif_path
+        if self.image_uri is None:
+            raise ValueError("image_uri is required when sif_path is unset")
+        if "://" in self.image_uri:
+            return self.image_uri
+        return f"docker://{self.image_uri}"
+
+
 class ClusterConfig(BaseModel):
     name: str
     partition: str
@@ -57,6 +101,7 @@ class ClusterConfig(BaseModel):
     sif_path: str | None = None
     image_uri: str | None = None
     sif_cache_dir: str | None = None
+    worker_images: dict[str, WorkerImageSource] = Field(default_factory=dict)
     nodes: int | None = Field(default=None, ge=1)
     ntasks: int | None = Field(default=None, ge=1)
     qos: str | None = None
@@ -74,8 +119,33 @@ class ClusterConfig(BaseModel):
     def _validate_image_source(self) -> ClusterConfig:
         has_sif_path = bool(self.sif_path and self.sif_path.strip())
         has_image_uri = bool(self.image_uri and self.image_uri.strip())
-        if has_sif_path == has_image_uri:
+        if has_sif_path == has_image_uri and (has_sif_path or has_image_uri):
             raise ValueError("set exactly one of 'sif_path' or 'image_uri'")
+
+        if has_sif_path or has_image_uri:
+            if self.worker_images:
+                raise ValueError(
+                    "legacy cluster-level image fields cannot be combined with 'worker_images'"
+                )
+            warnings.warn(
+                "cluster-level sif_path/image_uri is deprecated; configure "
+                "worker_images.atom-openmm instead",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            self.worker_images = {
+                "atom-openmm": WorkerImageSource(
+                    sif_path=self.sif_path,
+                    image_uri=self.image_uri,
+                    sif_cache_dir=self.sif_cache_dir,
+                )
+            }
+
+        if not self.worker_images:
+            raise ValueError(
+                "configure at least one worker image source in 'worker_images' "
+                "(set exactly one of 'sif_path' or 'image_uri' per source)"
+            )
 
         if self.memory is not None:
             self.memory = self.memory.strip() or None
@@ -94,14 +164,16 @@ class ClusterConfig(BaseModel):
 
     @property
     def apptainer_image(self) -> str:
-        if self.sif_path and self.sif_path.strip():
-            return self.sif_path
-        if self.image_uri is None:
-            raise ValueError("image_uri is required when sif_path is unset")
-        image_uri = self.image_uri.strip()
-        if "://" in image_uri:
-            return image_uri
-        return f"docker://{image_uri}"
+        """Compatibility accessor for the legacy default worker image."""
+        return self.worker_image_source("atom-openmm").apptainer_image
+
+    def worker_image_source(self, worker_image_key: str) -> WorkerImageSource:
+        try:
+            return self.worker_images[worker_image_key]
+        except KeyError as exc:
+            raise ValueError(
+                f"cluster '{self.name}' does not support worker image '{worker_image_key}'"
+            ) from exc
 
     @property
     def slurm_gres(self) -> str:
@@ -111,6 +183,12 @@ class ClusterConfig(BaseModel):
 
 
 class OrchestratorSettings(BaseSettings):
+    default_worker_image: str = "atom-openmm"
+    worker_image_profiles: dict[str, WorkerImageProfile] = Field(
+        default_factory=lambda: {
+            "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+        }
+    )
     storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
         default="purdue",
         validation_alias=AliasChoices("storage_provider", "RELAYMD_STORAGE_PROVIDER"),
@@ -214,7 +292,12 @@ class OrchestratorSettings(BaseSettings):
         for index, raw_cluster in enumerate(raw_cluster_configs):
             if isinstance(raw_cluster, ClusterConfig):
                 cluster_name = raw_cluster.name
-                raw_cluster_dict = raw_cluster.model_dump()
+                # A legacy ClusterConfig is already normalized to worker_images.
+                # Do not feed its retained compatibility fields back through
+                # validation alongside the normalized source map.
+                raw_cluster_dict = raw_cluster.model_dump(
+                    exclude={"sif_path", "image_uri", "sif_cache_dir"}
+                )
             elif isinstance(raw_cluster, dict):
                 cluster_name_value = raw_cluster.get("name")
                 if not isinstance(cluster_name_value, str) or not cluster_name_value.strip():
@@ -295,6 +378,43 @@ class OrchestratorSettings(BaseSettings):
             runtime_clusters.append(cluster)
 
         return runtime_clusters
+
+    @field_validator("worker_image_profiles")
+    @classmethod
+    def _validate_worker_image_profiles(
+        cls, profiles: dict[str, WorkerImageProfile]
+    ) -> dict[str, WorkerImageProfile]:
+        if not profiles:
+            raise ValueError("worker_image_profiles must not be empty")
+        for key in profiles:
+            if not key or key != key.strip() or key.lower() != key:
+                raise ValueError("worker image profile keys must be lowercase, non-blank strings")
+        return profiles
+
+    @model_validator(mode="after")
+    def _validate_worker_image_catalog(self) -> OrchestratorSettings:
+        if self.default_worker_image not in self.worker_image_profiles:
+            raise ValueError(
+                "default_worker_image must reference a configured worker_image_profiles key"
+            )
+
+        configured_keys = set(self.worker_image_profiles)
+        for cluster in self.slurm_cluster_configs:
+            unknown_keys = sorted(set(cluster.worker_images) - configured_keys)
+            if unknown_keys:
+                raise ValueError(
+                    f"slurm cluster '{cluster.name}' configures unknown worker image keys: "
+                    f"{', '.join(unknown_keys)}"
+                )
+
+        if self.slurm_cluster_configs and not any(
+            self.default_worker_image in cluster.worker_images
+            for cluster in self.slurm_cluster_configs
+        ):
+            raise ValueError(
+                "default_worker_image is not supported by any configured SLURM cluster"
+            )
+        return self
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 

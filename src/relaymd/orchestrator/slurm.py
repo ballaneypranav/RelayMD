@@ -182,6 +182,7 @@ def _render_sbatch_script(
     worker_command = (
         os.environ.get("RELAYMD_WORKER_COMMAND", "").strip() or "python -m relaymd.worker"
     )
+    worker_image_source = cluster.worker_image_source("atom-openmm")
     template = _template_environment().get_template("job.sbatch.j2")
     return template.render(
         cluster_name=cluster.name,
@@ -195,7 +196,7 @@ def _render_sbatch_script(
         memory=cluster.memory,
         memory_per_gpu=cluster.memory_per_gpu,
         wall_time=cluster.wall_time,
-        apptainer_image=cluster.apptainer_image,
+        apptainer_image=worker_image_source.apptainer_image,
         infisical_token_shell_quoted=_shell_single_quote(settings.infisical_token),
         apptainer_docker_login=bool(docker_username and docker_password),
         apptainer_docker_username_shell_quoted=(
@@ -205,7 +206,9 @@ def _render_sbatch_script(
             _shell_single_quote(docker_password) if docker_password else None
         ),
         sif_cache_dir_shell_quoted=(
-            _shell_single_quote(cluster.sif_cache_dir) if cluster.sif_cache_dir else None
+            _shell_single_quote(worker_image_source.sif_cache_dir)
+            if worker_image_source.sif_cache_dir
+            else None
         ),
         worker_bind_paths_shell_quoted=(
             _shell_single_quote(worker_bind_paths) if worker_bind_paths else None
