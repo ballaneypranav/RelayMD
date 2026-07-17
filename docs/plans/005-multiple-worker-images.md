@@ -605,6 +605,52 @@ Exit criteria:
 - Rollback restores a complete prior image set.
 - Shell syntax tests, release-script tests, and manifest tests pass.
 
+### Phase 5a: Complete the GitHub Actions worker-image matrix
+
+The release scripts and manifest support named worker images, but the existing
+GitHub Actions workflow still builds and publishes the legacy singular
+`relaymd-worker` / `relaymd-worker-base` artifacts. Complete the CI contract
+before treating the two-image release path as production-ready.
+
+Work:
+
+- Replace singular worker base, final-image, and SIF jobs in
+  `.github/workflows/ci.yml` with an `atom-openmm` / `gcncmcmd` profile
+  matrix.
+- Build each profile's distinct base recipe, then apply the shared
+  `Dockerfile.worker` app layer with that base as `BASE_IMAGE`.
+- Publish profile-specific OCI names and immutable SHA tags for both bases and
+  final images; retain the legacy `relaymd-worker` alias for AToM-OpenMM.
+- Add profile-specific path filters and GitHub Actions cache scopes so a GCNCMC
+  input change does not incorrectly reuse an AToM cache (and vice versa).
+- Build and publish one named SIF per final image, and make release-manifest
+  publication depend on both corresponding OCI and SIF artifacts.
+- Run non-network image smoke tests in CI for each final image: RelayMD worker
+  entrypoint/imports, expected Python/OpenMM version, and the profile-specific
+  scientific imports (`atom_openmm` or GRAND/openmmtools). Run GPU/CUDA checks
+  only on a suitable GPU runner or clearly separate them from standard CI.
+- Add workflow-level tests or fixture assertions covering matrix tags,
+  compatibility aliases, and the failure case where one profile artifact is
+  missing.
+
+Commit point:
+
+```text
+ci(images): build and test both worker image profiles
+```
+
+Exit criteria:
+
+- Pull requests build both worker profiles whenever shared app-layer or
+  profile-specific image inputs change.
+- Protected-branch CI publishes both final OCI images and both named SIFs from
+  the same source commit.
+- The release manifest cannot be promoted with only one worker-image profile.
+- Each profile's CI smoke test proves it is running its intended Python and
+  scientific software contract.
+- The temporary `relaymd-worker` OCI/SIF aliases continue to resolve to the
+  AToM-OpenMM profile.
+
 ### Phase 6: Expose selection to operators
 
 Work:
