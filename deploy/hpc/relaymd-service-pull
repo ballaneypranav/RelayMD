@@ -65,9 +65,9 @@ resolve_latest_manifest() {
 
 fetch_package_versions_json() {
     local owner="$1" package_name="$2" output="$3"
-    gh api -H "Accept: application/vnd.github+json" \
+    gh api --paginate -H "Accept: application/vnd.github+json" \
         "/orgs/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}" 2>/dev/null \
-        || gh api -H "Accept: application/vnd.github+json" \
+        || gh api --paginate -H "Accept: application/vnd.github+json" \
             "/users/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}"
 }
 
