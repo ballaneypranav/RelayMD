@@ -11,6 +11,15 @@ RelayMD-compatible **GCNCMC-MD** image based on:
 The selected image must be preserved with the job and enforced during worker
 provisioning and assignment.
 
+## Implementation Status and Finalization
+
+The multi-worker-image implementation described by this plan is complete on
+this branch, including the deliberate breaking-change cleanup. The final
+product supports only the named profile contract below. It does not
+accept, translate, publish, or default legacy single-worker-image inputs and
+artifacts. Existing deployments must adopt the new configuration and rebuild
+their database rather than relying on an in-place compatibility upgrade.
+
 ## Scope
 
 - Add an allowlisted worker-image profile catalog to orchestrator
@@ -29,7 +38,7 @@ provisioning and assignment.
   workers advertise the configured default image and can only claim matching
   jobs.
 
-## Current-State Findings
+## Pre-implementation Findings (Historical)
 
 1. `Dockerfile.worker-base` contains CUDA, Python 3.11, Tailscale, OpenMM 8.4,
    and pinned AToM-OpenMM. The root `Dockerfile` adds the RelayMD packages and
@@ -66,7 +75,9 @@ provisioning and assignment.
 4. `atom-openmm` is the initial default. Job creation resolves an omitted value
    to the configured default and persists it, so a later default change cannot
    silently change an existing queued or requeued job.
-5. Existing jobs are migrated to `atom-openmm`.
+5. Jobs and workers always persist a non-null image key. Pre-profile database
+   state is not migrated; deployments upgrading from it must recreate their
+   database.
 6. Requeue clones preserve `worker_image_key`.
 7. Workers advertise their image key at registration. Assignment requires an
    exact job/worker key match in addition to existing cluster affinity.
@@ -79,8 +90,8 @@ provisioning and assignment.
     paths.
 11. Use separate AToM-OpenMM and GCNCMC-MD simulation bases with one shared
     RelayMD app-layer recipe.
-12. Keep a temporary `relaymd-worker` artifact/SIF alias pointing to
-    AToM-OpenMM during migration, but use explicit names in new configuration.
+12. Publish and reference only named profile artifacts. The removed singular
+    `relaymd-worker` OCI/SIF names are not aliases for AToM-OpenMM.
 13. First implementation supports per-job image provisioning on SLURM/HPC.
     Salad workers are explicitly tagged with one image key and cannot claim
     jobs for another image.
@@ -123,9 +134,8 @@ Validation at startup must reject:
 - a deployment in which the default image is not supported by any enabled
   compute backend.
 
-For one compatibility release, legacy cluster-level `sif_path`/`image_uri`
-may be translated to `worker_images.atom-openmm` with a deprecation warning.
-New examples and generated configuration must use `worker_images`.
+Cluster-level `sif_path`/`image_uri` and `sif_cache_dir` are invalid. New and
+existing deployments must declare every source under `worker_images`.
 
 ## API and Persistence Changes
 
@@ -137,12 +147,11 @@ Add `worker_image_key: str` to:
 - CLI JSON and job export output;
 - frontend job and worker types.
 
-Database migration:
+Database contract:
 
-1. Add nullable `job.worker_image_key` and `worker.worker_image_key`.
-2. Backfill existing jobs and workers with `atom-openmm`.
-3. Make both columns non-null with the application default
-   `atom-openmm`.
+1. `job.worker_image_key` and `worker.worker_image_key` are non-null fields.
+2. A pre-profile database is unsupported; reset it rather than backfilling
+   records as `atom-openmm`.
 
 Job creation behavior:
 
@@ -187,8 +196,7 @@ Frontend:
 - Show an image selector populated from the profile catalog if/when job
   submission is exposed in the UI.
 - Show image display name on job and worker detail/table surfaces.
-- Render the stable key as a fallback if a historical key is no longer present
-  in current configuration.
+- Render the configured display name for every valid profile key.
 
 ## Image-Aware Provisioning and Assignment
 
@@ -227,9 +235,7 @@ visibility as with cluster affinity.
 - HPC registration sends that key with the provider ID.
 - Placeholder activation requires provider ID and key to match. A mismatch is
   a registration error and must not silently rewrite the placeholder.
-- For a transition period, absence of the variable may default to
-  `atom-openmm` with a warning. Remove that fallback after all deployed images
-  advertise their key.
+- Absence of the variable is a worker-startup configuration error.
 
 ### Assignment
 
@@ -292,8 +298,8 @@ relaymd-worker-atom-openmm.sif
 relaymd-worker-gcncmcmd.sif
 ```
 
-Keep `ghcr.io/<org>/relaymd-worker` and `relaymd-worker.sif` as temporary
-AToM-OpenMM compatibility aliases.
+Do not publish `ghcr.io/<org>/relaymd-worker` or `relaymd-worker.sif` aliases.
+Deployments use the explicit AToM-OpenMM and GCNCMC-MD names above.
 
 ## AToM-OpenMM Image
 
@@ -404,24 +410,24 @@ The final app image must also verify:
    }
    ```
 
-6. Retain legacy `worker_image` and `worker_sif_uri` fields pointing to
-   AToM-OpenMM for one compatibility release.
+6. The release manifest contains only the `worker_images` map; it has no
+   singular `worker_image` or `worker_sif_uri` fields.
 7. Update `relaymd upgrade` and `deploy/hpc/relaymd-service-pull` to pull both
    named SIFs atomically into the release directory.
 8. Promote the release only after both required worker artifacts and the
    orchestrator/CLI are available for the same source commit.
 9. Update local Docker/Podman and direct Apptainer scripts to accept
    `--worker-image atom-openmm|gcncmcmd|all`; default `all` for release-like
-   builds and `atom-openmm` for the fastest compatibility path.
-10. Preserve `relaymd-worker.sif -> relaymd-worker-atom-openmm.sif` during the
-    migration.
+   builds and `atom-openmm` for focused local iteration.
+10. Install only the two named SIFs; do not create a `relaymd-worker.sif`
+    symlink.
 
 ## Delivery Assessment
 
 This work is too large and operationally coupled for one implementation pass.
 It crosses five failure domains:
 
-1. database and generated API compatibility;
+1. database and generated API contract changes;
 2. worker registration and job-assignment correctness;
 3. SLURM provisioning and placeholder accounting;
 4. two independently reproducible scientific software images;
@@ -442,12 +448,16 @@ competing definitions of image keys.
 
 ## Phased Implementation and Commit Points
 
+Phases 0 through 8 are the completed implementation record. Phase 8 is the
+authoritative final-state contract where it differs from an earlier
+transitional phase.
+
 ### Phase 0: Freeze names and reproducible inputs
 
 Work:
 
 - Confirm the stable keys `atom-openmm` and `gcncmcmd`, display names, artifact
-  names, environment paths, and compatibility aliases.
+  names, and environment paths.
 - Pin the GRAND source to `https://github.com/essex-lab/grand.git` at its
   `v1.1.0` release commit `f58784faeaaabbe054b306f7a474e0eaec5ff878`.
 - Copy the pinned `openmm.yml` into an intentional RelayMD image-build input
@@ -469,14 +479,12 @@ Exit criteria:
 - Image keys and artifact names are treated as frozen contracts for later
   phases.
 
-### Phase 1: Add the backward-compatible configuration catalog
+### Phase 1: Add the strict configuration catalog
 
 Work:
 
 - Add `WorkerImageProfile` and image-source config models.
 - Add `default_worker_image` and per-cluster `worker_images`.
-- Translate legacy cluster-level `sif_path`/`image_uri` into
-  `worker_images.atom-openmm` with a warning.
 - Add startup validation and profile discovery serialization.
 - Update focused configuration tests and the example config.
 
@@ -488,8 +496,8 @@ feat(config): add worker image profile catalog
 
 Exit criteria:
 
-- Existing production configuration loads unchanged and resolves to
-  `atom-openmm`.
+- Only profile-map configuration loads; legacy cluster-level image fields are
+  rejected.
 - New two-image configuration validates.
 - No database or scheduler behavior changes yet.
 
@@ -498,11 +506,10 @@ Exit criteria:
 Work:
 
 - Add `worker_image_key` to job and worker core models.
-- Add and test the Alembic migration, including AToM backfill and non-null
-  enforcement.
+- Add and test non-null image-key schema fields. A pre-profile database reset
+  is the documented breaking upgrade path.
 - Extend create/read/requeue/history and worker registration contracts.
-- Make worker startup advertise `RELAYMD_WORKER_IMAGE_KEY`, with the temporary
-  missing-value fallback to `atom-openmm`.
+- Make worker startup require and advertise `RELAYMD_WORKER_IMAGE_KEY`.
 - Make placeholder activation reject provider/image mismatches.
 - Regenerate the API client once the shared contract is complete.
 
@@ -514,10 +521,9 @@ feat(api): persist worker image identity
 
 Exit criteria:
 
-- Existing jobs and workers read as `atom-openmm`.
 - New records always persist an explicit key.
 - Requeue clones and placeholder activation preserve the key.
-- API, migration, worker gateway, and generated-client tests pass.
+- API, schema, worker gateway, and generated-client tests pass.
 - Scheduling still behaves like the single-image system because all current
   jobs resolve to `atom-openmm`.
 
@@ -543,7 +549,7 @@ feat(scheduler): provision and assign image-compatible workers
 Exit criteria:
 
 - Cross-image claims are impossible in tests.
-- An AToM-only configuration remains behaviorally compatible.
+- An AToM-only profile-map configuration remains supported.
 - A synthetic two-image configuration renders the correct source for each
   queued job.
 - Scheduler, assignment, registration, reaper, and sbatch tests pass.
@@ -585,10 +591,9 @@ Work:
 
 - Convert worker base, app, and SIF CI jobs to a profile matrix.
 - Add per-profile path filters, caches, tags, and smoke tests.
-- Extend the release manifest with `worker_images` while retaining AToM legacy
-  aliases for one release.
+- Make the release manifest use only `worker_images`.
 - Update `relaymd upgrade`, `relaymd-service-pull`, release staging, atomic
-  activation, rollback, and compatibility symlinks.
+  activation, and rollback for the two named artifacts.
 - Test partial-release failure: activation must not occur if either required
   worker artifact is absent.
 
@@ -607,10 +612,8 @@ Exit criteria:
 
 ### Phase 5a: Complete the GitHub Actions worker-image matrix
 
-The release scripts and manifest support named worker images, but the existing
-GitHub Actions workflow still builds and publishes the legacy singular
-`relaymd-worker` / `relaymd-worker-base` artifacts. Complete the CI contract
-before treating the two-image release path as production-ready.
+Complete the CI contract with only the two named worker profiles. No singular
+worker jobs or aliases remain after this phase.
 
 Work:
 
@@ -620,7 +623,7 @@ Work:
 - Build each profile's distinct base recipe, then apply the shared
   `Dockerfile.worker` app layer with that base as `BASE_IMAGE`.
 - Publish profile-specific OCI names and immutable SHA tags for both bases and
-  final images; retain the legacy `relaymd-worker` alias for AToM-OpenMM.
+  final images.
 - Add profile-specific path filters and GitHub Actions cache scopes so a GCNCMC
   input change does not incorrectly reuse an AToM cache (and vice versa).
 - Build and publish one named SIF per final image, and make release-manifest
@@ -629,9 +632,8 @@ Work:
   entrypoint/imports, expected Python/OpenMM version, and the profile-specific
   scientific imports (`atom_openmm` or GRAND/openmmtools). Run GPU/CUDA checks
   only on a suitable GPU runner or clearly separate them from standard CI.
-- Add workflow-level tests or fixture assertions covering matrix tags,
-  compatibility aliases, and the failure case where one profile artifact is
-  missing.
+- Add workflow-level tests or fixture assertions covering named matrix tags and
+  the failure case where one profile artifact is missing.
 
 Commit point:
 
@@ -648,8 +650,7 @@ Exit criteria:
 - The release manifest cannot be promoted with only one worker-image profile.
 - Each profile's CI smoke test proves it is running its intended Python and
   scientific software contract.
-- The temporary `relaymd-worker` OCI/SIF aliases continue to resolve to the
-  AToM-OpenMM profile.
+- No singular worker OCI/SIF artifact is published or referenced.
 
 ### Phase 6: Expose selection to operators
 
@@ -674,7 +675,7 @@ Exit criteria:
 
 - Operators can explicitly submit `atom-openmm` and `gcncmcmd`.
 - Invalid selections list available profiles.
-- Historical keys missing from current config still render safely.
+- Output uses the catalog display name for the job or worker's valid key.
 - CLI, frontend, and generated-client checks pass.
 
 Operator selection deliberately comes after release tooling can publish and
@@ -707,6 +708,45 @@ Exit criteria:
 - The branch contains the version commit and matching tag required by
   repository policy.
 - Branch and release tag are ready to push together.
+
+### Phase 8: Remove pre-release compatibility maintenance (completed)
+
+This intentionally breaking cleanup preserves the named two-profile behavior
+specified in the preceding phases.
+
+Work:
+
+- Remove legacy cluster-level image fields, their translation/deprecation
+  logic, compatibility accessors, and diagnostics fallbacks.
+- Require `RELAYMD_WORKER_IMAGE_KEY` and require `worker_image_key` in worker
+  registration rather than defaulting either to `atom-openmm`.
+- Remove the singular OCI and SIF aliases, singular release-manifest fields,
+  legacy pull-script environment variables/arguments, and the
+  `relaymd-worker.sif` symlink.
+- Delete disabled singular-worker GitHub Actions jobs instead of retaining
+  them under `if: false`.
+- Update examples and operational documentation to use only
+  `relaymd-worker-atom-openmm` and `relaymd-worker-gcncmcmd` artifact names
+  and the `worker_images` configuration map.
+- Remove the old database backfill migration or replace it with the strict
+  schema path appropriate for a fresh development database; document database
+  reset as the upgrade procedure.
+
+Commit point:
+
+```text
+refactor(images): remove legacy worker image compatibility paths
+```
+
+Exit criteria:
+
+- No accepted configuration, API request, environment variable, release
+  manifest field, artifact, or documentation path uses the singular worker
+  contract.
+- The named AToM-OpenMM and GCNCMC-MD images build, publish, install, register,
+  provision, and claim only jobs with their matching keys.
+- The profile-map configuration, scheduler, release, CLI, frontend, and image
+  smoke tests remain green after the cleanup.
 
 ## Parallel Implementation with Subagents
 
@@ -778,7 +818,7 @@ Wave 3:
 Configuration:
 
 - Reject duplicate/unknown profile keys and invalid image sources.
-- Translate legacy single-image cluster config to `atom-openmm`.
+- Reject legacy single-image cluster config.
 - Reject a default key unsupported by all enabled backends.
 
 API and persistence:
@@ -786,7 +826,7 @@ API and persistence:
 - Omitted image resolves to and persists `atom-openmm`.
 - Explicit `gcncmcmd` survives create, read, list, history, and requeue clone.
 - Unknown image selection returns a typed client-visible error.
-- Migration backfills existing jobs/workers.
+- Pre-profile database upgrade is rejected/documented as requiring a reset.
 
 Provisioning:
 
@@ -804,15 +844,14 @@ Assignment:
 - Cluster affinity and image compatibility are both enforced.
 - Mixed-image queues preserve FIFO order among jobs each worker can run
   without head-of-line blocking incompatible jobs.
-- Legacy/default Salad workers only claim `atom-openmm`.
+- Salad workers explicitly advertise their configured profile key.
 
 CLI and frontend:
 
 - `--worker-image gcncmcmd` is included in the create request and success
   output.
 - Invalid keys show available values.
-- Job and worker tables render configured display names and tolerate removed
-  historical profiles.
+- Job and worker tables render configured display names.
 
 Images:
 
@@ -830,22 +869,21 @@ Release:
 
 - Manifest pins both images/SIFs to one source commit.
 - Upgrade installs both named SIFs before switching `current`.
-- Compatibility aliases resolve to AToM-OpenMM.
+- No singular OCI/SIF alias or manifest field is published.
 - Rollback restores the prior complete two-image release.
 
 ## Rollout
 
-1. Deploy code that understands both the legacy singular image config and the
-   new profile map.
-2. Publish both images and SIFs for one RelayMD release.
-3. Install the release with named SIFs and the AToM compatibility symlink.
+1. Reset any pre-profile development database and replace legacy cluster config
+   with the profile map.
+2. Publish both named images and SIFs for one RelayMD release.
+3. Install the release with both named SIFs and no singular-worker symlink.
 4. Update orchestrator config to list both keys for the target cluster.
 5. Submit one explicit AToM smoke job and one explicit GCNCMC smoke job.
 6. Confirm each placeholder, registered worker, assignment, and job record has
    the expected key.
 7. Keep `atom-openmm` as the default until GCNCMC production validation is
    complete.
-8. Remove legacy config/manifest aliases only in a later breaking release.
 
 ## Documentation Changes
 

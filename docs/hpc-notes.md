@@ -15,13 +15,15 @@ mkdir -p "${RELEASE_DIR}"
 
 apptainer pull "${RELEASE_DIR}/relaymd-orchestrator.sif" \
   "docker://ghcr.io/${ORG}/relaymd-orchestrator:sha-<shortsha>"
-apptainer pull "${RELEASE_DIR}/relaymd-worker.sif" \
-  "docker://ghcr.io/${ORG}/relaymd-worker:sha-<shortsha>"
+apptainer pull "${RELEASE_DIR}/relaymd-worker-atom-openmm.sif" \
+  "docker://ghcr.io/${ORG}/relaymd-worker-atom-openmm:sha-<shortsha>"
+apptainer pull "${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif" \
+  "docker://ghcr.io/${ORG}/relaymd-worker-gcncmcmd:sha-<shortsha>"
 ln -sfn "${RELEASE_DIR}" /depot/plow/apps/relaymd/current
 ```
 
 Expected output:
-- both SIFs exist under `${RELEASE_DIR}`
+- all three SIFs exist under `${RELEASE_DIR}`
 - file is readable from compute nodes (shared filesystem path)
 
 ## 2) Submit Tailscale Userspace Validation Job
@@ -31,12 +33,17 @@ Use the `test_tailscale.sbatch` template available in the repo under `deploy/slu
 ```bash
 export TAILSCALE_AUTH_KEY=<ephemeral_auth_key>
 export ORCHESTRATOR_HOSTNAME=<orchestrator_magicdns_hostname>
-export RELAYMD_SIF_PATH=/depot/plow/apps/relaymd/current/relaymd-worker.sif
+export RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH=/depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif
+export RELAYMD_WORKER_IMAGE_KEY=atom-openmm
 # Optional, cluster-specific:
 # export APPTAINER_FLAGS="--cleanenv --writable-tmpfs --bind /tmp:/tmp"
 
 sbatch deploy/slurm/test_tailscale.sbatch
 ```
+
+For a GCNCMC-MD validation, use `relaymd-worker-gcncmcmd.sif` and set
+`RELAYMD_WORKER_IMAGE_KEY=gcncmcmd`. Production worker starts receive this key
+from the rendered SLURM template and must register it unchanged.
 
 Success criteria:
 - job exits `0`

@@ -5,7 +5,8 @@ Docker images directly; HPC uses the matching SIF release artifacts when
 available and falls back to `apptainer pull` from GHCR when needed:
 
 - `ghcr.io/<org>/relaymd-orchestrator:<tag>`
-- `ghcr.io/<org>/relaymd-worker:<tag>`
+- `ghcr.io/<org>/relaymd-worker-atom-openmm:<tag>`
+- `ghcr.io/<org>/relaymd-worker-gcncmcmd:<tag>`
 
 The supported production paths are:
 
@@ -17,98 +18,28 @@ Docker image -> GHCR -> prebuilt SIF release artifact -> HPC
 Local `apptainer build --fakeroot` is for development iteration, not production
 promotion.
 
-For branch-local iteration without waiting for GitHub Actions, there are two
-local helper workflows.
+For branch-local iteration without waiting for GitHub Actions, use the local
+OCI conversion workflow. It produces the same named profile artifacts used in
+production.
 
 ### Local OCI Conversion Workflow
 
 Use this when Docker or Podman is available on the development host:
 
 ```bash
-make local-build-images
-make local-build-sif-or-sandbox
+make local-build-images WORKER_PROFILE=all
+make local-build-sif-or-sandbox WORKER_PROFILE=all
 make local-install-cli
 relaymd restart
 make local-smoke
 ```
 
-This builds local OCI images from the workspace, converts them to Apptainer
-artifacts, activates the release directory, installs the local CLI binary, and
-restarts the service. Worker and orchestrator Apptainer conversions run in
-parallel.
-
-### Local Apptainer Definition Workflow
-
-Use this on HPC systems where Docker is unavailable but Apptainer fakeroot works:
-
-```bash
-make local-build-from-def
-make local-install-cli
-relaymd restart
-make local-smoke
-```
-
-`scripts/local_build_from_def.sh` builds local-only Apptainer artifacts directly
-from definition files under `deploy/hpc/apptainer/`. It does not change the
-GitHub Actions or release workflow. It can reuse existing base SIFs, seed them
-from CI-published base SIF URLs, or build them locally when needed.
-
-The `.def` workflow is split into reusable base layers and fast app layers:
-
-- `relaymd-worker-base.localdev.def`: mirrors `Dockerfile.worker-base`; includes
-  CUDA runtime, Python 3.11, Tailscale, micromamba, OpenMM, and pinned
-  AToM-OpenMM.
-- `relaymd-worker.localdev.def`: installs current workspace worker packages on
-  top of the worker base.
-- `relaymd-orchestrator-base.localdev.def`: mirrors
-  `Dockerfile.orchestrator-base`; includes Python 3.11, Tailscale, `uv`, and
-  Node 22 for local frontend builds.
-- `relaymd-orchestrator.localdev.def`: installs current workspace orchestrator
-  packages and bundles frontend assets on top of the orchestrator base.
-- `relaymd-orchestrator.dockerbase.def`: Docker-equivalent app layer for
-  environments that can run local Apptainer builds from a Docker-style
-  orchestrator base and prebuilt frontend assets.
-
-Default reusable base SIFs are cached under `build/local-def-stage/`:
-
-- `build/local-def-stage/relaymd-worker-base.sif`
-- `build/local-def-stage/relaymd-orchestrator-base.sif`
-
-Normal iteration reuses those bases:
-
-```bash
-./scripts/local_build_from_def.sh --mode sandbox
-```
-
-Rebuild a base only when the corresponding Docker base dependency set changes:
-
-```bash
-./scripts/local_build_from_def.sh --mode sandbox --rebuild-worker-base
-./scripts/local_build_from_def.sh --mode sandbox --rebuild-orchestrator-base
-./scripts/local_build_from_def.sh --mode sandbox --rebuild-bases
-```
-
-Use custom base paths when sharing prebuilt local bases:
-
-```bash
-./scripts/local_build_from_def.sh \
-  --worker-base-sif /path/to/relaymd-worker-base.sif \
-  --orchestrator-base-sif /path/to/relaymd-orchestrator-base.sif
-```
-
-`--mode sandbox` is the default and is preferred for local development because
-it writes directory sandboxes instead of compressed SIF files. This is faster to
-build and easier to inspect. The script creates compatibility symlinks named
-`relaymd-worker.sif` and `relaymd-orchestrator.sif` pointing at the sandbox
-directories so existing service paths keep working. Use `--mode sif` when you
-need immutable single-file artifacts.
-
-Add `--fallback` if you want a failed `.def` build to fall back to the local
-OCI->Apptainer conversion workflow:
-
-```bash
-./scripts/local_build_from_def.sh --mode sandbox --fallback
-```
+This builds local OCI images from the workspace, converts them to the
+orchestrator, AToM-OpenMM, and GCNCMC-MD Apptainer artifacts, activates the
+release directory, installs the local CLI binary, and restarts the service.
+Worker and orchestrator conversions run in parallel. Use the profile-specific
+script options only when intentionally iterating on one workload; a usable
+two-profile release always contains both named worker artifacts.
 
 ## Config and State
 
@@ -142,13 +73,39 @@ Worker checkpoint polling default:
 - Treated as a fallback default; bundle-level `checkpoint_poll_interval_seconds`
   takes precedence per job.
 
-Worker runtime contract for AToM jobs:
+## Worker Image Profiles
 
-- Worker image includes `bash`, `python`, `tar`, `timeout` (coreutils), and standard shell tooling.
-- Worker image installs pinned AToM-OpenMM Python package(s); keep the image clean (no `/depot/...` compatibility paths baked into the container).
-- Set `ats_dir` in your submit-side config/bundle generation to the installed
-  module path in the worker runtime, for example:
-  `python -c "import pathlib, atom_openmm; print(pathlib.Path(atom_openmm.__file__).resolve().parent)"`
+Jobs select a stable `worker_image_key`; deployments configure the allowed
+sources rather than accepting a job-provided URI. The only supported keys are
+`atom-openmm` (AToM-OpenMM) and `gcncmcmd` (GCNCMC-MD). Every enabled cluster
+declares the sources it supports under `worker_images`:
+
+```yaml
+default_worker_image: atom-openmm
+worker_image_profiles:
+  atom-openmm:
+    display_name: AToM-OpenMM
+  gcncmcmd:
+    display_name: GCNCMC-MD
+slurm_cluster_configs:
+  - name: example
+    # Scheduler fields omitted.
+    worker_images:
+      atom-openmm:
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif
+      gcncmcmd:
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif
+```
+
+Each `worker_images.<key>` entry uses exactly one `sif_path` or `image_uri`.
+Cluster-level image source fields are unsupported. Reset a pre-profile database
+before upgrading; RelayMD does not backfill existing jobs or workers with an
+image key.
+
+The selected worker receives `RELAYMD_WORKER_IMAGE_KEY` from the scheduler and
+must register the same key. AToM submit-side bundle generation can set `ats_dir`
+to the installed module path, for example:
+`python -c "import pathlib, atom_openmm; print(pathlib.Path(atom_openmm.__file__).resolve().parent)"`.
 
 ## Release Layout
 
@@ -161,7 +118,8 @@ symlink:
 Expected active SIFs:
 
 - `/depot/plow/apps/relaymd/current/relaymd-orchestrator.sif`
-- `/depot/plow/apps/relaymd/current/relaymd-worker.sif`
+- `/depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif`
+- `/depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif`
 - `/depot/plow/apps/relaymd/current/relaymd`
 
 ## Operator CLI
@@ -214,7 +172,8 @@ Pull and activate a release:
 ```bash
 relaymd upgrade <release-version> \
   --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  --worker-image docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha>
+  --atom-openmm-image docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha> \
+  --gcncmcmd-image docker://ghcr.io/<org>/relaymd-worker-gcncmcmd:sha-<shortsha>
 ```
 
 This also downloads and activates a host-side `relaymd` CLI binary under
@@ -262,8 +221,8 @@ relaymd upgrade latest
 ```
 
 `latest` resolves from release manifest
-`relaymd-release-manifest.json` on GitHub release `latest`, so orchestrator,
-worker, and CLI are promoted as one pinned set. If manifest resolution fails,
+`relaymd-release-manifest.json` on GitHub release `latest`, so the orchestrator,
+both worker profiles, and CLI are promoted as one pinned set. If manifest resolution fails,
 `relaymd upgrade` falls back to newest shared `sha-*` image tag discovery.
 
 `relaymd upgrade` defaults Apptainer build temp/cache to
@@ -306,6 +265,6 @@ logs to verify service health after reconnects or host events.
 
 ## Rollout Order
 
-1. pull/promote orchestrator + worker release with immutable SHA tags
+1. pull/promote the orchestrator and both worker-profile artifacts with immutable SHA tags
 2. start/restart service from the new `current` symlink
 3. promote release; this also updates the active `relaymd` CLI binary

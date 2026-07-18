@@ -5,9 +5,10 @@ raw container URIs. The initial profiles are `atom-openmm` (displayed as
 AToM-OpenMM) and `gcncmcmd` (displayed as GCNCMC-MD). Operators map each
 profile to a cluster-local SIF path or OCI/ORAS URI.
 
-The legacy `relaymd-worker` image and SIF are compatibility aliases for
-`atom-openmm` during the migration. New configuration uses explicit named
-worker image sources.
+Only the two profile-specific OCI and SIF artifacts are published. Deployments
+use explicit named profiles, so future worker environments can be added without
+accepting raw image inputs. Upgrades from a database created before image keys
+must reset that database; RelayMD does not perform an in-place backfill.
 
 The GCNCMC OpenMM environment input is committed under `images/gcncmcmd/`
 (`openmm.yml` SHA-256:

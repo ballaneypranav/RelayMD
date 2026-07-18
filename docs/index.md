@@ -16,23 +16,25 @@ The full documentation is deployed to GitHub Pages at [https://ballaneypranav.gi
 
 ## Containers
 
-RelayMD publishes both worker and orchestrator images to GHCR:
+RelayMD publishes two named worker profiles and an orchestrator image to GHCR:
 
-- `ghcr.io/<org>/relaymd-worker:<tag>`
+- `ghcr.io/<org>/relaymd-worker-atom-openmm:<tag>`
+- `ghcr.io/<org>/relaymd-worker-gcncmcmd:<tag>`
 - `ghcr.io/<org>/relaymd-orchestrator:<tag>`
 
 Use immutable `sha-<shortsha>` tags for deploys.
 
-For branch-local HPC iteration, `make local-build-from-def` builds Apptainer
-artifacts directly from local source using reusable worker and orchestrator base
-SIFs under `build/local-def-stage/`. See [Deployment Guide](deployment.md) for
-the full local development workflow.
+For branch-local HPC iteration, `make local-build-images` and
+`make local-build-sif-or-sandbox` build the two named worker artifacts. See
+[Deployment Guide](deployment.md) for the full local development workflow.
 
 Build and push commands:
 
 ```bash
-make docker-build-worker ORG=<org>
-make docker-push-worker ORG=<org>
+make docker-build-atom-openmm ORG=<org>
+make docker-push-atom-openmm ORG=<org>
+make docker-build-gcncmcmd ORG=<org>
+make docker-push-gcncmcmd ORG=<org>
 make docker-build-orchestrator ORG=<org>
 make docker-push-orchestrator ORG=<org>
 ```

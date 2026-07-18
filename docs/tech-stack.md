@@ -4,7 +4,10 @@
 
 **Apptainer-first.** The worker runs inside an Apptainer `.sif` container. All Python dependencies — including the MD engine and the `relaymd-worker` package — must be installed inside the image. Do not rely on the host environment for anything.
 
-**No conda environments.** Conda adds significant image size and slow solve times. Use pip inside the container image. The base image should provide a suitable Python (3.11+) directly.
+**Profile-specific worker environments.** The AToM-OpenMM and GCNCMC-MD
+worker profiles intentionally have separate scientific environments. Their base
+images may use micromamba for pinned OpenMM/Python dependencies; RelayMD's
+application layer is shared and installed with `uv`/pip.
 
 **uv for local installs.** Use `uv` — not pip, not conda — for local development and non-container workflows. Production HPC deployments run both orchestrator and worker from GHCR-backed Apptainer images.
 
@@ -20,7 +23,7 @@
 |-------------------------------|-----------------------------|---------------------------------------------------------|
 | Language                       | Python 3.11+                | Required by alchemical MD workloads; modern typing        |
 | Package manager (login node)   | `uv`                        | Fast, reproducible, lockfile-based local/dev installs   |
-| Package manager (container)    | pip inside Apptainer/Docker | No conda; uv can also be used in the Dockerfile         |
+| Package manager (container)    | micromamba + pip/uv         | Profile bases pin scientific dependencies; app layer uses uv/pip |
 | CLI distribution               | PyInstaller single binary   | No Python env required on HPC login node                |
 | Python typing                  | strict Pydantic throughout  | See guiding principle above                             |
 
@@ -54,7 +57,9 @@ relaymd/
 │   ├── hpc-notes.md           # Apptainer + Tailscale runbook
 │   └── storage-layout.md
 ├── frontend/                  # React operator dashboard served by FastAPI
-├── Dockerfile                 # Worker container image
+├── Dockerfile.worker          # Shared RelayMD worker app layer
+├── Dockerfile.worker-atom-openmm-base # AToM-OpenMM simulation base
+├── Dockerfile.worker-gcncmcmd-base    # GCNCMC-MD simulation base
 ├── Dockerfile.orchestrator    # Orchestrator container image (+ bundled frontend)
 └── pyproject.toml             # Root relaymd package + workspace config
 ```
@@ -98,7 +103,8 @@ Both the orchestrator and worker have a `logging.py` module that configures stru
 
 GHCR (GitHub Container Registry). Images tagged as:
 
-- `ghcr.io/<org>/relaymd-worker:<tag>`
+- `ghcr.io/<org>/relaymd-worker-atom-openmm:<tag>`
+- `ghcr.io/<org>/relaymd-worker-gcncmcmd:<tag>`
 - `ghcr.io/<org>/relaymd-orchestrator:<tag>`
 
 Use immutable SHA tags for production deployments.
