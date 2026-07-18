@@ -1,0 +1,2380 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Distributed orchestration for long-running molecular dynamics workloads across HPC and cloud GPU capacity.">
+      
+      
+      
+        <link rel="canonical" href="https://github.com/ballaneypranav/RelayMD/plans/005-multiple-worker-images/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+    
+    
+      
+        <title>Plan 005: Multiple RelayMD Worker Images - RelayMD</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="light-blue" data-md-color-accent="deep-orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#plan-005-multiple-relaymd-worker-images" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="RelayMD" class="md-header__button md-logo" aria-label="RelayMD" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            RelayMD
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Plan 005: Multiple RelayMD Worker Images
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="light-blue" data-md-color-accent="deep-orange"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="blue" data-md-color-accent="deep-orange"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/ballaneypranav/RelayMD" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ballaneypranav/RelayMD
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="RelayMD" class="md-nav__button md-logo" aria-label="RelayMD" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    RelayMD
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/ballaneypranav/RelayMD" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    ballaneypranav/RelayMD
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture & Design
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture & Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../job-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Job Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../scheduling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Scheduling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation Internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Implementation Internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../secrets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tech-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tech Stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../orchestrator-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Orchestrator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../worker-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../storage-internals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../storage-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../infra/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Infrastructure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hpc-notes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HPC Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Testing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../e2e-test-report/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    E2E Test Report
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#goal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Goal
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-status-and-finalization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation Status and Finalization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scope
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pre-implementation-findings-historical" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-implementation Findings (Historical)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locked-decisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locked Decisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-configuration-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended Configuration Contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#api-and-persistence-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        API and Persistence Changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-and-frontend-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI and Frontend Behavior
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#image-aware-provisioning-and-assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image-Aware Provisioning and Assignment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Image-Aware Provisioning and Assignment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#slurm-provisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SLURM provisioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#worker-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#assignment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Assignment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#saladcloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SaladCloud
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#worker-image-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker Image Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atom-openmm-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AToM-OpenMM Image
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gcncmc-md-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GCNCMC-MD Image
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GCNCMC-MD Image">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#base-construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Base construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reproducible-grand-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reproducible GRAND source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#image-tests" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Image tests
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ci-release-and-local-build-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI, Release, and Local Build Changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#delivery-assessment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delivery Assessment
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phased-implementation-and-commit-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phased Implementation and Commit Points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phased Implementation and Commit Points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-0-freeze-names-and-reproducible-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 0: Freeze names and reproducible inputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-1-add-the-strict-configuration-catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 1: Add the strict configuration catalog
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-persist-image-identity-through-the-api-and-workers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2: Persist image identity through the API and workers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-3-enforce-image-aware-assignment-and-slurm-provisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 3: Enforce image-aware assignment and SLURM provisioning
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-4-refactor-atom-and-build-the-gcncmc-worker-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 4: Refactor AToM and build the GCNCMC worker locally
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5-publish-and-activate-a-coherent-two-image-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5: Publish and activate a coherent two-image release
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-5a-complete-the-github-actions-worker-image-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 5a: Complete the GitHub Actions worker-image matrix
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-6-expose-selection-to-operators" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 6: Expose selection to operators
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-7-integration-documentation-and-release-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 7: Integration, documentation, and release version
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-8-remove-pre-release-compatibility-maintenance-completed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 8: Remove pre-release compatibility maintenance (completed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parallel-implementation-with-subagents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parallel Implementation with Subagents
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Parallel Implementation with Subagents">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#recommended-parallel-waves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended parallel waves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#coordination-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Coordination rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-changes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Documentation Changes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="plan-005-multiple-relaymd-worker-images">Plan 005: Multiple RelayMD Worker Images</h1>
+<h2 id="goal">Goal</h2>
+<p>Allow each RelayMD job to select one of a small, operator-controlled set of
+worker images. Rename the current worker image to <strong>AToM-OpenMM</strong> and add a
+RelayMD-compatible <strong>GCNCMC-MD</strong> image based on:</p>
+<p><code>/scratch/gilbreth/pballane/folate-alpha-beta/gcncmcmd/scripts/apptainer/gcncmcmd-production.def</code></p>
+<p>The selected image must be preserved with the job and enforced during worker
+provisioning and assignment.</p>
+<h2 id="implementation-status-and-finalization">Implementation Status and Finalization</h2>
+<p>The multi-worker-image implementation described by this plan is complete on
+this branch, including the deliberate breaking-change cleanup. The final
+product supports only the named profile contract below. It does not
+accept, translate, publish, or default legacy single-worker-image inputs and
+artifacts. Existing deployments must adopt the new configuration and rebuild
+their database rather than relying on an in-place compatibility upgrade.</p>
+<h2 id="scope">Scope</h2>
+<ul>
+<li>Add an allowlisted worker-image profile catalog to orchestrator
+  configuration.</li>
+<li>Persist a stable image profile key on jobs and workers.</li>
+<li>Add <code>relaymd submit --worker-image &lt;key&gt;</code>.</li>
+<li>Make SLURM provisioning, placeholder activation, and worker assignment
+  image-aware.</li>
+<li>Split the current worker build into a shared RelayMD app layer and
+  workload-specific simulation base images.</li>
+<li>Publish OCI and Apptainer artifacts for AToM-OpenMM and GCNCMC-MD.</li>
+<li>Update local build, release, upgrade, configuration, CLI, API, frontend, and
+  operator documentation paths.</li>
+<li>Keep arbitrary per-job image URIs out of scope.</li>
+<li>Treat multi-image SaladCloud provisioning as a later phase; existing Salad
+  workers advertise the configured default image and can only claim matching
+  jobs.</li>
+</ul>
+<h2 id="pre-implementation-findings-historical">Pre-implementation Findings (Historical)</h2>
+<ol>
+<li><code>Dockerfile.worker-base</code> contains CUDA, Python 3.11, Tailscale, OpenMM 8.4,
+   and pinned AToM-OpenMM. The root <code>Dockerfile</code> adds the RelayMD packages and
+   starts <code>python -m relaymd.worker</code>.</li>
+<li><code>ClusterConfig</code> currently accepts exactly one <code>sif_path</code> or <code>image_uri</code>.
+   <code>_render_sbatch_script</code> resolves that cluster-level source before any worker
+   asks for a job.</li>
+<li>Jobs and workers do not record an image identity. Assignment filters by
+   cluster affinity only, so adding a second image without new identity fields
+   could let a worker claim an incompatible job.</li>
+<li>SLURM provisioning selects an affinity-compatible queued job but creates a
+   generic placeholder. Active/pending checks are not image-aware.</li>
+<li>The GCNCMC definition creates a Python 3.12 environment containing OpenMM
+   8.2.0, openmmtools 0.24.2, CUDA 12.6, GRAND 1.1.0, and the other packages
+   pinned by <code>openmm.yml</code>. It does not install Tailscale, RelayMD, or the
+   RelayMD worker entrypoint.</li>
+<li>The GCNCMC environment is materially different from the AToM environment:
+   AToM currently uses Python 3.11 and OpenMM 8.4. Combining both environments
+   in one base would create dependency conflicts and a much larger image.</li>
+<li>The referenced GCNCMC definition copies <code>openmm.yml</code> and a local <code>grand</code>
+   tree from its build context. RelayMD replaces that local checkout with the
+   public HTTPS <code>essex-lab/grand</code> source pinned to the <code>v1.1.0</code> release commit
+   <code>f58784faeaaabbe054b306f7a474e0eaec5ff878</code>.</li>
+</ol>
+<h2 id="locked-decisions">Locked Decisions</h2>
+<ol>
+<li>Jobs select a stable, lowercase profile key:</li>
+<li><code>atom-openmm</code>, displayed as <code>AToM-OpenMM</code></li>
+<li><code>gcncmcmd</code>, displayed as <code>GCNCMC-MD</code></li>
+<li>The public CLI flag is <code>--worker-image</code>; API and persisted model fields use
+   <code>worker_image_key</code> so the value is not confused with an OCI URI.</li>
+<li>A job never accepts a raw image URI or SIF path. Operators configure the
+   allowlisted key-to-source mapping.</li>
+<li><code>atom-openmm</code> is the initial default. Job creation resolves an omitted value
+   to the configured default and persists it, so a later default change cannot
+   silently change an existing queued or requeued job.</li>
+<li>Jobs and workers always persist a non-null image key. Pre-profile database
+   state is not migrated; deployments upgrading from it must recreate their
+   database.</li>
+<li>Requeue clones preserve <code>worker_image_key</code>.</li>
+<li>Workers advertise their image key at registration. Assignment requires an
+   exact job/worker key match in addition to existing cluster affinity.</li>
+<li>SLURM placeholders also store the image key. Registration activates only a
+   placeholder with the same provider ID and image key.</li>
+<li>The orchestrator chooses the image source; the worker does not inspect the
+   job and relaunch itself into another container.</li>
+<li>Image keys are workload compatibility contracts, not release versions.
+    Configured sources must use immutable SHA tags, digests, or versioned SIF
+    paths.</li>
+<li>Use separate AToM-OpenMM and GCNCMC-MD simulation bases with one shared
+    RelayMD app-layer recipe.</li>
+<li>Publish and reference only named profile artifacts. The removed singular
+    <code>relaymd-worker</code> OCI/SIF names are not aliases for AToM-OpenMM.</li>
+<li>First implementation supports per-job image provisioning on SLURM/HPC.
+    Salad workers are explicitly tagged with one image key and cannot claim
+    jobs for another image.</li>
+</ol>
+<h2 id="recommended-configuration-contract">Recommended Configuration Contract</h2>
+<p>Define the catalog once and let each cluster map supported keys to sources.
+Keeping sources under the cluster preserves the existing ability to use
+cluster-specific shared paths while still supporting registry URIs.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">default_worker_image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">atom-openmm</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">worker_image_profiles</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">atom-openmm</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">display_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AToM-OpenMM</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">gcncmcmd</span><span class="p">:</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">display_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GCNCMC-MD</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">slurm_cluster_configs</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gilbreth-a30</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="c1"># Existing scheduler fields omitted.</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">worker_images</span><span class="p">:</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">      </span><span class="nt">atom-openmm</span><span class="p">:</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">        </span><span class="nt">sif_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">      </span><span class="nt">gcncmcmd</span><span class="p">:</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">        </span><span class="nt">sif_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif</span>
+</span></code></pre></div>
+<p>Each <code>worker_images.&lt;key&gt;</code> source uses the existing exactly-one-of
+<code>sif_path</code>/<code>image_uri</code> validation and optional <code>sif_cache_dir</code>. Registry
+sources continue to use the existing URI normalization and image-keyed
+Apptainer cache.</p>
+<p>Validation at startup must reject:</p>
+<ul>
+<li>an unknown <code>default_worker_image</code>;</li>
+<li>a cluster image key absent from <code>worker_image_profiles</code>;</li>
+<li>an image source with neither or both of <code>sif_path</code> and <code>image_uri</code>;</li>
+<li>a deployment in which the default image is not supported by any enabled
+  compute backend.</li>
+</ul>
+<p>Cluster-level <code>sif_path</code>/<code>image_uri</code> and <code>sif_cache_dir</code> are invalid. New and
+existing deployments must declare every source under <code>worker_images</code>.</p>
+<h2 id="api-and-persistence-changes">API and Persistence Changes</h2>
+<p>Add <code>worker_image_key: str</code> to:</p>
+<ul>
+<li><code>Job</code>, <code>JobCreate</code>, and <code>JobRead</code>;</li>
+<li><code>Worker</code>, <code>WorkerRegister</code>, and <code>WorkerRead</code>;</li>
+<li>generated API client models;</li>
+<li>CLI JSON and job export output;</li>
+<li>frontend job and worker types.</li>
+</ul>
+<p>Database contract:</p>
+<ol>
+<li><code>job.worker_image_key</code> and <code>worker.worker_image_key</code> are non-null fields.</li>
+<li>A pre-profile database is unsupported; reset it rather than backfilling
+   records as <code>atom-openmm</code>.</li>
+</ol>
+<p>Job creation behavior:</p>
+<ul>
+<li>Omitted key resolves to <code>default_worker_image</code>.</li>
+<li>Unknown key returns a typed validation error.</li>
+<li>A known key with no configured cluster remains queued only if another
+  configured backend advertises it; otherwise reject submission with a clear
+  unsupported-image error.</li>
+<li>Include the resolved key in the <code>created</code> history event and structured log.</li>
+<li>Keep the image key immutable for the lifetime of a job ID.</li>
+</ul>
+<p>Add an operator-readable endpoint or extend the existing frontend config
+endpoint to return available profiles:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;default_worker_image&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;atom-openmm&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;worker_images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;atom-openmm&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;display_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;AToM-OpenMM&quot;</span><span class="p">},</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="p">{</span><span class="nt">&quot;key&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;gcncmcmd&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;display_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;GCNCMC-MD&quot;</span><span class="p">}</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="p">]</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>This lets CLI/UI discover valid choices without duplicating them in client
+code.</p>
+<h2 id="cli-and-frontend-behavior">CLI and Frontend Behavior</h2>
+<p>CLI:</p>
+<ul>
+<li>Add repeat-safe validation for
+  <code>relaymd submit ... --worker-image gcncmcmd</code>.</li>
+<li>If omitted, let the server resolve and return the default.</li>
+<li>Validate against the discovered profile catalog when available, while
+  retaining server-side validation as the source of truth.</li>
+<li>Show the resolved key and display name in successful human and JSON output.</li>
+<li>Add the key to job list/detail/export fields.</li>
+</ul>
+<p>Frontend:</p>
+<ul>
+<li>Show an image selector populated from the profile catalog if/when job
+  submission is exposed in the UI.</li>
+<li>Show image display name on job and worker detail/table surfaces.</li>
+<li>Render the configured display name for every valid profile key.</li>
+</ul>
+<h2 id="image-aware-provisioning-and-assignment">Image-Aware Provisioning and Assignment</h2>
+<h3 id="slurm-provisioning">SLURM provisioning</h3>
+<p>Extend <code>QueuedJobCandidate</code> with <code>worker_image_key</code>.</p>
+<p>For each cluster:</p>
+<ol>
+<li>Walk queued jobs in creation order.</li>
+<li>Require cluster-affinity compatibility.</li>
+<li>Require <code>job.worker_image_key</code> to exist in
+   <code>cluster.worker_images</code>.</li>
+<li>Resolve the matching source and pass it to <code>submit_slurm_job</code>.</li>
+<li>Render that source into <code>job.sbatch.j2</code>.</li>
+<li>Set <code>RELAYMD_WORKER_IMAGE_KEY=&lt;key&gt;</code> in the container environment.</li>
+<li>Create the queued placeholder with the same key.</li>
+</ol>
+<p>Active/pending worker checks must be scoped to <code>(cluster, worker_image_key)</code>.
+An idle AToM-OpenMM worker must not suppress provisioning for a queued
+GCNCMC-MD job. Define the existing <code>max_pending_jobs</code> limit as per
+cluster/image pair for this first implementation and document the changed
+meaning.</p>
+<p>Extend queue diagnostics with image-specific reasons. The implementation keeps
+the affinity distinction, so the unpinned cases are
+<code>no_compatible_worker_image_clusters</code> and
+<code>no_enabled_worker_image_clusters</code>; pinned jobs use the corresponding
+<code>no_compatible_pinned_worker_image_clusters</code> and
+<code>no_enabled_pinned_clusters</code> reasons. A job whose requested pins name no
+configured cluster uses <code>no_matching_pinned_clusters</code>.</p>
+<p>Keep job lifecycle status as <code>queued</code>; use <code>queue_blocked_reason</code> for operator
+visibility as with cluster affinity.</p>
+<h3 id="worker-registration">Worker registration</h3>
+<ul>
+<li>Worker startup reads required <code>RELAYMD_WORKER_IMAGE_KEY</code>.</li>
+<li>HPC registration sends that key with the provider ID.</li>
+<li>Placeholder activation requires provider ID and key to match. A mismatch is
+  a registration error and must not silently rewrite the placeholder.</li>
+<li>Absence of the variable is a worker-startup configuration error.</li>
+</ul>
+<h3 id="assignment">Assignment</h3>
+<p>Update both requesting-worker and scheduled assignment paths so
+<code>_worker_can_run_job</code> requires:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cluster affinity matches
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>AND worker.worker_image_key == job.worker_image_key
+</span></code></pre></div>
+<p>The match must occur before the atomic claim. Add image keys to assignment
+success/skip logs. Image matching belongs in the orchestrator, not in the
+payload bundle config.</p>
+<h3 id="saladcloud">SaladCloud</h3>
+<p>Add a single configured <code>salad_worker_image_key</code>, defaulting to
+<code>atom-openmm</code>, and inject it into the existing container group. The assignment
+filter then prevents that group from claiming GCNCMC-MD jobs. Supporting more
+than one Salad image later requires a key-to-container-group map and
+per-profile scaling; do not overload the existing single-group scaler in this
+change.</p>
+<h2 id="worker-image-layout">Worker Image Layout</h2>
+<p>Use lowercase, hyphenated filenames and artifact names even though display
+names retain their scientific capitalization.</p>
+<p>Proposed source layout:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Dockerfile.worker                         # shared RelayMD app layer
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>Dockerfile.worker-atom-openmm-base        # renamed current worker base
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>Dockerfile.worker-gcncmcmd-base           # new GCNCMC simulation base
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>images/gcncmcmd/openmm.yml                # pinned environment input
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>deploy/hpc/apptainer/
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>  relaymd-worker-app.localdev.def         # shared RelayMD app layer
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  relaymd-worker-atom-openmm-base.localdev.def
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  relaymd-worker-gcncmcmd-base.localdev.def
+</span></code></pre></div>
+<p><code>Dockerfile.worker</code> is the current root worker <code>Dockerfile</code>, renamed to make
+its role explicit. It continues to accept <code>BASE_IMAGE</code>, copies the workspace
+packages, installs them with <code>--no-deps</code>, and uses:</p>
+<div class="language-dockerfile highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">ENTRYPOINT</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;python&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;-m&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;relaymd.worker&quot;</span><span class="p">]</span>
+</span></code></pre></div>
+<p>Published artifacts:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ghcr.io/&lt;org&gt;/relaymd-worker-atom-openmm:&lt;immutable-tag&gt;
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>ghcr.io/&lt;org&gt;/relaymd-worker-gcncmcmd:&lt;immutable-tag&gt;
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>ghcr.io/&lt;org&gt;/relaymd-worker-atom-openmm-base:&lt;immutable-tag&gt;
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>ghcr.io/&lt;org&gt;/relaymd-worker-gcncmcmd-base:&lt;immutable-tag&gt;
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>relaymd-worker-atom-openmm.sif
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>relaymd-worker-gcncmcmd.sif
+</span></code></pre></div>
+<p>Do not publish <code>ghcr.io/&lt;org&gt;/relaymd-worker</code> or <code>relaymd-worker.sif</code> aliases.
+Deployments use the explicit AToM-OpenMM and GCNCMC-MD names above.</p>
+<h2 id="atom-openmm-image">AToM-OpenMM Image</h2>
+<p>Rename the current base without changing its software contract:</p>
+<ul>
+<li>CUDA runtime base;</li>
+<li>Python 3.11;</li>
+<li>OpenMM 8.4 and CUDA 12.6 runtime packages;</li>
+<li>pinned AToM-OpenMM commit
+  <code>71f2f4e6b90f3cfd8ff3ab0ec46e32922e9c2f56</code>;</li>
+<li>Tailscale and RelayMD runtime dependencies.</li>
+</ul>
+<p>Add labels:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>relaymd.component=worker
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>relaymd.worker_image_key=atom-openmm
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>relaymd.worker_image_name=AToM-OpenMM
+</span></code></pre></div>
+<p>Preserve the existing OpenMM and <code>atom_openmm</code> smoke imports.</p>
+<h2 id="gcncmc-md-image">GCNCMC-MD Image</h2>
+<p>Create a new simulation base patterned after the current RelayMD worker base,
+using the software contract from <code>gcncmcmd-production.def</code>.</p>
+<h3 id="base-construction">Base construction</h3>
+<ol>
+<li>Start from Ubuntu 22.04 or the same NVIDIA CUDA runtime family used by the
+   AToM base. The host driver remains injected by Apptainer <code>--nv</code>.</li>
+<li>Install the same RelayMD host tools as the AToM base: <code>bash</code>, <code>coreutils</code>,
+   <code>tar</code>, <code>procps</code>, certificates, <code>curl</code>, <code>git</code>, <code>bzip2</code>, Tailscale, and <code>uv</code>.</li>
+<li>Pin micromamba to <code>2.3.3</code> rather than using <code>latest</code>.</li>
+<li>Copy the pinned GCNCMC <code>openmm.yml</code> into the RelayMD build context.</li>
+<li>Remove the exported host <code>prefix</code>, and remove the <code>grand==1.1.0</code> pip entry
+   before environment creation, matching the source definition.</li>
+<li>Create <code>/opt/gcncmcmd</code> from that file. Its Python 3.12 satisfies
+   <code>relaymd-worker</code>'s current <code>&gt;=3.11,&lt;3.13</code> constraint.</li>
+<li>Install GRAND directly from the ADR-pinned public HTTPS source
+   <code>https://github.com/essex-lab/grand.git</code> at commit
+   <code>f58784faeaaabbe054b306f7a474e0eaec5ff878</code>, with <code>--no-deps</code>; do not copy
+   or vendor a GRAND source tree into the build context.</li>
+<li>Install the RelayMD worker runtime dependencies missing from the exported
+   environment (<code>boto3</code>, <code>infisical-python</code>, <code>nvidia-ml-py</code>, <code>orjson</code>,
+   <code>pydantic-settings</code>, <code>structlog</code>, <code>tenacity</code>, and any transitive packages
+   required by the locked worker package) before applying the shared app layer.</li>
+<li>Put <code>/opt/gcncmcmd/bin</code> first on <code>PATH</code>, set <code>PYTHONNOUSERSITE=1</code>, and keep
+   <code>OPENMM_CPU_THREADS=${OPENMM_CPU_THREADS:-1}</code>.</li>
+<li>Symlink the environment's Python only if needed by build tooling; verify
+    that the final <code>python</code> used by the worker is <code>/opt/gcncmcmd/bin/python</code>.</li>
+</ol>
+<p>Do not base GCNCMC-MD on the AToM base. Their Python and OpenMM pins differ,
+and carrying AToM into the GCNCMC image provides no runtime value.</p>
+<h3 id="reproducible-grand-source">Reproducible GRAND source</h3>
+<p>The implementation must resolve GRAND provenance before enabling CI. Preferred
+order:</p>
+<p>Install GRAND from the public HTTPS source at
+<code>https://github.com/essex-lab/grand.git</code> pinned to its <code>v1.1.0</code> release commit
+<code>f58784faeaaabbe054b306f7a474e0eaec5ff878</code>. Do not make CI depend on
+<code>/scratch/gilbreth/pballane/folate-alpha-beta/gcncmcmd/grand</code> or an SSH-only
+Git remote.</p>
+<h3 id="image-tests">Image tests</h3>
+<p>The base test must run with the final worker Python and verify:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">grand</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">openmm</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="kn">import</span><span class="w"> </span><span class="nn">openmmtools</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="k">assert</span> <span class="n">grand</span><span class="o">.</span><span class="n">__version__</span> <span class="o">==</span> <span class="s2">&quot;1.1.0&quot;</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">assert</span> <span class="n">openmm</span><span class="o">.</span><span class="n">version</span><span class="o">.</span><span class="n">version</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;8.2&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<p>The final app image must also verify:</p>
+<ul>
+<li><code>python -m relaymd.worker --help</code> or an equivalent non-network import smoke
+  test;</li>
+<li>imports for <code>relaymd</code>, <code>relaymd_api_client</code>, and worker dependencies;</li>
+<li>the OpenMM CUDA platform in a GPU-enabled smoke environment;</li>
+<li>OCI and Apptainer builds use the same Python and package versions.</li>
+</ul>
+<h2 id="ci-release-and-local-build-changes">CI, Release, and Local Build Changes</h2>
+<ol>
+<li>Replace singular worker build jobs with a two-profile matrix.</li>
+<li>Give each base and app image a separate cache scope and path filter.</li>
+<li>Build the shared RelayMD app layer twice, once with each base image.</li>
+<li>Build and push a SIF for each final worker image.</li>
+<li>Change the release manifest from singular worker fields to a map:</li>
+</ol>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;worker_images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">&quot;atom-openmm&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">      </span><span class="nt">&quot;image_uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker://...&quot;</span><span class="p">,</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">      </span><span class="nt">&quot;sif_uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oras://...&quot;</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="p">},</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">&quot;gcncmcmd&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">      </span><span class="nt">&quot;image_uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;docker://...&quot;</span><span class="p">,</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">      </span><span class="nt">&quot;sif_uri&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;oras://...&quot;</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="p">}</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">  </span><span class="p">}</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<ol>
+<li>The release manifest contains only the <code>worker_images</code> map; it has no
+   singular <code>worker_image</code> or <code>worker_sif_uri</code> fields.</li>
+<li>Update <code>relaymd upgrade</code> and <code>deploy/hpc/relaymd-service-pull</code> to pull both
+   named SIFs atomically into the release directory.</li>
+<li>Promote the release only after both required worker artifacts and the
+   orchestrator/CLI are available for the same source commit.</li>
+<li>Update local Docker/Podman and direct Apptainer scripts to accept
+   <code>--worker-image atom-openmm|gcncmcmd|all</code>; default <code>all</code> for release-like
+   builds and <code>atom-openmm</code> for focused local iteration.</li>
+<li>Install only the two named SIFs; do not create a <code>relaymd-worker.sif</code>
+    symlink.</li>
+</ol>
+<h2 id="delivery-assessment">Delivery Assessment</h2>
+<p>This work is too large and operationally coupled for one implementation pass.
+It crosses five failure domains:</p>
+<ol>
+<li>database and generated API contract changes;</li>
+<li>worker registration and job-assignment correctness;</li>
+<li>SLURM provisioning and placeholder accounting;</li>
+<li>two independently reproducible scientific software images;</li>
+<li>CI, release manifests, upgrade, activation, and rollback.</li>
+</ol>
+<p>Implement it as the phases below. Each phase ends at a green, reviewable commit
+where the existing AToM-OpenMM path still works. The phases may remain in one
+pull request if review capacity allows, but do not squash away the commit
+boundaries until the change has passed production smoke validation. If the
+review becomes unwieldy, split after Phase 3 and after Phase 5:</p>
+<ul>
+<li>PR 1: control-plane identity and image-aware scheduling;</li>
+<li>PR 2: image recipes and local validation;</li>
+<li>PR 3: CI/release integration and operator surfaces.</li>
+</ul>
+<p>Later PRs must branch from or wait for the earlier contract PR; do not maintain
+competing definitions of image keys.</p>
+<h2 id="phased-implementation-and-commit-points">Phased Implementation and Commit Points</h2>
+<p>Phases 0 through 8 are the completed implementation record. Phase 8 is the
+authoritative final-state contract where it differs from an earlier
+transitional phase.</p>
+<h3 id="phase-0-freeze-names-and-reproducible-inputs">Phase 0: Freeze names and reproducible inputs</h3>
+<p>Work:</p>
+<ul>
+<li>Confirm the stable keys <code>atom-openmm</code> and <code>gcncmcmd</code>, display names, artifact
+  names, and environment paths.</li>
+<li>Pin the GRAND source to <code>https://github.com/essex-lab/grand.git</code> at its
+  <code>v1.1.0</code> release commit <code>f58784faeaaabbe054b306f7a474e0eaec5ff878</code>.</li>
+<li>Copy the pinned <code>openmm.yml</code> into an intentional RelayMD image-build input
+  location.</li>
+<li>Add the ADR for allowlisted image profiles and record the source-provenance
+  decision.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docs(images): lock worker image profiles and GCNCMC build inputs
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>A clean checkout can access every future image input without <code>/scratch</code>
+  paths or SSH-only Git access.</li>
+<li>No runtime behavior changes.</li>
+<li>Image keys and artifact names are treated as frozen contracts for later
+  phases.</li>
+</ul>
+<h3 id="phase-1-add-the-strict-configuration-catalog">Phase 1: Add the strict configuration catalog</h3>
+<p>Work:</p>
+<ul>
+<li>Add <code>WorkerImageProfile</code> and image-source config models.</li>
+<li>Add <code>default_worker_image</code> and per-cluster <code>worker_images</code>.</li>
+<li>Add startup validation and profile discovery serialization.</li>
+<li>Update focused configuration tests and the example config.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>feat(config): add worker image profile catalog
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>Only profile-map configuration loads; legacy cluster-level image fields are
+  rejected.</li>
+<li>New two-image configuration validates.</li>
+<li>No database or scheduler behavior changes yet.</li>
+</ul>
+<h3 id="phase-2-persist-image-identity-through-the-api-and-workers">Phase 2: Persist image identity through the API and workers</h3>
+<p>Work:</p>
+<ul>
+<li>Add <code>worker_image_key</code> to job and worker core models.</li>
+<li>Add and test non-null image-key schema fields. A pre-profile database reset
+  is the documented breaking upgrade path.</li>
+<li>Extend create/read/requeue/history and worker registration contracts.</li>
+<li>Make worker startup require and advertise <code>RELAYMD_WORKER_IMAGE_KEY</code>.</li>
+<li>Make placeholder activation reject provider/image mismatches.</li>
+<li>Regenerate the API client once the shared contract is complete.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>feat(api): persist worker image identity
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>New records always persist an explicit key.</li>
+<li>Requeue clones and placeholder activation preserve the key.</li>
+<li>API, schema, worker gateway, and generated-client tests pass.</li>
+<li>Scheduling still behaves like the single-image system because all current
+  jobs resolve to <code>atom-openmm</code>.</li>
+</ul>
+<h3 id="phase-3-enforce-image-aware-assignment-and-slurm-provisioning">Phase 3: Enforce image-aware assignment and SLURM provisioning</h3>
+<p>Work:</p>
+<ul>
+<li>Add exact image-key matching to requesting and scheduled assignment paths.</li>
+<li>Carry the key through <code>QueuedJobCandidate</code>, worker selection, sbatch
+  rendering, environment injection, and placeholder creation.</li>
+<li>Scope active and pending worker checks to cluster/image pairs.</li>
+<li>Add image-specific queue-blocked reasons and structured logs.</li>
+<li>Define and test mixed-image FIFO behavior and per-image pending limits.</li>
+<li>Tag the existing Salad group as <code>atom-openmm</code> without adding multi-group
+  scaling.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>feat(scheduler): provision and assign image-compatible workers
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>Cross-image claims are impossible in tests.</li>
+<li>An AToM-only profile-map configuration remains supported.</li>
+<li>A synthetic two-image configuration renders the correct source for each
+  queued job.</li>
+<li>Scheduler, assignment, registration, reaper, and sbatch tests pass.</li>
+</ul>
+<p>This is the first safe split point for a standalone control-plane PR.</p>
+<h3 id="phase-4-refactor-atom-and-build-the-gcncmc-worker-locally">Phase 4: Refactor AToM and build the GCNCMC worker locally</h3>
+<p>Work:</p>
+<ul>
+<li>Rename the generic RelayMD app layer and AToM base recipes.</li>
+<li>Add explicit image labels and <code>RELAYMD_WORKER_IMAGE_KEY</code> defaults.</li>
+<li>Add the GCNCMC Docker and Apptainer base recipes from the committed
+  <code>openmm.yml</code> and the ADR-pinned upstream GRAND source.</li>
+<li>Apply the shared RelayMD app layer to both bases.</li>
+<li>Update local build/conversion scripts for one profile or all profiles.</li>
+<li>Add import, version, entrypoint, and available GPU smoke checks.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>feat(images): add AToM-OpenMM and GCNCMC worker variants
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>Both OCI images build from a clean checkout.</li>
+<li>Both local Apptainer artifacts build or have a clearly documented
+  environment limitation.</li>
+<li>AToM uses Python 3.11/OpenMM 8.4 and GCNCMC uses Python 3.12/OpenMM 8.2.</li>
+<li>Both variants start the RelayMD worker with the intended environment Python.</li>
+<li>No CI or production release layout changes yet.</li>
+</ul>
+<p>This is the second safe split point for an image-focused PR.</p>
+<h3 id="phase-5-publish-and-activate-a-coherent-two-image-release">Phase 5: Publish and activate a coherent two-image release</h3>
+<p>Work:</p>
+<ul>
+<li>Convert worker base, app, and SIF CI jobs to a profile matrix.</li>
+<li>Add per-profile path filters, caches, tags, and smoke tests.</li>
+<li>Make the release manifest use only <code>worker_images</code>.</li>
+<li>Update <code>relaymd upgrade</code>, <code>relaymd-service-pull</code>, release staging, atomic
+  activation, and rollback for the two named artifacts.</li>
+<li>Test partial-release failure: activation must not occur if either required
+  worker artifact is absent.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>feat(release): publish and install multiple worker images
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>CI pins both worker variants to the same source commit.</li>
+<li>A release installs both named SIFs before switching <code>current</code>.</li>
+<li>Rollback restores a complete prior image set.</li>
+<li>Shell syntax tests, release-script tests, and manifest tests pass.</li>
+</ul>
+<h3 id="phase-5a-complete-the-github-actions-worker-image-matrix">Phase 5a: Complete the GitHub Actions worker-image matrix</h3>
+<p>Complete the CI contract with only the two named worker profiles. No singular
+worker jobs or aliases remain after this phase.</p>
+<p>Work:</p>
+<ul>
+<li>Replace singular worker base, final-image, and SIF jobs in
+  <code>.github/workflows/ci.yml</code> with an <code>atom-openmm</code> / <code>gcncmcmd</code> profile
+  matrix.</li>
+<li>Build each profile's distinct base recipe, then apply the shared
+  <code>Dockerfile.worker</code> app layer with that base as <code>BASE_IMAGE</code>.</li>
+<li>Publish profile-specific OCI names and immutable SHA tags for both bases and
+  final images.</li>
+<li>Add profile-specific path filters and GitHub Actions cache scopes so a GCNCMC
+  input change does not incorrectly reuse an AToM cache (and vice versa).</li>
+<li>Build and publish one named SIF per final image, and make release-manifest
+  publication depend on both corresponding OCI and SIF artifacts.</li>
+<li>Run non-network image smoke tests in CI for each final image: RelayMD worker
+  entrypoint/imports, expected Python/OpenMM version, and the profile-specific
+  scientific imports (<code>atom_openmm</code> or GRAND/openmmtools). Run GPU/CUDA checks
+  only on a suitable GPU runner or clearly separate them from standard CI.</li>
+<li>Add workflow-level tests or fixture assertions covering named matrix tags and
+  the failure case where one profile artifact is missing.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>ci(images): build and test both worker image profiles
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>Pull requests build both worker profiles whenever shared app-layer or
+  profile-specific image inputs change.</li>
+<li>Protected-branch CI publishes both final OCI images and both named SIFs from
+  the same source commit.</li>
+<li>The release manifest cannot be promoted with only one worker-image profile.</li>
+<li>Each profile's CI smoke test proves it is running its intended Python and
+  scientific software contract.</li>
+<li>No singular worker OCI/SIF artifact is published or referenced.</li>
+</ul>
+<h3 id="phase-6-expose-selection-to-operators">Phase 6: Expose selection to operators</h3>
+<p>Work:</p>
+<ul>
+<li>Add <code>relaymd submit --worker-image</code>.</li>
+<li>Add profile discovery, validation, and resolved selection to human and JSON
+  output.</li>
+<li>Add image identity to CLI job/worker lists and exports.</li>
+<li>Add frontend types and image display fields; add a selector only if frontend
+  submission is available.</li>
+<li>Regenerate the API client only if the contract changed since Phase 2.</li>
+<li>Update CLI and frontend tests.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>feat(cli): allow jobs to select a worker image
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>Operators can explicitly submit <code>atom-openmm</code> and <code>gcncmcmd</code>.</li>
+<li>Invalid selections list available profiles.</li>
+<li>Output uses the catalog display name for the job or worker's valid key.</li>
+<li>CLI, frontend, and generated-client checks pass.</li>
+</ul>
+<p>Operator selection deliberately comes after release tooling can publish and
+install both images.</p>
+<h3 id="phase-7-integration-documentation-and-release-version">Phase 7: Integration, documentation, and release version</h3>
+<p>Work:</p>
+<ul>
+<li>Update deployment, scheduling, lifecycle, worker, CLI, infra, HPC, SLURM,
+  upgrade, and rollback documentation.</li>
+<li>Run both end-to-end smoke jobs and verify job, placeholder, worker, and
+  assignment keys.</li>
+<li>Run targeted checks followed by full repository checks.</li>
+<li>Run <code>graphify update .</code>.</li>
+<li>Apply the repository-required CLI version bump with <code>make release-cli</code>.</li>
+</ul>
+<p>Commit points:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>docs: document worker image selection and rollout
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>release: bump RelayMD CLI to X.Y.Z
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>AToM and GCNCMC smoke jobs each run in their selected image.</li>
+<li>Full Python and frontend validation passes, or exact environmental blockers
+  are recorded.</li>
+<li>The branch contains the version commit and matching tag required by
+  repository policy.</li>
+<li>Branch and release tag are ready to push together.</li>
+</ul>
+<h3 id="phase-8-remove-pre-release-compatibility-maintenance-completed">Phase 8: Remove pre-release compatibility maintenance (completed)</h3>
+<p>This intentionally breaking cleanup preserves the named two-profile behavior
+specified in the preceding phases.</p>
+<p>Work:</p>
+<ul>
+<li>Remove legacy cluster-level image fields, their translation/deprecation
+  logic, compatibility accessors, and diagnostics fallbacks.</li>
+<li>Require <code>RELAYMD_WORKER_IMAGE_KEY</code> and require <code>worker_image_key</code> in worker
+  registration rather than defaulting either to <code>atom-openmm</code>.</li>
+<li>Remove the singular OCI and SIF aliases, singular release-manifest fields,
+  legacy pull-script environment variables/arguments, and the
+  <code>relaymd-worker.sif</code> symlink.</li>
+<li>Delete disabled singular-worker GitHub Actions jobs instead of retaining
+  them under <code>if: false</code>.</li>
+<li>Update examples and operational documentation to use only
+  <code>relaymd-worker-atom-openmm</code> and <code>relaymd-worker-gcncmcmd</code> artifact names
+  and the <code>worker_images</code> configuration map.</li>
+<li>Remove the old database backfill migration or replace it with the strict
+  schema path appropriate for a fresh development database; document database
+  reset as the upgrade procedure.</li>
+</ul>
+<p>Commit point:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>refactor(images): remove legacy worker image compatibility paths
+</span></code></pre></div>
+<p>Exit criteria:</p>
+<ul>
+<li>No accepted configuration, API request, environment variable, release
+  manifest field, artifact, or documentation path uses the singular worker
+  contract.</li>
+<li>The named AToM-OpenMM and GCNCMC-MD images build, publish, install, register,
+  provision, and claim only jobs with their matching keys.</li>
+<li>The profile-map configuration, scheduler, release, CLI, frontend, and image
+  smoke tests remain green after the cleanup.</li>
+</ul>
+<h2 id="parallel-implementation-with-subagents">Parallel Implementation with Subagents</h2>
+<p>Use subagents only after Phase 0 freezes names and source inputs. The shared
+model/config contract is the dependency for almost every other stream, so the
+primary agent should own Phases 1 and 2 and should be the only agent editing
+shared models, migrations, generated API client files, <code>pyproject.toml</code>, and
+<code>uv.lock</code>.</p>
+<p>With four total agent slots, use at most three subagents plus the primary
+coordinator. Recommended ownership:</p>
+<table>
+<thead>
+<tr>
+<th>Workstream</th>
+<th>Earliest start</th>
+<th>Exclusive ownership</th>
+<th>Must not edit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Scheduler subagent</td>
+<td>After Phase 2</td>
+<td>assignment service, SLURM provisioning/service tests, sbatch rendering tests</td>
+<td>shared models, migrations, generated client, image recipes</td>
+</tr>
+<tr>
+<td>Image subagent</td>
+<td>After Phase 0</td>
+<td>Dockerfiles, <code>images/gcncmcmd</code>, Apptainer definitions, local image-build scripts, image smoke scripts</td>
+<td>scheduler/API code, release manifest, version files</td>
+</tr>
+<tr>
+<td>Interface subagent</td>
+<td>After Phase 2 client generation</td>
+<td>CLI submit/list/export, frontend types/views, their tests</td>
+<td>shared API models, generated client, scheduler, CI</td>
+</tr>
+<tr>
+<td>Release subagent</td>
+<td>After Phase 4 artifact contract is stable</td>
+<td>CI worker matrix, release manifest, upgrade/pull/install scripts and tests</td>
+<td>image recipes, shared models, CLI version files</td>
+</tr>
+</tbody>
+</table>
+<p>The release subagent replaces the image or interface subagent in a later wave;
+do not run four subagents alongside the primary agent.</p>
+<h3 id="recommended-parallel-waves">Recommended parallel waves</h3>
+<p>Wave 1:</p>
+<ul>
+<li>Primary agent: Phases 1 and 2, including the canonical contract and generated
+  client.</li>
+<li>Image subagent: begin Phase 4 recipe work after Phase 0, using only the
+  frozen keys and artifact names.</li>
+</ul>
+<p>Wave 2, after Phase 2 is merged into the working branch:</p>
+<ul>
+<li>Scheduler subagent: Phase 3.</li>
+<li>Image subagent: finish Phase 4 and local smoke validation.</li>
+<li>Interface subagent: prepare Phase 6 against the generated client, but keep
+  operator selection disabled from final integration until Phase 5 is ready.</li>
+<li>Primary agent: review cross-stream invariants, resolve contract questions,
+  and run integration tests.</li>
+</ul>
+<p>Wave 3:</p>
+<ul>
+<li>Release subagent: Phase 5 after final image names, paths, and build commands
+  are stable.</li>
+<li>Interface subagent: finish Phase 6 tests and documentation notes.</li>
+<li>Primary agent: integrate in dependency order, run Phase 7, update graphify,
+  and perform the version release commit.</li>
+</ul>
+<h3 id="coordination-rules">Coordination rules</h3>
+<ul>
+<li>Give each subagent a bounded file set and require tests/evidence in its
+  handoff. Avoid multiple agents editing <code>.github/workflows/ci.yml</code>,
+  <code>deploy/hpc/relaymd-service-pull</code>, or generated client files.</li>
+<li>The primary agent integrates commits in phase order even if later work
+  finishes earlier.</li>
+<li>Subagents must not independently regenerate the API client, update
+  <code>graphify-out</code>, bump versions, create release tags, or rewrite <code>uv.lock</code>.</li>
+<li>Keep image-key literals centralized in shared configuration/model helpers;
+  do not let subagents introduce separate CLI, frontend, scheduler, or shell
+  enums.</li>
+<li>Before integrating each subagent result, rebase or replay it onto the latest
+  completed phase and rerun the narrow tests for both sides of the boundary.</li>
+<li>After each wave, inspect <code>git diff</code>, confirm unrelated user changes remain
+  untouched, and create the phase commit before starting the next integration
+  wave.</li>
+</ul>
+<h2 id="validation-plan">Validation Plan</h2>
+<p>Configuration:</p>
+<ul>
+<li>Reject duplicate/unknown profile keys and invalid image sources.</li>
+<li>Reject legacy single-image cluster config.</li>
+<li>Reject a default key unsupported by all enabled backends.</li>
+</ul>
+<p>API and persistence:</p>
+<ul>
+<li>Omitted image resolves to and persists <code>atom-openmm</code>.</li>
+<li>Explicit <code>gcncmcmd</code> survives create, read, list, history, and requeue clone.</li>
+<li>Unknown image selection returns a typed client-visible error.</li>
+<li>Pre-profile database upgrade is rejected/documented as requiring a reset.</li>
+</ul>
+<p>Provisioning:</p>
+<ul>
+<li>An AToM queued job renders the AToM source.</li>
+<li>A GCNCMC queued job renders the GCNCMC source.</li>
+<li>A cluster lacking the selected key is skipped and reports an image-specific
+  blocked reason.</li>
+<li>Active/pending AToM workers do not suppress GCNCMC provisioning.</li>
+<li>Placeholder rows retain the selected key.</li>
+<li>Registration with a mismatched provider ID/image key fails safely.</li>
+</ul>
+<p>Assignment:</p>
+<ul>
+<li>AToM workers cannot claim GCNCMC jobs and vice versa.</li>
+<li>Cluster affinity and image compatibility are both enforced.</li>
+<li>Mixed-image queues preserve FIFO order among jobs each worker can run
+  without head-of-line blocking incompatible jobs.</li>
+<li>Salad workers explicitly advertise their configured profile key.</li>
+</ul>
+<p>CLI and frontend:</p>
+<ul>
+<li><code>--worker-image gcncmcmd</code> is included in the create request and success
+  output.</li>
+<li>Invalid keys show available values.</li>
+<li>Job and worker tables render configured display names.</li>
+</ul>
+<p>Images:</p>
+<ul>
+<li>Both OCI images build from a clean checkout.</li>
+<li>Both SIFs build from the published bases.</li>
+<li>AToM smoke test imports AToM-OpenMM and OpenMM 8.4.</li>
+<li>GCNCMC smoke test imports the ADR-pinned upstream GRAND 1.1.0, OpenMM 8.2,
+  and openmmtools.</li>
+<li>Both final images start/import the RelayMD worker with their intended
+  environment Python.</li>
+<li>A GPU smoke run confirms OpenMM reports <code>CUDA</code> under Docker GPU runtime and
+  Apptainer <code>--nv</code>.</li>
+</ul>
+<p>Release:</p>
+<ul>
+<li>Manifest pins both images/SIFs to one source commit.</li>
+<li>Upgrade installs both named SIFs before switching <code>current</code>.</li>
+<li>No singular OCI/SIF alias or manifest field is published.</li>
+<li>Rollback restores the prior complete two-image release.</li>
+</ul>
+<h2 id="rollout">Rollout</h2>
+<ol>
+<li>Reset any pre-profile development database and replace legacy cluster config
+   with the profile map.</li>
+<li>Publish both named images and SIFs for one RelayMD release.</li>
+<li>Install the release with both named SIFs and no singular-worker symlink.</li>
+<li>Update orchestrator config to list both keys for the target cluster.</li>
+<li>Submit one explicit AToM smoke job and one explicit GCNCMC smoke job.</li>
+<li>Confirm each placeholder, registered worker, assignment, and job record has
+   the expected key.</li>
+<li>Keep <code>atom-openmm</code> as the default until GCNCMC production validation is
+   complete.</li>
+</ol>
+<h2 id="documentation-changes">Documentation Changes</h2>
+<p>Update during implementation:</p>
+<ul>
+<li><code>deploy/config.example.yaml</code></li>
+<li><code>docs/deployment.md</code></li>
+<li><code>docs/scheduling.md</code></li>
+<li><code>docs/job-lifecycle.md</code></li>
+<li><code>docs/worker-internals.md</code></li>
+<li><code>docs/cli.md</code></li>
+<li><code>docs/infra.md</code></li>
+<li><code>deploy/hpc/README.md</code></li>
+<li><code>deploy/slurm/README.md</code></li>
+<li>release-manifest and upgrade documentation</li>
+</ul>
+<p>Add an ADR recording why RelayMD uses an allowlisted image profile key instead
+of accepting raw per-job image URIs.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

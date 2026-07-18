@@ -10,31 +10,27 @@
       
       
       
-        <link rel="canonical" href="https://github.com/ballaneypranav/RelayMD/hpc-notes/">
+        <link rel="canonical" href="https://github.com/ballaneypranav/RelayMD/investigations/workers-per-gpu-bundle-resume-investigation/">
       
       
-        <link rel="prev" href="../deployment/">
-      
-      
-        <link rel="next" href="../e2e-test-report/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
     
     
       
-        <title>HPC Notes - RelayMD</title>
+        <title>Investigation: Workers-per-GPU Changes Across Resume - RelayMD</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,7 +49,7 @@
       
     
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -78,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#hpc-apptainer-tailscale-notes" class="md-skip">
+        <a href="#investigation-workers-per-gpu-changes-across-resume" class="md-skip">
           Skip to content
         </a>
       
@@ -94,7 +90,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="RelayMD" class="md-header__button md-logo" aria-label="RelayMD" data-md-component="logo">
+    <a href="../.." title="RelayMD" class="md-header__button md-logo" aria-label="RelayMD" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -114,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              HPC Notes
+              Investigation: Workers-per-GPU Changes Across Resume
             
           </span>
         </div>
@@ -237,7 +233,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="RelayMD" class="md-nav__button md-logo" aria-label="RelayMD" data-md-component="logo">
+    <a href="../.." title="RelayMD" class="md-nav__button md-logo" aria-label="RelayMD" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -267,7 +263,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -356,7 +352,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../architecture/" class="md-nav__link">
+      <a href="../../architecture/" class="md-nav__link">
         
   
   
@@ -384,7 +380,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../job-lifecycle/" class="md-nav__link">
+      <a href="../../job-lifecycle/" class="md-nav__link">
         
   
   
@@ -412,7 +408,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../scheduling/" class="md-nav__link">
+      <a href="../../scheduling/" class="md-nav__link">
         
   
   
@@ -440,7 +436,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api-schema/" class="md-nav__link">
+      <a href="../../api-schema/" class="md-nav__link">
         
   
   
@@ -543,7 +539,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../secrets/" class="md-nav__link">
+      <a href="../../secrets/" class="md-nav__link">
         
   
   
@@ -571,7 +567,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../tech-stack/" class="md-nav__link">
+      <a href="../../tech-stack/" class="md-nav__link">
         
   
   
@@ -599,7 +595,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../orchestrator-internals/" class="md-nav__link">
+      <a href="../../orchestrator-internals/" class="md-nav__link">
         
   
   
@@ -627,7 +623,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../worker-internals/" class="md-nav__link">
+      <a href="../../worker-internals/" class="md-nav__link">
         
   
   
@@ -655,7 +651,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli-internals/" class="md-nav__link">
+      <a href="../../cli-internals/" class="md-nav__link">
         
   
   
@@ -683,7 +679,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage-internals/" class="md-nav__link">
+      <a href="../../storage-internals/" class="md-nav__link">
         
   
   
@@ -711,7 +707,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage-layout/" class="md-nav__link">
+      <a href="../../storage-layout/" class="md-nav__link">
         
   
   
@@ -743,10 +739,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -767,11 +761,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -792,7 +786,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -810,7 +804,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../cli/" class="md-nav__link">
+      <a href="../../cli/" class="md-nav__link">
         
   
   
@@ -838,7 +832,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../infra/" class="md-nav__link">
+      <a href="../../infra/" class="md-nav__link">
         
   
   
@@ -866,7 +860,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../deployment/" class="md-nav__link">
+      <a href="../../deployment/" class="md-nav__link">
         
   
   
@@ -891,37 +885,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    HPC Notes
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../hpc-notes/" class="md-nav__link">
         
   
   
@@ -937,92 +904,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#1-pull-and-convert-from-ghcr" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        1) Pull and Convert from GHCR
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-submit-tailscale-userspace-validation-job" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        2) Submit Tailscale Userspace Validation Job
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-manual-validation-checklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        3) Manual Validation Checklist
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-cluster-specific-flagsnotes" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        4) Cluster-Specific Flags/Notes
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-live-run-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        5) Live Run Results
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-fakeroot-validation-note" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        6) Fakeroot Validation Note
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1098,7 +979,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../e2e-test-report/" class="md-nav__link">
+      <a href="../../e2e-test-report/" class="md-nav__link">
         
   
   
@@ -1153,10 +1034,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#1-pull-and-convert-from-ghcr" class="md-nav__link">
+  <a href="#summary" class="md-nav__link">
     <span class="md-ellipsis">
       
-        1) Pull and Convert from GHCR
+        Summary
       
     </span>
   </a>
@@ -1164,10 +1045,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#2-submit-tailscale-userspace-validation-job" class="md-nav__link">
+  <a href="#user-reported-scenario" class="md-nav__link">
     <span class="md-ellipsis">
       
-        2) Submit Tailscale Userspace Validation Job
+        User-Reported Scenario
       
     </span>
   </a>
@@ -1175,10 +1056,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#3-manual-validation-checklist" class="md-nav__link">
+  <a href="#current-relaymd-behavior" class="md-nav__link">
     <span class="md-ellipsis">
       
-        3) Manual Validation Checklist
+        Current RelayMD Behavior
       
     </span>
   </a>
@@ -1186,10 +1067,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-cluster-specific-flagsnotes" class="md-nav__link">
+  <a href="#operational-workaround-considered" class="md-nav__link">
     <span class="md-ellipsis">
       
-        4) Cluster-Specific Flags/Notes
+        Operational Workaround Considered
       
     </span>
   </a>
@@ -1197,10 +1078,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-live-run-results" class="md-nav__link">
+  <a href="#preferred-product-direction" class="md-nav__link">
     <span class="md-ellipsis">
       
-        5) Live Run Results
+        Preferred Product Direction
       
     </span>
   </a>
@@ -1208,10 +1089,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6-fakeroot-validation-note" class="md-nav__link">
+  <a href="#design-notes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6) Fakeroot Validation Note
+        Design Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow-up-work" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow-Up Work
       
     </span>
   </a>
@@ -1238,85 +1130,114 @@
   
 
 
-<h1 id="hpc-apptainer-tailscale-notes">HPC Apptainer + Tailscale Notes</h1>
-<p>This document captures the cluster runbook and validation checklist for
-<code>W-151</code>: running RelayMD worker containers as Apptainer <code>.sif</code> images with
-Tailscale userspace networking on SLURM-managed HPC nodes.</p>
-<h2 id="1-pull-and-convert-from-ghcr">1) Pull and Convert from GHCR</h2>
-<p>Run on a cluster login node:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ORG</span><span class="o">=</span>&lt;org&gt;
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELEASE_DIR</span><span class="o">=</span>/depot/plow/apps/relaymd/releases/&lt;version&gt;
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">/relaymd-orchestrator.sif&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="s2">&quot;docker://ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-orchestrator:sha-&lt;shortsha&gt;&quot;</span>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">/relaymd-worker-atom-openmm.sif&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="s2">&quot;docker://ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-worker-atom-openmm:sha-&lt;shortsha&gt;&quot;</span>
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>apptainer<span class="w"> </span>pull<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">/relaymd-worker-gcncmcmd.sif&quot;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="s2">&quot;docker://ghcr.io/</span><span class="si">${</span><span class="nv">ORG</span><span class="si">}</span><span class="s2">/relaymd-worker-gcncmcmd:sha-&lt;shortsha&gt;&quot;</span>
-</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>ln<span class="w"> </span>-sfn<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">RELEASE_DIR</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span>/depot/plow/apps/relaymd/current
+<h1 id="investigation-workers-per-gpu-changes-across-resume">Investigation: Workers-per-GPU Changes Across Resume</h1>
+<h2 id="summary">Summary</h2>
+<p>This investigation captures an operational edge case found on 2026-05-17 while
+running AToM/RelayMD production bundles.</p>
+<p>A set of jobs was submitted with <code>workers-per-gpu=1</code>, but the intended runtime
+fanout was <code>workers-per-gpu=4</code>. The generated input bundle encoded that value in
+<code>run.sh</code> as <code>WORKERS_PER_GPU=1</code>. Once the job was submitted, RelayMD uploaded the
+bundle to object storage and future resume/requeue attempts continued using the
+same uploaded input bundle.</p>
+<p>The key finding is:</p>
+<ul>
+<li>RelayMD correctly treats input bundles as immutable job input, but it does not
+  currently provide a supported way to start a new job from an existing job's
+  checkpoint while using a newly generated input bundle.</li>
+</ul>
+<h2 id="user-reported-scenario">User-Reported Scenario</h2>
+<p>The concrete bundle inspected was:</p>
+<p><code>/scratch/gilbreth/pballane/folate-alpha-beta/FR_ATM-LSFE-01-S3C-R1-THF/output/07-production-relaymd-bundles/5THG_APTX/run.sh</code></p>
+<p>The generated script contained:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">WORKERS_PER_GPU</span><span class="o">=</span><span class="m">1</span>
 </span></code></pre></div>
-<p>Expected output:
-- all three SIFs exist under <code>${RELEASE_DIR}</code>
-- file is readable from compute nodes (shared filesystem path)</p>
-<h2 id="2-submit-tailscale-userspace-validation-job">2) Submit Tailscale Userspace Validation Job</h2>
-<p>Use the <code>test_tailscale.sbatch</code> template available in the repo under <code>deploy/slurm/</code>:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">TAILSCALE_AUTH_KEY</span><span class="o">=</span>&lt;ephemeral_auth_key&gt;
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ORCHESTRATOR_HOSTNAME</span><span class="o">=</span>&lt;orchestrator_magicdns_hostname&gt;
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH</span><span class="o">=</span>/depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">RELAYMD_WORKER_IMAGE_KEY</span><span class="o">=</span>atom-openmm
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="c1"># Optional, cluster-specific:</span>
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="c1"># export APPTAINER_FLAGS=&quot;--cleanenv --writable-tmpfs --bind /tmp:/tmp&quot;</span>
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>sbatch<span class="w"> </span>deploy/slurm/test_tailscale.sbatch
+<p>The adjacent worker config only instructed RelayMD to run the script:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;bash&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;run.sh&quot;</span><span class="p">]</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">}</span>
 </span></code></pre></div>
-<p>For a GCNCMC-MD validation, set
-<code>RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH=/depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif</code>
-and <code>RELAYMD_WORKER_IMAGE_KEY=gcncmcmd</code>. Production workers receive this key
-from the rendered SLURM template and must register it unchanged.</p>
-<p>Success criteria:
-- job exits <code>0</code>
-- <code>tailscale-healthz-&lt;jobid&gt;-&lt;node&gt;.log</code> contains <code>{"status":"ok"...}</code>
-- job stdout contains <code>Tailscale userspace + orchestrator healthz test passed</code></p>
-<h2 id="3-manual-validation-checklist">3) Manual Validation Checklist</h2>
-<p>Required checks for <code>Definition of Done</code>:</p>
+<p>Because <code>workers-per-gpu</code> is generated by the AToM input bundle preparation
+workflow, it is not a RelayMD domain parameter. RelayMD should not grow a generic
+<code>relaymd jobs requeue --set workers-per-gpu=4</code> flag for this case.</p>
+<h2 id="current-relaymd-behavior">Current RelayMD Behavior</h2>
+<p>RelayMD submission currently works as follows:</p>
 <ol>
-<li>Node appears in Tailscale admin panel during job execution:</li>
-<li>expected hostname prefix: <code>relaymd-test-</code></li>
-<li><code>GET /healthz</code> response from container is <code>{"status":"ok", ...}</code></li>
-<li>Node disappears from Tailscale admin panel within a few minutes after job
-   completion (ephemeral key behavior)</li>
+<li>The CLI creates a job ID.</li>
+<li>The CLI archives the input directory into <code>bundle.tar.gz</code>.</li>
+<li>The CLI uploads that archive to <code>jobs/&lt;job_id&gt;/input/bundle.tar.gz</code>.</li>
+<li>The orchestrator stores <code>input_bundle_path</code> on the job.</li>
+<li>Workers download that bundle on each execution segment.</li>
+<li>Requeue clones copy the original job's <code>input_bundle_path</code>.</li>
 </ol>
-<h2 id="4-cluster-specific-flagsnotes">4) Cluster-Specific Flags/Notes</h2>
-<p>Record the exact options needed on your cluster (fill this section after live run):</p>
+<p>Relevant code paths:</p>
 <ul>
-<li>Required <code>apptainer exec</code> flags:</li>
-<li><code>--cleanenv</code></li>
-<li><code>--writable-tmpfs</code></li>
-<li><code>--bind /tmp:/tmp</code></li>
-<li>Additional required flags:</li>
-<li><code>&lt;none observed yet&gt;</code></li>
-<li>Namespace/network caveats:</li>
-<li><code>&lt;fill after first successful run&gt;</code></li>
-<li>Filesystem caveats:</li>
-<li><code>&lt;fill after first successful run&gt;</code></li>
+<li><code>src/relaymd/cli/commands/submit.py</code> creates and uploads the immutable bundle.</li>
+<li><code>src/relaymd/cli/services/submit_service.py</code> registers jobs with an
+  <code>input_bundle_path</code>.</li>
+<li><code>src/relaymd/orchestrator/services/job_transitions.py</code> copies
+  <code>input_bundle_path</code> in <code>build_requeue_clone()</code>.</li>
+<li><code>packages/relaymd-worker/src/relaymd/worker/main.py</code> downloads and executes the
+  configured bundle.</li>
 </ul>
-<h2 id="5-live-run-results">5) Live Run Results</h2>
-<p>Fill this section after executing on the real HPC cluster:</p>
+<p>Relevant documented invariant:</p>
 <ul>
-<li>Cluster name:</li>
-<li>Login node used:</li>
-<li>Shared <code>.sif</code> path:</li>
-<li>SLURM job id:</li>
-<li>Compute node:</li>
-<li>Tailscale admin panel check (appear/disappear):</li>
-<li><code>/healthz</code> response:</li>
-<li>Final status:</li>
+<li><code>docs/architecture.md</code> states that input bundles are immutable and should not be
+  overwritten. If input needs to change, create a new job.</li>
 </ul>
-<h2 id="6-fakeroot-validation-note">6) Fakeroot Validation Note</h2>
-<p><code>apptainer build --fakeroot</code> was probed on this HPC and is not currently a
-supported path due missing usable fakeroot/subuid support. RelayMD deployment
-uses GHCR-published images plus <code>apptainer pull</code> on the login node.</p>
+<h2 id="operational-workaround-considered">Operational Workaround Considered</h2>
+<p>One emergency workaround is to overwrite the existing object storage key
+<code>jobs/&lt;job_id&gt;/input/bundle.tar.gz</code> with a patched bundle. That would affect the
+next worker segment because it downloads the bundle fresh.</p>
+<p>This was rejected as the product direction because it violates RelayMD's
+immutability invariant and makes the historical job record ambiguous: the same
+job ID would appear to have run a bundle whose contents changed after submission.</p>
+<p>For the immediate production need, a fresh job with a correctly generated bundle
+was submitted instead.</p>
+<h2 id="preferred-product-direction">Preferred Product Direction</h2>
+<p>The better model is: create a new job ID from a new bundle while resuming from an
+old job ID's checkpoint.</p>
+<p>This preserves the boundary between RelayMD and workload-specific bundle
+generation:</p>
+<ul>
+<li>The AToM bundle preparation script owns <code>workers-per-gpu</code> and renders <code>run.sh</code>.</li>
+<li>RelayMD owns job IDs, immutable bundle references, checkpoint references,
+  worker assignment, and job history.</li>
+</ul>
+<p>A proposed operator flow:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>relaymd<span class="w"> </span>submit<span class="w"> </span>./new-bundle-dir<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span>--title<span class="w"> </span><span class="s2">&quot;5THG_APTX resume mps4&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--resume-from-job<span class="w"> </span>&lt;old-job-id&gt;<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--cluster<span class="w"> </span>gilbreth-standby-a100-40gb-mps4
+</span></code></pre></div>
+<p>Alternative spelling:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>relaymd<span class="w"> </span><span class="nb">jobs</span><span class="w"> </span>resume-as-new<span class="w"> </span>&lt;old-job-id&gt;<span class="w"> </span>./new-bundle-dir<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--title<span class="w"> </span><span class="s2">&quot;5THG_APTX resume mps4&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--cluster<span class="w"> </span>gilbreth-standby-a100-40gb-mps4
+</span></code></pre></div>
+<p>Expected internal behavior:</p>
+<ol>
+<li>Upload the new bundle to <code>jobs/&lt;new-job-id&gt;/input/bundle.tar.gz</code>.</li>
+<li>Create a new queued job with the new <code>input_bundle_path</code>.</li>
+<li>Copy the old checkpoint manifest and every checkpoint file it references into
+   <code>jobs/&lt;new-job-id&gt;/checkpoints/</code>, then set the new job's manifest path and
+   <code>last_checkpoint_at</code>. The worker resolves manifests under its assigned job ID,
+   so retaining an old-job path alone would resume with an empty checkpoint.</li>
+<li>Apply new cluster affinity supplied by the operator.</li>
+<li>Record job history linking the new job to the old job and checkpoint source.</li>
+</ol>
+<h2 id="design-notes">Design Notes</h2>
+<p>Plain <code>requeue</code> should continue to mean "run the same logical job again with the
+same bundle/runtime assumptions." If the bundle changes, even if the only change
+is a generated <code>run.sh</code> parameter, the operation should create a distinct job ID.</p>
+<p>This also keeps debugging and audit trails straightforward:</p>
+<ul>
+<li>Old job ID: old bundle, old runtime choices, old cluster affinity.</li>
+<li>New job ID: new bundle, new runtime choices, checkpoint inherited from old job.</li>
+</ul>
+<h2 id="follow-up-work">Follow-Up Work</h2>
+<p>Implement a supported resume-as-new flow that can create a new job from a new
+bundle and an existing job's checkpoint metadata. Add API, CLI, tests, and job
+history events for this operation.</p>
 
 
 
@@ -1372,10 +1293,10 @@ uses GHCR-published images plus <code>apptainer pull</code> on the login node.</
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.sections", "navigation.top", "search.suggest", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>
