@@ -19,6 +19,7 @@ class Job(SQLModel, table=True):
     title: str
     status: JobStatus = JobStatus.queued
     input_bundle_path: str
+    worker_image_key: str
     preferred_clusters_json: str | None = None
     comment: str | None = None
     queue_blocked_reason: str | None = None
@@ -40,6 +41,7 @@ class JobCreate(SQLModel):
     id: uuid.UUID | None = None
     title: str
     input_bundle_path: str
+    worker_image_key: str | None = None
     preferred_clusters: list[str] = []
     comment: str | None = None
 
@@ -49,6 +51,7 @@ class JobRead(SQLModel):
     title: str
     status: JobStatus
     input_bundle_path: str
+    worker_image_key: str
     preferred_clusters: list[str] = []
     comment: str | None = None
     queue_blocked_reason: str | None = None

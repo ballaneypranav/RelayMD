@@ -13,7 +13,7 @@ from relaymd.models import Job, JobStatus, Platform, Worker, WorkerStatus
 from sqlmodel import select
 
 from relaymd.orchestrator import main as orchestrator_main
-from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings, WorkerImageSource
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 from relaymd.orchestrator.scheduler import submit_pending_slurm_jobs
@@ -22,7 +22,38 @@ from relaymd.orchestrator.services.slurm_provisioning_service import (
     _parse_squeue_output,
     get_runtime_scheduler_warnings,
 )
-from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
+from relaymd.orchestrator.slurm import (
+    SlurmSubmissionError,
+)
+from relaymd.orchestrator.slurm import (
+    submit_slurm_job as _submit_slurm_job,
+)
+
+
+def _worker_images(
+    *,
+    sif_path: str | None = None,
+    image_uri: str | None = None,
+    sif_cache_dir: str | None = None,
+) -> dict[str, WorkerImageSource]:
+    return {
+        "atom-openmm": WorkerImageSource(
+            sif_path=sif_path,
+            image_uri=image_uri,
+            sif_cache_dir=sif_cache_dir,
+        )
+    }
+
+
+async def submit_slurm_job(*args: object, **kwargs: object) -> str:
+    kwargs.setdefault("worker_image_key", "atom-openmm")
+    return await _submit_slurm_job(*args, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.fixture(autouse=True)
+def _ignore_host_service_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep scheduler tests independent from the host RelayMD service configuration."""
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-test-config-does-not-exist.yaml")
 
 
 @asynccontextmanager
@@ -50,7 +81,7 @@ def _settings_with_cluster() -> OrchestratorSettings:
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=2,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
                 max_pending_jobs=1,
                 wall_time="3:30:00",
             )
@@ -91,7 +122,7 @@ async def test_submit_slurm_job_renders_expected_script(monkeypatch, tmp_path: P
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
         memory_per_gpu="60G",
         wall_time="3:30:00",
     )
@@ -162,7 +193,7 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        worker_images=_worker_images(image_uri="ghcr.io/acme/relaymd-worker-atom-openmm:latest"),
         nodes=1,
         ntasks=8,
         qos="standby",
@@ -184,7 +215,7 @@ async def test_submit_slurm_job_accepts_registry_image_uri(monkeypatch) -> None:
     assert "SINGULARITY_DOCKER_USERNAME" not in rendered
     assert "SINGULARITY_DOCKER_PASSWORD" not in rendered
     # docker URI must appear in the flock/pull block, not on the exec line.
-    assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
+    assert "docker://ghcr.io/acme/relaymd-worker-atom-openmm:latest" in rendered
     assert 'apptainer exec "${apptainer_args[@]}" "${_APPTAINER_IMAGE}" /bin/sh -lc' in rendered
     assert "'python -m relaymd.worker'" in rendered
     assert "flock -x 200" in rendered
@@ -224,8 +255,10 @@ async def test_submit_slurm_job_prepulls_oras_image_uri(monkeypatch) -> None:
         account="nairr260042-ai",
         ssh_host="anvil.rcac.purdue.edu",
         ssh_username="x-pballaney",
-        image_uri="oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234",
-        sif_cache_dir="/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache",
+        worker_images=_worker_images(
+            image_uri="oras://ghcr.io/acme/relaymd-worker-gcncmcmd:sif-sha-abc1234",
+            sif_cache_dir="/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache",
+        ),
         gres="gpu:1",
         nodes=1,
         ntasks=8,
@@ -241,7 +274,7 @@ async def test_submit_slurm_job_prepulls_oras_image_uri(monkeypatch) -> None:
     await submit_slurm_job(cluster, settings)
 
     rendered = captured["script"]
-    assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
+    assert "oras://ghcr.io/acme/relaymd-worker-gcncmcmd:sif-sha-abc1234" in rendered
     assert (
         '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]' in rendered
     )
@@ -282,7 +315,7 @@ async def test_submit_slurm_job_passes_purdue_storage_provider(monkeypatch) -> N
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
     )
     settings = OrchestratorSettings(
         storage_provider="purdue",
@@ -330,7 +363,7 @@ async def test_submit_slurm_job_renders_bind_mount_worker_source(monkeypatch) ->
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        sif_path="/shared/relaymd-worker-base.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
     )
     settings = OrchestratorSettings(
         axiom_token="test",
@@ -380,7 +413,7 @@ async def test_submit_slurm_job_shell_quotes_worker_pythonpath(monkeypatch) -> N
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        sif_path="/shared/relaymd-worker-base.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
     )
     settings = OrchestratorSettings(
         axiom_token="test",
@@ -425,7 +458,7 @@ async def test_submit_slurm_job_uses_registry_credentials_when_configured(monkey
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        worker_images=_worker_images(image_uri="ghcr.io/acme/relaymd-worker-atom-openmm:latest"),
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -457,6 +490,9 @@ async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> Non
             _ = fmt
             self.messages.append(rendered)
 
+        def warning(self, *args, **kwargs) -> None:
+            _ = (args, kwargs)
+
     fake_logger = FakeLogger()
 
     class FakeProcess:
@@ -487,7 +523,7 @@ async def test_submit_slurm_job_redacts_secrets_in_debug_log(monkeypatch) -> Non
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=1,
-        image_uri="ghcr.io/acme/relaymd-worker:latest",
+        worker_images=_worker_images(image_uri="ghcr.io/acme/relaymd-worker-atom-openmm:latest"),
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -538,7 +574,7 @@ async def test_submit_slurm_job_times_out_and_kills_process(monkeypatch) -> None
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -584,7 +620,7 @@ async def test_submit_slurm_job_nonzero_exit_exposes_submission_context(monkeypa
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
         qos="standby",
         wall_time="3:30:00",
     )
@@ -639,7 +675,7 @@ async def test_submit_slurm_job_writes_script_to_orchestrator_log_directory(
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -691,7 +727,7 @@ async def test_submit_slurm_job_shell_escapes_infisical_token(monkeypatch) -> No
         ssh_username="test-user",
         gpu_type="a100",
         gpu_count=2,
-        sif_path="/shared/relaymd.sif",
+        worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
         wall_time="3:30:00",
     )
     settings = OrchestratorSettings(
@@ -727,6 +763,7 @@ async def test_submit_pending_jobs_skips_when_pending_placeholder_exists(monkeyp
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
                     status=JobStatus.queued,
+                    worker_image_key="atom-openmm",
                 )
             )
             session.add(
@@ -736,6 +773,7 @@ async def test_submit_pending_jobs_skips_when_pending_placeholder_exists(monkeyp
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:12345",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -768,6 +806,7 @@ async def test_submit_pending_jobs_records_recent_placeholder_heartbeat(monkeypa
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
                     status=JobStatus.queued,
+                    worker_image_key="atom-openmm",
                 )
             )
             await session.commit()
@@ -818,6 +857,7 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
                         title="queued-job",
                         input_bundle_path="jobs/1/input/bundle.tar.gz",
                         status=JobStatus.queued,
+                        worker_image_key="atom-openmm",
                     )
                 )
                 await session.commit()
@@ -833,6 +873,7 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
         "provisioning_evaluated",
         cluster_name="gilbreth",
         job_id=ANY,
+        worker_image_key="atom-openmm",
         strategy="reactive",
     )
     info_mock.assert_any_call(
@@ -846,12 +887,14 @@ async def test_submit_pending_jobs_logs_slurm_submission_success(monkeypatch) ->
         job_id=ANY,
         provider_id=worker.provider_id,
         worker_id=str(worker.id),
+        worker_image_key="atom-openmm",
     )
     info_mock.assert_any_call(
         "slurm_cluster_submission_succeeded",
         slurm_job_id="44444",
         provider_id=worker.provider_id,
         worker_id=str(worker.id),
+        worker_image_key="atom-openmm",
         cluster_name="gilbreth",
         partition="gpu",
         account="lab-account",
@@ -937,6 +980,7 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:11111",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -949,6 +993,7 @@ async def test_reap_dead_slurm_placeholders_removes_dead_jobs(monkeypatch) -> No
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:22222",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1013,6 +1058,7 @@ async def test_reap_dead_slurm_placeholders_keeps_live_jobs(monkeypatch) -> None
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:33333",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1100,6 +1146,7 @@ async def test_reap_dead_slurm_placeholders_recovers_from_mixed_invalid_job_ids(
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:11111",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1112,6 +1159,7 @@ async def test_reap_dead_slurm_placeholders_recovers_from_mixed_invalid_job_ids(
                     gpu_count=2,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:22222",
                     last_heartbeat=datetime(1970, 1, 1),
                     registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1166,6 +1214,7 @@ async def test_reap_dead_slurm_placeholders_skips_reap_after_generic_squeue_nonz
                         gpu_count=2,
                         vram_gb=0,
                         status=WorkerStatus.queued,
+                        worker_image_key="atom-openmm",
                         provider_id="gilbreth:33333",
                         last_heartbeat=datetime(1970, 1, 1),
                         registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1247,6 +1296,7 @@ async def test_reap_dead_slurm_placeholders_retries_after_squeue_timeout(monkeyp
                         gpu_count=2,
                         vram_gb=0,
                         status=WorkerStatus.queued,
+                        worker_image_key="atom-openmm",
                         provider_id="gilbreth:33333",
                         last_heartbeat=datetime(1970, 1, 1),
                         registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1324,6 +1374,7 @@ async def test_reap_dead_slurm_placeholders_skips_reap_after_squeue_timeout_retr
                         gpu_count=2,
                         vram_gb=0,
                         status=WorkerStatus.queued,
+                        worker_image_key="atom-openmm",
                         provider_id="gilbreth:33333",
                         last_heartbeat=datetime(1970, 1, 1),
                         registered_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1373,7 +1424,7 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
                 max_pending_jobs=3,
             ),
             ClusterConfig(
@@ -1384,7 +1435,7 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
                 max_pending_jobs=3,
             ),
         ],
@@ -1395,8 +1446,9 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
         _settings: OrchestratorSettings,
         *,
         worker_id: UUID | None = None,
+        worker_image_key: str = "atom-openmm",
     ) -> str:
-        _ = worker_id
+        _ = (worker_id, worker_image_key)
         if cluster.name == "gilbreth":
             raise SlurmSubmissionError(
                 "sbatch submission failed: rc=1, stderr=sbatch: error: QOSMinGRES",
@@ -1435,6 +1487,7 @@ async def test_submit_pending_jobs_logs_slurm_error_and_continues_other_clusters
                         title="queued-job",
                         input_bundle_path="jobs/1/input/bundle.tar.gz",
                         status=JobStatus.queued,
+                        worker_image_key="atom-openmm",
                     )
                 )
                 await session.commit()
@@ -1473,7 +1526,7 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
                 max_pending_jobs=3,
             ),
             ClusterConfig(
@@ -1484,7 +1537,7 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
                 max_pending_jobs=3,
             ),
         ],
@@ -1503,6 +1556,7 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
                     gpu_count=cluster.gpu_count,
                     vram_gb=0,
                     status=WorkerStatus.queued,
+                    worker_image_key="atom-openmm",
                     provider_id="gilbreth:bad",
                     last_heartbeat=now,
                     registered_at=now,
@@ -1517,6 +1571,7 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
                 gpu_count=cluster.gpu_count,
                 vram_gb=0,
                 status=WorkerStatus.queued,
+                worker_image_key="atom-openmm",
                 provider_id="anvil:good",
                 last_heartbeat=now,
                 registered_at=now,
@@ -1537,6 +1592,7 @@ async def test_submit_pending_jobs_rolls_back_session_after_unexpected_error(
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
                     status=JobStatus.queued,
+                    worker_image_key="atom-openmm",
                 )
             )
             await session.commit()
@@ -1567,7 +1623,7 @@ async def test_submit_pending_jobs_skips_disabled_clusters(monkeypatch) -> None:
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
             ),
             ClusterConfig(
                 name="anvil",
@@ -1577,7 +1633,7 @@ async def test_submit_pending_jobs_skips_disabled_clusters(monkeypatch) -> None:
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images=_worker_images(sif_path="/shared/atom-openmm.sif"),
             ),
         ],
     )
@@ -1605,6 +1661,7 @@ async def test_submit_pending_jobs_skips_disabled_clusters(monkeypatch) -> None:
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
                     status=JobStatus.queued,
+                    worker_image_key="atom-openmm",
                 )
             )
             await session.commit()
@@ -1637,6 +1694,7 @@ async def test_submit_pending_jobs_sets_all_disabled_warning_when_queued_jobs(mo
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
                     status=JobStatus.queued,
+                    worker_image_key="atom-openmm",
                 )
             )
             await session.commit()

@@ -1,0 +1,30 @@
+FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+
+LABEL relaymd.component=worker \
+      relaymd.worker_image_key=gcncmcmd \
+      relaymd.worker_image_name=GCNCMC-MD
+
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+    MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/gcncmcmd/bin:${PATH} \
+    PYTHONNOUSERSITE=1 OPENMM_CPU_THREADS=1 RELAYMD_WORKER_IMAGE_KEY=gcncmcmd
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg curl git bzip2 bash coreutils tar procps \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
+    && apt-get update && apt-get install -y --no-install-recommends tailscale \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 -o /tmp/micromamba.tar.bz2 \
+    && echo 'e7274528ceb9c20d048a428d6c22d7e02e268f8ffb762c4c365422347c8b8ba2  /tmp/micromamba.tar.bz2' | sha256sum -c - \
+    && tar -xjf /tmp/micromamba.tar.bz2 -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && rm /tmp/micromamba.tar.bz2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY images/gcncmcmd/openmm.yml images/gcncmcmd/grand.source /tmp/
+RUN CONDA_OVERRIDE_CUDA=12.6 micromamba create -y -p /opt/gcncmcmd -f /tmp/openmm.yml \
+    && . /tmp/grand.source \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir --no-deps "git+${url}@${commit}" \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir uv \
+    && micromamba clean -a -y
+
+RUN python -c "import grand, openmm, openmmtools; assert grand.__version__ == '1.1.0'; assert openmm.version.version.startswith('8.2')"

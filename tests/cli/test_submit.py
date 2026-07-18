@@ -56,6 +56,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
             "title": "test-job",
             "status": "queued",
             "input_bundle_path": "jobs/x/input/bundle.tar.gz",
+            "worker_image_key": "atom-openmm",
             "assigned_at": None,
             "started_at": None,
             "status_changed_at": created_at.isoformat(),
@@ -84,7 +85,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
         def known_cluster_names(self) -> set[str]:
             return set()
 
-        def register_job_with_metadata(
+        def register_job_with_metadata(  # noqa: PLR0913
             self,
             *,
             job_id: uuid.UUID,
@@ -92,6 +93,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
             b2_key: str,
             preferred_clusters: list[str],
             comment: str | None,
+            worker_image_key: str | None,
         ):
             assert isinstance(job_id, uuid.UUID)
             assert title == "test-job"
@@ -99,6 +101,7 @@ def test_submit_writes_worker_json_when_command_flag_provided(monkeypatch, tmp_p
             assert b2_key.endswith("/input/bundle.tar.gz")
             assert preferred_clusters == []
             assert comment is None
+            assert worker_image_key is None
             created_job.id = job_id
             return created_job
 

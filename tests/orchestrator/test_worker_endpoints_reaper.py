@@ -7,7 +7,7 @@ import pytest
 from freezegun import freeze_time
 from relaymd.models import Job, JobStatus, Platform, Worker
 
-from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings, WorkerImageSource
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.scheduler import reap_stale_workers
 from relaymd.orchestrator.services import worker_lifecycle_service
@@ -29,6 +29,7 @@ async def test_stale_worker_reaper_requeues_jobs() -> None:
                     gpu_model="A100",
                     gpu_count=1,
                     vram_gb=80,
+                    worker_image_key="atom-openmm",
                     last_heartbeat=stale_time,
                 )
                 session.add(worker)
@@ -38,6 +39,7 @@ async def test_stale_worker_reaper_requeues_jobs() -> None:
                 job = Job(
                     title="train-2",
                     input_bundle_path="jobs/2/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.assigned,
                     assigned_worker_id=worker.id,
                 )
@@ -84,6 +86,7 @@ async def test_stale_worker_reaper_keeps_non_hpc_job_when_storage_status_fresh(
                     gpu_model="A100",
                     gpu_count=1,
                     vram_gb=80,
+                    worker_image_key="atom-openmm",
                     last_heartbeat=stale_time,
                 )
                 session.add(worker)
@@ -93,6 +96,7 @@ async def test_stale_worker_reaper_keeps_non_hpc_job_when_storage_status_fresh(
                 job = Job(
                     title="fresh-status",
                     input_bundle_path="jobs/fresh/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.running,
                     assigned_worker_id=worker.id,
                 )
@@ -131,7 +135,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_running_and_status_s
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images={"atom-openmm": WorkerImageSource(sif_path="/shared/relaymd.sif")},
             )
         ],
     )
@@ -165,6 +169,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_running_and_status_s
                     gpu_count=1,
                     vram_gb=80,
                     provider_id="gilbreth:12345",
+                    worker_image_key="atom-openmm",
                     last_heartbeat=stale_time,
                 )
                 session.add(worker)
@@ -174,6 +179,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_running_and_status_s
                 job = Job(
                     title="slurm-running",
                     input_bundle_path="jobs/slurm/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.running,
                     assigned_worker_id=worker.id,
                 )
@@ -212,7 +218,7 @@ async def test_stale_worker_reaper_requeues_hpc_job_when_slurm_not_running(
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images={"atom-openmm": WorkerImageSource(sif_path="/shared/relaymd.sif")},
             )
         ],
     )
@@ -240,6 +246,7 @@ async def test_stale_worker_reaper_requeues_hpc_job_when_slurm_not_running(
                     gpu_count=1,
                     vram_gb=80,
                     provider_id="gilbreth:12345",
+                    worker_image_key="atom-openmm",
                     last_heartbeat=stale_time,
                 )
                 session.add(worker)
@@ -249,6 +256,7 @@ async def test_stale_worker_reaper_requeues_hpc_job_when_slurm_not_running(
                 job = Job(
                     title="slurm-gone",
                     input_bundle_path="jobs/slurm-gone/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.running,
                     assigned_worker_id=worker.id,
                 )
@@ -288,7 +296,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_query_fails(
                 ssh_username="test-user",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/shared/relaymd.sif",
+                worker_images={"atom-openmm": WorkerImageSource(sif_path="/shared/relaymd.sif")},
             )
         ],
     )
@@ -320,6 +328,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_query_fails(
                     gpu_count=1,
                     vram_gb=80,
                     provider_id="gilbreth:12345",
+                    worker_image_key="atom-openmm",
                     last_heartbeat=stale_time,
                 )
                 session.add(worker)
@@ -329,6 +338,7 @@ async def test_stale_worker_reaper_keeps_hpc_job_when_slurm_query_fails(
                 job = Job(
                     title="slurm-query-unknown",
                     input_bundle_path="jobs/slurm-unknown/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.running,
                     assigned_worker_id=worker.id,
                 )

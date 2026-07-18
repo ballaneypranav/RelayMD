@@ -34,6 +34,7 @@ class JobRead:
             title (str):
             status (JobStatus):
             input_bundle_path (str):
+            worker_image_key (str):
             assigned_at (datetime.datetime | None):
             started_at (datetime.datetime | None):
             status_changed_at (datetime.datetime):
@@ -60,6 +61,7 @@ class JobRead:
     title: str
     status: JobStatus
     input_bundle_path: str
+    worker_image_key: str
     assigned_at: datetime.datetime | None
     started_at: datetime.datetime | None
     status_changed_at: datetime.datetime
@@ -95,6 +97,8 @@ class JobRead:
         status = self.status.value
 
         input_bundle_path = self.input_bundle_path
+
+        worker_image_key = self.worker_image_key
 
         assigned_at: None | str
         if isinstance(self.assigned_at, datetime.datetime):
@@ -207,6 +211,7 @@ class JobRead:
             "title": title,
             "status": status,
             "input_bundle_path": input_bundle_path,
+            "worker_image_key": worker_image_key,
             "assigned_at": assigned_at,
             "started_at": started_at,
             "status_changed_at": status_changed_at,
@@ -261,6 +266,8 @@ class JobRead:
 
 
         input_bundle_path = d.pop("input_bundle_path")
+
+        worker_image_key = d.pop("worker_image_key")
 
         def _parse_assigned_at(data: object) -> datetime.datetime | None:
             if data is None:
@@ -470,6 +477,7 @@ class JobRead:
             title=title,
             status=status,
             input_bundle_path=input_bundle_path,
+            worker_image_key=worker_image_key,
             assigned_at=assigned_at,
             started_at=started_at,
             status_changed_at=status_changed_at,

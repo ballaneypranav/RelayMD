@@ -9,7 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from relaymd.models import Job, JobStatus
 
 from relaymd import __version__
-from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings
+from relaymd.orchestrator.config import ClusterConfig, OrchestratorSettings, WorkerImageSource
 from relaymd.orchestrator.db import get_sessionmaker
 from relaymd.orchestrator.main import create_app
 
@@ -54,7 +54,7 @@ def make_slurm_settings() -> OrchestratorSettings:
                 ssh_username="user-a",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/tmp/a.sif",
+                worker_images={"atom-openmm": WorkerImageSource(sif_path="/tmp/a.sif")},
             ),
             ClusterConfig(
                 name="anvil",
@@ -64,7 +64,7 @@ def make_slurm_settings() -> OrchestratorSettings:
                 ssh_username="user-b",
                 gpu_type="a100",
                 gpu_count=1,
-                sif_path="/tmp/b.sif",
+                worker_images={"atom-openmm": WorkerImageSource(sif_path="/tmp/b.sif")},
             ),
         ],
     )
@@ -154,6 +154,7 @@ async def test_create_list_get_and_cancel_paths() -> None:
             running_job = Job(
                 title="job-3",
                 input_bundle_path="jobs/3/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
                 status=JobStatus.running,
                 assigned_worker_id=running_worker_id,
             )
@@ -175,6 +176,7 @@ async def test_create_list_get_and_cancel_paths() -> None:
             handoff_job = Job(
                 title="job-4",
                 input_bundle_path="jobs/4/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
                 status=JobStatus.handoff,
                 assigned_worker_id=handoff_worker_id,
             )
@@ -254,6 +256,7 @@ async def test_requeue_creates_new_queued_job_with_checkpoint_fields() -> None:
                 "gpu_model": "NVIDIA A100",
                 "gpu_count": 1,
                 "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
             },
         )
         assert register_response.status_code == 200

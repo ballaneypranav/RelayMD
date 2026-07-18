@@ -30,7 +30,10 @@ async def register_worker(
     payload: WorkerRegister,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, UUID]:
-    worker = await WorkerLifecycleService(session).register_worker(payload)
+    try:
+        worker = await WorkerLifecycleService(session).register_worker(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return {"worker_id": worker.id}
 
 

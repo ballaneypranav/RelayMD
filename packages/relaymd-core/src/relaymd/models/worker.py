@@ -16,6 +16,7 @@ class Worker(SQLModel, table=True):
     gpu_model: str
     gpu_count: int
     vram_gb: int
+    worker_image_key: str
     status: WorkerStatus = WorkerStatus.active
     # Opaque reference to the provider-side allocation that spawned this worker.
     # Format is provider-specific:
@@ -38,6 +39,7 @@ class WorkerRegister(SQLModel):
     gpu_model: str
     gpu_count: int
     vram_gb: int
+    worker_image_key: str
     # Workers pass their full provider_id on registration so the orchestrator can
     # activate (and de-queue) the matching placeholder row in place.
     # For SLURM workers: f"{RELAYMD_CLUSTER_NAME}:{SLURM_JOB_ID}" injected by sbatch.
@@ -51,6 +53,7 @@ class WorkerRead(SQLModel):
     gpu_count: int
     vram_gb: int
     status: WorkerStatus
+    worker_image_key: str
     provider_id: str | None = None
     provider_state: str | None = None
     provider_state_raw: str | None = None

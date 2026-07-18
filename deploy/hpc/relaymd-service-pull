@@ -3,661 +3,213 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: relaymd-service-pull <release-version|latest> [orchestrator-image-uri] [worker-image-uri]
+Usage: relaymd-service-pull <release-version|latest> [orchestrator-image-uri atom-openmm-image-uri gcncmcmd-image-uri]
 
-Examples:
-  relaymd-service-pull sha-abc1234 \
-    docker://ghcr.io/my-org/relaymd-orchestrator:sha-abc1234 \
-    docker://ghcr.io/my-org/relaymd-worker:sha-abc1234
-
-  relaymd-service-pull sha-abc1234
-  relaymd-service-pull latest
-
-latest behavior:
-  1) Resolve pinned image+CLI set from release manifest (relaymd-release-manifest.json).
-  2) If manifest lookup fails, fall back to newest shared sha-* image tag.
+The optional explicit image arguments must be supplied as a complete set. A
+release always contains the orchestrator and both named worker profiles.
 USAGE
 }
 
-AUTO_RESOLVED_CLI_URI=""
-AUTO_RESOLVED_WORKER_SIF_URI=""
-AUTO_RESOLVED_ORCH_SIF_URI=""
-ALLOW_CLI_FALLBACK=1
-REQUESTED_RELEASE="${1:-}"
-
-stat_uid() {
-    local path="$1"
-    stat -c '%u' "${path}"
-}
-
-ensure_secure_private_dir() {
-    local path="$1"
-    local label="$2"
-    local owner_uid
-
-    if [[ -L "${path}" ]]; then
-        echo "${label} path '${path}' must not be a symlink." >&2
-        exit 1
-    fi
-
-    if [[ -e "${path}" && ! -d "${path}" ]]; then
-        echo "${label} path '${path}' exists but is not a directory." >&2
-        exit 1
-    fi
-
-    mkdir -p "${path}"
-
-    owner_uid="$(stat_uid "${path}")"
-    if [[ "${owner_uid}" != "${RELAYMD_EFFECTIVE_UID}" ]]; then
-        echo "${label} path '${path}' is owned by UID ${owner_uid}, expected ${RELAYMD_EFFECTIVE_UID}." >&2
-        exit 1
-    fi
-
-    if ! chmod 700 "${path}"; then
-        echo "Failed to set secure permissions on ${label} path '${path}'." >&2
-        exit 1
-    fi
-}
-
 require_cmd() {
-    local cmd="$1"
-    local remediation="$2"
-
-    if ! command -v "${cmd}" >/dev/null 2>&1; then
-        echo "Missing required command '${cmd}'." >&2
-        echo "Remediation: ${remediation}" >&2
-        exit 1
-    fi
+    command -v "$1" >/dev/null 2>&1 || { echo "Missing required command '$1'." >&2; exit 1; }
 }
 
 download_file() {
-    local uri="$1"
-    local output_path="$2"
-    # Pass "silent" as third arg to suppress progress and errors (e.g. probe requests that may 404).
-    local silent="${3:-}"
-
+    local uri="$1" output="$2"
     if [[ -f "${uri}" ]]; then
-        cp "${uri}" "${output_path}"
-        return 0
-    fi
-
-    if command -v curl >/dev/null 2>&1; then
-        if [[ "${silent}" == "silent" ]]; then
-            curl -fsL "${uri}" -o "${output_path}"
-        else
-            curl -f -L --progress-bar "${uri}" -o "${output_path}"
-        fi
-        return $?
-    fi
-
-    if command -v wget >/dev/null 2>&1; then
-        if [[ "${silent}" == "silent" ]]; then
-            wget -qO "${output_path}" "${uri}"
-        else
-            wget --show-progress -nv -O "${output_path}" "${uri}"
-        fi
-        return $?
-    fi
-
-    echo "Missing downloader for '${uri}'." >&2
-    echo "Remediation: install curl or wget, or set RELAYMD_CLI_URI to a local file path/URI." >&2
-    exit 1
-}
-
-validate_cli_binary() {
-    local cli_path="$1"
-
-    if ! "${cli_path}" --help >/dev/null 2>&1; then
+        cp "${uri}" "${output}"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fL --progress-bar "${uri}" -o "${output}"
+    elif command -v wget >/dev/null 2>&1; then
+        wget --show-progress -O "${output}" "${uri}"
+    else
+        echo "Install curl or wget, or set RELAYMD_CLI_URI to a local file." >&2
         return 1
     fi
-
-    if ! "${cli_path}" submit --help >/dev/null 2>&1; then
-        return 1
-    fi
-
-    return 0
-}
-
-resolve_cli_owner() {
-    if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
-        printf '%s' "${RELAYMD_GHCR_OWNER}"
-        return 0
-    fi
-
-    if [[ "${ORCHESTRATOR_IMAGE_URI:-}" =~ ^docker://ghcr\.io/([^/]+)/ ]]; then
-        printf '%s' "${BASH_REMATCH[1]}"
-        return 0
-    fi
-
-    if command -v gh >/dev/null 2>&1; then
-        resolve_owner
-        return 0
-    fi
-
-    echo "Unable to resolve RelayMD CLI owner." >&2
-    echo "Remediation: set RELAYMD_CLI_URI or RELAYMD_GHCR_OWNER, or install/auth gh." >&2
-    exit 1
-}
-
-maybe_configure_apptainer_ghcr_auth() {
-    local image_uri token gh_user
-
-    for image_uri in "$@"; do
-        if [[ "${image_uri}" == docker://ghcr.io/* ]]; then
-            break
-        fi
-        image_uri=""
-    done
-
-    if [[ -z "${image_uri}" ]]; then
-        return 0
-    fi
-
-    if [[ -n "${APPTAINER_DOCKER_USERNAME:-}" && -n "${APPTAINER_DOCKER_PASSWORD:-}" ]]; then
-        return 0
-    fi
-
-    if ! command -v gh >/dev/null 2>&1; then
-        echo "Note: ghcr.io pull detected but gh is not installed; continuing without auto auth bridge." >&2
-        echo "If pull fails with 403, set APPTAINER_DOCKER_USERNAME/APPTAINER_DOCKER_PASSWORD or run 'gh auth login -h github.com -s read:packages'." >&2
-        return 0
-    fi
-
-    token="$(gh auth token 2>/dev/null || true)"
-    gh_user="$(gh api user -q .login 2>/dev/null || true)"
-    if [[ -z "${token}" || -z "${gh_user}" ]]; then
-        echo "Note: unable to derive gh auth credentials for ghcr.io; continuing without auth bridge." >&2
-        echo "If pull fails with 403, run 'gh auth login -h github.com -s read:packages'." >&2
-        return 0
-    fi
-
-    export APPTAINER_DOCKER_USERNAME="${APPTAINER_DOCKER_USERNAME:-${gh_user}}"
-    export APPTAINER_DOCKER_PASSWORD="${APPTAINER_DOCKER_PASSWORD:-${token}}"
-    echo "Configured Apptainer GHCR auth from gh credentials for this pull invocation."
 }
 
 resolve_owner() {
     if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
         printf '%s' "${RELAYMD_GHCR_OWNER}"
-        return 0
-    fi
-
-    if [[ -n "${APPTAINER_DOCKER_USERNAME:-}" ]]; then
-        printf '%s' "${APPTAINER_DOCKER_USERNAME}"
-        return 0
-    fi
-
-    if command -v gh >/dev/null 2>&1; then
-        owner="$(gh repo view --json owner -q .owner.login 2>/dev/null || true)"
-        if [[ -n "${owner}" ]]; then
-            printf '%s' "${owner}"
-            return 0
-        fi
-
-        owner="$(gh api user -q .login 2>/dev/null || true)"
-        if [[ -n "${owner}" ]]; then
-            printf '%s' "${owner}"
-            return 0
-        fi
-    fi
-
-    echo "Unable to auto-resolve GHCR owner." >&2
-    echo "Remediation: set RELAYMD_GHCR_OWNER=<org-or-user> or APPTAINER_DOCKER_USERNAME=<org-or-user>; or install/auth gh." >&2
-    exit 1
-}
-
-require_gh_packages_scope() {
-    local auth_status
-
-    auth_status="$(gh auth status -h github.com 2>&1 || true)"
-    if [[ "${auth_status}" != *"read:packages"* ]]; then
-        echo "GitHub auth is missing the required 'read:packages' scope for auto-latest resolution." >&2
-        echo "Remediation: gh auth refresh -h github.com -s read:packages" >&2
-        echo "If you are not logged in yet: gh auth login -h github.com -s read:packages" >&2
+    elif command -v gh >/dev/null 2>&1; then
+        gh repo view --json owner -q .owner.login
+    else
+        echo "Set RELAYMD_GHCR_OWNER or install and authenticate gh." >&2
         exit 1
     fi
+}
+
+resolve_latest_manifest() {
+    local uri="$1" manifest manifest_cli_uri
+    require_cmd jq
+    manifest="$(mktemp)"
+    if ! download_file "${uri}" "${manifest}"; then
+        rm -f "${manifest}"
+        return 1
+    fi
+    ORCHESTRATOR_IMAGE_URI="$(jq -r '.orchestrator_image // empty' "${manifest}")"
+    ORCHESTRATOR_SIF_URI="$(jq -r '.orchestrator_sif_uri // empty' "${manifest}")"
+    ATOM_OPENMM_IMAGE_URI="$(jq -r '.worker_images["atom-openmm"].image_uri // empty' "${manifest}")"
+    GCNCMC_IMAGE_URI="$(jq -r '.worker_images.gcncmcmd.image_uri // empty' "${manifest}")"
+    ATOM_OPENMM_SIF_URI="$(jq -r '.worker_images["atom-openmm"].sif_uri // empty' "${manifest}")"
+    GCNCMC_SIF_URI="$(jq -r '.worker_images.gcncmcmd.sif_uri // empty' "${manifest}")"
+    manifest_cli_uri="$(jq -r '.cli_uri // empty' "${manifest}")"
+    RELEASE_VERSION="$(jq -r '.release_version // empty' "${manifest}")"
+    rm -f "${manifest}"
+    [[ -n "${ORCHESTRATOR_IMAGE_URI}" && -n "${ATOM_OPENMM_IMAGE_URI}" && -n "${GCNCMC_IMAGE_URI}" && -n "${ATOM_OPENMM_SIF_URI}" && -n "${GCNCMC_SIF_URI}" && -n "${manifest_cli_uri}" && -n "${RELEASE_VERSION}" ]] || {
+        echo "Release manifest must contain orchestrator, CLI, and both named worker image/SIF entries." >&2
+        return 1
+    }
+    [[ -n "${CLI_URI}" ]] || CLI_URI="${manifest_cli_uri}"
 }
 
 fetch_package_versions_json() {
-    local owner="$1"
-    local package_name="$2"
-    local output_file="$3"
-
-    if gh api -H "Accept: application/vnd.github+json" "/orgs/${owner}/packages/container/${package_name}/versions?per_page=100" > "${output_file}" 2>/dev/null; then
-        return 0
-    fi
-
-    if gh api -H "Accept: application/vnd.github+json" "/users/${owner}/packages/container/${package_name}/versions?per_page=100" > "${output_file}" 2>/dev/null; then
-        return 0
-    fi
-
-    echo "Failed to query GHCR package versions for ${owner}/${package_name}." >&2
-    echo "Remediation: confirm gh auth and package access: gh auth status -h github.com" >&2
-    echo "Then refresh scope: gh auth refresh -h github.com -s read:packages" >&2
-    exit 1
+    local owner="$1" package_name="$2" output="$3"
+    gh api --paginate -H "Accept: application/vnd.github+json" \
+        "/orgs/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}" 2>/dev/null \
+        || gh api --paginate -H "Accept: application/vnd.github+json" \
+            "/users/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}"
 }
 
 resolve_latest_shared_sha_tag() {
-    local owner="$1"
-    local tmp_dir orch_json worker_json orch_tags worker_tags latest_shared
-
-    require_cmd gh "Install GitHub CLI and authenticate: gh auth login -h github.com -s read:packages"
-    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
-    require_gh_packages_scope
-
-    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/relaymd-pull-tags.XXXXXX")"
-    trap 'rm -rf "${tmp_dir}"' RETURN
-
+    local owner="$1" tmp_dir orch_json atom_json gcn_json latest_shared
+    require_cmd gh
+    require_cmd jq
+    tmp_dir="$(mktemp -d)"
     orch_json="${tmp_dir}/orchestrator.json"
-    worker_json="${tmp_dir}/worker.json"
-    orch_tags="${tmp_dir}/orchestrator-tags.tsv"
-    worker_tags="${tmp_dir}/worker-tags.tsv"
-
-    fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
-    fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
-
-    jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(. )\t\($updated_at)"' "${orch_json}" \
-        | sort -t $'\t' -k1,1 -k2,2r \
-        | awk -F $'\t' '!seen[$1]++{print $1"\t"$2}' > "${orch_tags}"
-
-    jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(. )\t\($updated_at)"' "${worker_json}" \
-        | sort -t $'\t' -k1,1 -k2,2r \
-        | awk -F $'\t' '!seen[$1]++{print $1"\t"$2}' > "${worker_tags}"
-
-    latest_shared="$(awk -F $'\t' '
-        NR == FNR { worker[$1] = $2; next }
-        ($1 in worker) {
-            newest = ($2 > worker[$1]) ? $2 : worker[$1]
-            print $1 "\t" newest
-        }
-    ' "${worker_tags}" "${orch_tags}" | sort -t $'\t' -k2,2r | head -n1 | cut -f1)"
-
-    if [[ -z "${latest_shared}" ]]; then
-        echo "No shared sha-* tag found between relaymd-orchestrator and relaymd-worker in GHCR owner '${owner}'." >&2
-        echo "Remediation: publish both packages with a shared sha-* tag, then rerun relaymd-service-pull latest." >&2
-        exit 1
+    atom_json="${tmp_dir}/atom-openmm.json"
+    gcn_json="${tmp_dir}/gcncmcmd.json"
+    if ! fetch_package_versions_json "${owner}" relaymd-orchestrator "${orch_json}" \
+        || ! fetch_package_versions_json "${owner}" relaymd-worker-atom-openmm "${atom_json}" \
+        || ! fetch_package_versions_json "${owner}" relaymd-worker-gcncmcmd "${gcn_json}"; then
+        rm -rf "${tmp_dir}"
+        echo "Failed to query named RelayMD package tags for '${owner}'." >&2
+        return 1
     fi
-
+    latest_shared="$(
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${atom_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/atom.tsv"
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${gcn_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/gcn.tsv"
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${orch_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/orchestrator.tsv"
+        awk -F $'\t' '
+            NR == FNR { atom[$1] = $2; next }
+            FILENAME == ARGV[2] { gcn[$1] = $2; next }
+            ($1 in atom) && ($1 in gcn) {
+                newest = $2
+                if (atom[$1] > newest) newest = atom[$1]
+                if (gcn[$1] > newest) newest = gcn[$1]
+                print $1 "\t" newest
+            }
+        ' "${tmp_dir}/atom.tsv" "${tmp_dir}/gcn.tsv" "${tmp_dir}/orchestrator.tsv" \
+            | sort -t $'\t' -k2,2r | head -n1 | cut -f1
+    )"
+    rm -rf "${tmp_dir}"
+    if [[ -z "${latest_shared}" ]]; then
+        echo "No shared sha-* tag found across all named RelayMD images for '${owner}'." >&2
+        return 1
+    fi
     printf '%s' "${latest_shared}"
 }
 
-resolve_latest_release_manifest() {
-    local manifest_uri="$1"
-    local manifest_json release_version manifest_orch manifest_worker manifest_cli
-
-    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
-
-    manifest_json="$(mktemp "${TMPDIR:-/tmp}/relaymd-release-manifest.XXXXXX.json")"
-
-    if ! download_file "${manifest_uri}" "${manifest_json}" silent; then
-        rm -f "${manifest_json}" 2>/dev/null || true
-        return 1
+pull_artifact() {
+    local label="$1" image_uri="$2" output="$3" sif_uri="$4"
+    local tmp="${output}.tmp.$$"
+    rm -f "${tmp}"
+    if [[ -n "${sif_uri}" ]]; then
+        if apptainer pull "${tmp}" "${sif_uri}"; then
+            mv "${tmp}" "${output}"
+            return
+        fi
+        rm -f "${tmp}"
+        echo "[${label}] prebuilt SIF unavailable; pulling OCI image." >&2
     fi
-
-    release_version="$(jq -r '.release_version // empty' "${manifest_json}")"
-    manifest_orch="$(jq -r '.orchestrator_image // empty' "${manifest_json}")"
-    manifest_worker="$(jq -r '.worker_image // empty' "${manifest_json}")"
-    manifest_cli="$(jq -r '.cli_uri // empty' "${manifest_json}")"
-    manifest_worker_sif="$(jq -r '.worker_sif_uri // empty' "${manifest_json}")"
-    manifest_orch_sif="$(jq -r '.orchestrator_sif_uri // empty' "${manifest_json}")"
-    rm -f "${manifest_json}" 2>/dev/null || true
-
-    if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_cli}" ]]; then
-        echo "Release manifest '${manifest_uri}' is missing required fields." >&2
-        return 1
-    fi
-
-    RELEASE_VERSION="${release_version}"
-    ORCHESTRATOR_IMAGE_URI="${manifest_orch}"
-    WORKER_IMAGE_URI="${manifest_worker}"
-    AUTO_RESOLVED_CLI_URI="${manifest_cli}"
-    AUTO_RESOLVED_WORKER_SIF_URI="${manifest_worker_sif}"
-    AUTO_RESOLVED_ORCH_SIF_URI="${manifest_orch_sif}"
-    ALLOW_CLI_FALLBACK=0
-    return 0
+    apptainer pull "${tmp}" "${image_uri}"
+    mv "${tmp}" "${output}"
 }
 
-manifest_images_are_resolvable() {
-    local orch_uri="$1"
-    local worker_uri="$2"
-    local owner orch_tag worker_tag worker_owner tmp_dir orch_json worker_json
-
-    if [[ "${orch_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-orchestrator:(sha-[A-Za-z0-9._-]+)$ ]]; then
-        owner="${BASH_REMATCH[1]}"
-        orch_tag="${BASH_REMATCH[2]}"
-    else
-        return 0
-    fi
-
-    if [[ "${worker_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker:(sha-[A-Za-z0-9._-]+)$ ]]; then
-        worker_owner="${BASH_REMATCH[1]}"
-        worker_tag="${BASH_REMATCH[2]}"
-    else
-        return 0
-    fi
-
-    if [[ "${owner}" != "${worker_owner}" ]]; then
-        return 1
-    fi
-
-    require_cmd gh "Install GitHub CLI and authenticate: gh auth login -h github.com -s read:packages"
-    require_cmd jq "Install jq and rerun relaymd-service-pull latest"
-    require_gh_packages_scope
-
-    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/relaymd-manifest-check.XXXXXX")"
-    trap 'rm -rf "${tmp_dir}"' RETURN
-    orch_json="${tmp_dir}/orchestrator.json"
-    worker_json="${tmp_dir}/worker.json"
-
-    fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
-    fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
-
-    if ! jq -e --arg tag "${orch_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${orch_json}" >/dev/null; then
-        return 1
-    fi
-    if ! jq -e --arg tag "${worker_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${worker_json}" >/dev/null; then
-        return 1
-    fi
-    return 0
-}
-
-update_anvil_image_uri_in_config() {
-    local config_path="$1"
-    local worker_sif_uri="$2"
-    local sif_cache_dir="$3"
-    local tmp_path
-
-    if [[ -z "${worker_sif_uri}" || ! -f "${config_path}" ]]; then
-        return 0
-    fi
-
-    tmp_path="$(mktemp "${TMPDIR:-/tmp}/relaymd-config-update.XXXXXX.yaml")"
-    awk -v worker_sif_uri="${worker_sif_uri}" -v sif_cache_dir="${sif_cache_dir}" '
-        function flush_missing_fields() {
-            if (!in_anvil_template) {
-                return
-            }
-            if (!saw_image_uri) {
-                print "    image_uri: " worker_sif_uri
-            }
-            if (!saw_sif_cache_dir) {
-                print "    sif_cache_dir: " sif_cache_dir
-            }
-        }
-        BEGIN {
-            in_anvil_template = 0
-            saw_image_uri = 0
-            saw_sif_cache_dir = 0
-        }
-        {
-            if ($0 ~ /^  - name: /) {
-                flush_missing_fields()
-                in_anvil_template = ($0 ~ /^  - name: anvil-template[[:space:]]*$/)
-                saw_image_uri = 0
-                saw_sif_cache_dir = 0
-                print
-                next
-            }
-
-            if (in_anvil_template) {
-                if ($0 ~ /^    image_uri:[[:space:]]*/) {
-                    print "    image_uri: " worker_sif_uri
-                    saw_image_uri = 1
-                    next
-                }
-                if ($0 ~ /^    sif_cache_dir:[[:space:]]*/) {
-                    print "    sif_cache_dir: " sif_cache_dir
-                    saw_sif_cache_dir = 1
-                    next
-                }
-            }
-
-            print
-        }
-        END {
-            flush_missing_fields()
-        }
-    ' "${config_path}" > "${tmp_path}"
-    mv "${tmp_path}" "${config_path}"
-}
-
-if [[ $# -lt 1 || $# -gt 3 ]]; then
-    usage >&2
-    exit 1
-fi
-
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    usage
-    exit 0
-fi
+[[ "${1:-}" != "-h" && "${1:-}" != "--help" ]] || { usage; exit 0; }
+[[ $# -eq 1 || $# -eq 4 ]] || { usage >&2; exit 2; }
+require_cmd apptainer
 
 RELEASE_VERSION="$1"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 RELEASES_DIR="${RELEASES_DIR:-${RELAYMD_SERVICE_ROOT}/releases}"
 CURRENT_LINK="${CURRENT_LINK:-${RELAYMD_SERVICE_ROOT}/current}"
-RELAYMD_EFFECTIVE_UID="${UID:-$(id -u 2>/dev/null || echo unknown)}"
-# Default to /tmp on this HPC because OCI->SIF conversion is significantly faster on local /tmp than /scratch.
-RELAYMD_SCRATCH_ROOT="${RELAYMD_SCRATCH_ROOT:-/tmp/relaymd-service-${RELAYMD_EFFECTIVE_UID}}"
+ORCHESTRATOR_IMAGE_URI="${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}"
+ATOM_OPENMM_IMAGE_URI="${RELAYMD_WORKER_ATOM_OPENMM_IMAGE_URI:-}"
+GCNCMC_IMAGE_URI="${RELAYMD_WORKER_GCNCMC_IMAGE_URI:-}"
+ATOM_OPENMM_SIF_URI=""
+GCNCMC_SIF_URI=""
+ORCHESTRATOR_SIF_URI="${RELAYMD_ORCHESTRATOR_SIF_URI:-}"
+CLI_URI="${RELAYMD_CLI_URI:-}"
 
-# Build temporary OCI/SIF artifacts under RELAYMD_SCRATCH_ROOT.
-APPTAINER_TMPDIR="${APPTAINER_TMPDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/tmp}"
-APPTAINER_CACHEDIR="${APPTAINER_CACHEDIR:-${RELAYMD_SCRATCH_ROOT}/apptainer/cache}"
-TMPDIR="${TMPDIR:-${APPTAINER_TMPDIR}}"
-export APPTAINER_TMPDIR APPTAINER_CACHEDIR TMPDIR
-
-ensure_secure_private_dir "${RELAYMD_SCRATCH_ROOT}" "RELAYMD_SCRATCH_ROOT"
-ensure_secure_private_dir "${APPTAINER_TMPDIR}" "APPTAINER_TMPDIR"
-ensure_secure_private_dir "${APPTAINER_CACHEDIR}" "APPTAINER_CACHEDIR"
-
-ORCHESTRATOR_IMAGE_URI="${2:-${RELAYMD_ORCHESTRATOR_IMAGE_URI:-}}"
-WORKER_IMAGE_URI="${3:-${RELAYMD_WORKER_IMAGE_URI:-}}"
-
-if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
+if [[ $# -eq 4 ]]; then
+    ORCHESTRATOR_IMAGE_URI="$2"
+    ATOM_OPENMM_IMAGE_URI="$3"
+    GCNCMC_IMAGE_URI="$4"
+elif [[ -z "${ORCHESTRATOR_IMAGE_URI}${ATOM_OPENMM_IMAGE_URI}${GCNCMC_IMAGE_URI}" ]]; then
+    owner="$(resolve_owner)"
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
-        owner=""
-        resolved_from_manifest=0
-        if [[ -n "${RELAYMD_RELEASE_MANIFEST_URI:-}" ]]; then
-            manifest_uri="${RELAYMD_RELEASE_MANIFEST_URI}"
-        else
-            owner="$(resolve_owner)"
-            manifest_uri="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json"
-        fi
-
-        if resolve_latest_release_manifest "${manifest_uri}"; then
-            echo "Resolved latest release from manifest '${manifest_uri}' (release '${RELEASE_VERSION}')."
-            resolved_from_manifest=1
-        else
+        if ! resolve_latest_manifest "${RELAYMD_RELEASE_MANIFEST_URI:-https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json}"; then
             echo "Failed to resolve latest via release manifest; falling back to newest shared sha-* image tag." >&2
-            if [[ -z "${owner}" ]]; then
-                owner="$(resolve_owner)"
-            fi
-            release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
-            RELEASE_VERSION="${release_tag}"
-            ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
-            WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
-            echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
-        fi
-
-        if [[ "${resolved_from_manifest}" -eq 1 ]]; then
-            if ! manifest_images_are_resolvable "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"; then
-                echo "Manifest image tags are not currently resolvable in GHCR; falling back to newest shared sha-* image tag." >&2
-                if [[ -z "${owner}" ]]; then
-                    owner="$(resolve_owner)"
-                fi
-                release_tag="$(resolve_latest_shared_sha_tag "${owner}")"
-                RELEASE_VERSION="${release_tag}"
-                ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
-                WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
-                echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
-            fi
+            RELEASE_VERSION="$(resolve_latest_shared_sha_tag "${owner}")"
+            ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${RELEASE_VERSION}"
+            ATOM_OPENMM_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-atom-openmm:${RELEASE_VERSION}"
+            GCNCMC_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-gcncmcmd:${RELEASE_VERSION}"
+            ORCHESTRATOR_SIF_URI=""
+            ATOM_OPENMM_SIF_URI=""
+            GCNCMC_SIF_URI=""
         fi
     else
-        owner="$(resolve_owner)"
-        release_tag="${RELEASE_VERSION}"
-        ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${release_tag}"
-        WORKER_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker:${release_tag}"
-        echo "Auto-resolved images from GHCR owner '${owner}' and tag '${release_tag}'."
+        ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${RELEASE_VERSION}"
+        ATOM_OPENMM_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-atom-openmm:${RELEASE_VERSION}"
+        GCNCMC_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-gcncmcmd:${RELEASE_VERSION}"
     fi
 fi
 
-if [[ -z "${ORCHESTRATOR_IMAGE_URI}" ]]; then
-    echo "Missing orchestrator image URI. Pass arg #2, set RELAYMD_ORCHESTRATOR_IMAGE_URI, or omit both URIs for auto mode." >&2
+[[ -n "${ORCHESTRATOR_IMAGE_URI}" && -n "${ATOM_OPENMM_IMAGE_URI}" && -n "${GCNCMC_IMAGE_URI}" ]] || {
+    echo "Provide all three named image URIs or omit them for manifest/tag resolution." >&2
     exit 1
-fi
+}
+[[ "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || { echo "Invalid release version." >&2; exit 1; }
 
-if [[ -z "${WORKER_IMAGE_URI}" ]]; then
-    echo "Missing worker image URI. Pass arg #3, set RELAYMD_WORKER_IMAGE_URI, or omit both URIs for auto mode." >&2
-    exit 1
-fi
-
-maybe_configure_apptainer_ghcr_auth "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"
-
-# Keep release versions path-safe so release promotion cannot escape RELEASES_DIR.
-if [[ ! "${RELEASE_VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    echo "Invalid release-version '${RELEASE_VERSION}'." >&2
-    echo "Use only letters, digits, dot, underscore, and hyphen; must start with a letter/digit." >&2
-    exit 1
+if [[ -z "${CLI_URI}" ]]; then
+    owner="$(resolve_owner)"
+    CLI_URI="https://github.com/${owner}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-linux-x86_64"
 fi
 
 RELEASE_DIR="${RELEASES_DIR}/${RELEASE_VERSION}"
 mkdir -p "${RELEASE_DIR}"
-
-if [[ -d "${CURRENT_LINK}" && ! -L "${CURRENT_LINK}" ]]; then
-    echo "Refusing to repoint ${CURRENT_LINK}: path exists as a directory, not a symlink." >&2
-    echo "Move wrappers out of ${CURRENT_LINK}/bin (use ${RELAYMD_SERVICE_ROOT}/bin) and recreate current as a symlink." >&2
-    exit 1
-fi
-
-ORCH_TMP="${RELEASE_DIR}/relaymd-orchestrator.sif.tmp"
-WORKER_TMP="${RELEASE_DIR}/relaymd-worker.sif.tmp"
-ORCH_SIF="${RELEASE_DIR}/relaymd-orchestrator.sif"
-WORKER_SIF="${RELEASE_DIR}/relaymd-worker.sif"
-CLI_TMP="${RELEASE_DIR}/relaymd.tmp"
-CLI_BIN="${RELEASE_DIR}/relaymd"
-
-if [[ -n "${RELAYMD_CLI_URI:-}" ]]; then
-    CLI_URI="${RELAYMD_CLI_URI}"
-elif [[ -n "${AUTO_RESOLVED_CLI_URI}" ]]; then
-    CLI_URI="${AUTO_RESOLVED_CLI_URI}"
-else
-    owner="$(resolve_cli_owner)"
-    if [[ "${RELEASE_VERSION}" == "latest" ]]; then
-        CLI_URI="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-linux-x86_64"
-    else
-        CLI_URI="https://github.com/${owner}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-linux-x86_64"
-        CLI_FALLBACK_URI="https://github.com/${owner}/relaymd/releases/latest/download/relaymd-linux-x86_64"
-    fi
-fi
-
-# Resolve GHCR owner for pre-built SIF downloads (sha-* releases only).
-SIF_OWNER=""
-if [[ -n "${RELAYMD_GHCR_OWNER:-}" ]]; then
-    SIF_OWNER="${RELAYMD_GHCR_OWNER}"
-elif [[ "${ORCHESTRATOR_IMAGE_URI}" =~ ^docker://ghcr\.io/([^/]+)/ ]]; then
-    SIF_OWNER="${BASH_REMATCH[1]}"
-fi
-
-_pull_sif() {
-    local label="$1"
-    local image_uri="$2"
-    local sif_path="$3"
-    local tmp_path="$4"
-    local prebuilt_sif_uri="${5:-}"
-    local pull_tmpdir="${RELAYMD_SCRATCH_ROOT}/apptainer/tmp-${label}"
-
-    if [[ -f "${sif_path}" ]]; then
-        echo "[${label}] SIF already exists at ${sif_path}, skipping."
-        return 0
-    fi
-
-    if [[ -n "${prebuilt_sif_uri}" ]]; then
-        echo "[${label}] Trying pre-built SIF: ${prebuilt_sif_uri}"
-        mkdir -p "${pull_tmpdir}"
-        if APPTAINER_TMPDIR="${pull_tmpdir}" apptainer pull "${tmp_path}" "${prebuilt_sif_uri}" 2>/dev/null; then
-            mv "${tmp_path}" "${sif_path}"
-            echo "[${label}] Downloaded pre-built SIF from GHCR."
-            return 0
-        fi
-        echo "[${label}] Pre-built SIF unavailable at ${prebuilt_sif_uri}, falling back to apptainer pull." >&2
-    elif [[ -n "${SIF_OWNER}" && "${RELEASE_VERSION}" =~ ^sha- ]]; then
-        local prebuilt_uri="https://github.com/${SIF_OWNER}/relaymd/releases/download/${RELEASE_VERSION}/relaymd-${label}.sif"
-        echo "[${label}] Trying pre-built SIF: ${prebuilt_uri}"
-        if download_file "${prebuilt_uri}" "${tmp_path}" silent; then
-            mv "${tmp_path}" "${sif_path}"
-            echo "[${label}] Downloaded pre-built SIF."
-            return 0
-        fi
-        echo "[${label}] Pre-built SIF unavailable, falling back to apptainer pull." >&2
-    fi
-
-    mkdir -p "${pull_tmpdir}"
-    echo "[${label}] Pulling image into ${sif_path}"
-    APPTAINER_TMPDIR="${pull_tmpdir}" apptainer pull "${tmp_path}" "${image_uri}"
-    mv "${tmp_path}" "${sif_path}"
-}
-
-_pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" "${AUTO_RESOLVED_ORCH_SIF_URI}" &
+pull_artifact orchestrator "${ORCHESTRATOR_IMAGE_URI}" "${RELEASE_DIR}/relaymd-orchestrator.sif" "${ORCHESTRATOR_SIF_URI}" &
 ORCH_PID=$!
-_pull_sif "worker" "${WORKER_IMAGE_URI}" "${WORKER_SIF}" "${WORKER_TMP}" "${AUTO_RESOLVED_WORKER_SIF_URI}" &
-WORKER_PID=$!
-
-ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
-WORKER_EXIT=0; wait "${WORKER_PID}" || WORKER_EXIT=$?
+pull_artifact worker-atom-openmm "${ATOM_OPENMM_IMAGE_URI}" "${RELEASE_DIR}/relaymd-worker-atom-openmm.sif" "${ATOM_OPENMM_SIF_URI}" &
+ATOM_PID=$!
+pull_artifact worker-gcncmcmd "${GCNCMC_IMAGE_URI}" "${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif" "${GCNCMC_SIF_URI}" &
+GCN_PID=$!
+ORCH_EXIT=0
+ATOM_EXIT=0
+GCN_EXIT=0
+wait "${ORCH_PID}" || ORCH_EXIT=$?
+wait "${ATOM_PID}" || ATOM_EXIT=$?
+wait "${GCN_PID}" || GCN_EXIT=$?
 [[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] SIF pull failed (exit ${ORCH_EXIT})." >&2
-[[ "${WORKER_EXIT}" -eq 0 ]] || echo "[worker] SIF pull failed (exit ${WORKER_EXIT})." >&2
-[[ "${ORCH_EXIT}" -eq 0 && "${WORKER_EXIT}" -eq 0 ]] || exit 1
+[[ "${ATOM_EXIT}" -eq 0 ]] || echo "[worker-atom-openmm] SIF pull failed (exit ${ATOM_EXIT})." >&2
+[[ "${GCN_EXIT}" -eq 0 ]] || echo "[worker-gcncmcmd] SIF pull failed (exit ${GCN_EXIT})." >&2
+[[ "${ORCH_EXIT}" -eq 0 && "${ATOM_EXIT}" -eq 0 && "${GCN_EXIT}" -eq 0 ]] || exit 1
 
-echo "Downloading relaymd CLI into ${CLI_BIN}"
-if ! download_file "${CLI_URI}" "${CLI_TMP}"; then
-    if [[ "${ALLOW_CLI_FALLBACK}" == "1" && -n "${CLI_FALLBACK_URI:-}" ]]; then
-        echo "Failed to download CLI from release tag '${RELEASE_VERSION}'. Falling back to latest." >&2
-        download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"
-        CLI_URI="${CLI_FALLBACK_URI}"
-    else
-        echo "Failed to download relaymd CLI from '${CLI_URI}'." >&2
-        exit 1
-    fi
-fi
-chmod 0755 "${CLI_TMP}"
-
-if ! validate_cli_binary "${CLI_TMP}"; then
-    if [[ "${ALLOW_CLI_FALLBACK}" == "1" && -n "${CLI_FALLBACK_URI:-}" && "${CLI_URI}" != "${CLI_FALLBACK_URI}" ]]; then
-        echo "Downloaded CLI from '${CLI_URI}' failed self-check. Falling back to latest." >&2
-        if ! download_file "${CLI_FALLBACK_URI}" "${CLI_TMP}"; then
-            echo "Failed to download fallback CLI from '${CLI_FALLBACK_URI}'." >&2
-            exit 1
-        fi
-        chmod 0755 "${CLI_TMP}"
-        CLI_URI="${CLI_FALLBACK_URI}"
-    fi
-
-    if ! validate_cli_binary "${CLI_TMP}"; then
-        echo "Downloaded relaymd CLI from '${CLI_URI}' failed self-check ('--help' and 'submit --help')." >&2
-        echo "Remediation: publish/fetch a working release binary, or set RELAYMD_CLI_URI to a known-good local path/URI." >&2
-        exit 1
-    fi
-fi
-
-mv "${CLI_TMP}" "${CLI_BIN}"
-
+cli_tmp="${RELEASE_DIR}/relaymd.tmp.$$"
+download_file "${CLI_URI}" "${cli_tmp}" || {
+    echo "Failed to download RelayMD CLI from '${CLI_URI}'." >&2
+    exit 1
+}
+chmod 0755 "${cli_tmp}"
+"${cli_tmp}" --help >/dev/null
+"${cli_tmp}" submit --help >/dev/null
+mv "${cli_tmp}" "${RELEASE_DIR}/relaymd"
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 
-if [[ "${REQUESTED_RELEASE}" == "latest" ]]; then
-    RELAYMD_DATA_ROOT="${RELAYMD_DATA_ROOT:-/depot/plow/data/pballane/relaymd-service}"
-    RELAYMD_CONFIG="${RELAYMD_CONFIG:-${RELAYMD_DATA_ROOT}/config/relaymd-config.yaml}"
-    RELAYMD_ANVIL_SIF_CACHE_DIR="${RELAYMD_ANVIL_SIF_CACHE_DIR:-/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache}"
-    update_anvil_image_uri_in_config \
-        "${RELAYMD_CONFIG}" \
-        "${AUTO_RESOLVED_WORKER_SIF_URI}" \
-        "${RELAYMD_ANVIL_SIF_CACHE_DIR}"
-fi
-
 echo "Release activated: ${CURRENT_LINK} -> ${RELEASE_DIR}"
-echo "  orchestrator: ${ORCH_SIF}"
-echo "  worker:       ${WORKER_SIF}"
-echo "  cli:          ${CLI_BIN}"
-echo "  source images:"
-echo "    ${ORCHESTRATOR_IMAGE_URI}"
-echo "    ${WORKER_IMAGE_URI}"
-echo "  source cli:"
-echo "    ${CLI_URI}"
+echo "  worker (AToM-OpenMM): ${RELEASE_DIR}/relaymd-worker-atom-openmm.sif"
+echo "  worker (GCNCMC-MD):  ${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif"

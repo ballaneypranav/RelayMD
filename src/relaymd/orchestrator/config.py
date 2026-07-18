@@ -40,6 +40,49 @@ INFISICAL_ENVIRONMENT = "prod"
 INFISICAL_SECRET_PATH = "/RelayMD"
 
 
+class WorkerImageProfile(BaseModel):
+    """Operator-controlled compatibility contract for a worker image."""
+
+    display_name: str
+
+    @field_validator("display_name")
+    @classmethod
+    def _display_name_is_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("display_name must not be blank")
+        return value
+
+
+class WorkerImageSource(BaseModel):
+    """Cluster-local source for one configured worker image profile."""
+
+    sif_path: str | None = None
+    image_uri: str | None = None
+    sif_cache_dir: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_source(self) -> WorkerImageSource:
+        has_sif_path = bool(self.sif_path and self.sif_path.strip())
+        has_image_uri = bool(self.image_uri and self.image_uri.strip())
+        if has_sif_path == has_image_uri:
+            raise ValueError("set exactly one of 'sif_path' or 'image_uri'")
+        self.sif_path = self.sif_path.strip() if self.sif_path else None
+        self.image_uri = self.image_uri.strip() if self.image_uri else None
+        self.sif_cache_dir = self.sif_cache_dir.strip() if self.sif_cache_dir else None
+        return self
+
+    @property
+    def apptainer_image(self) -> str:
+        if self.sif_path:
+            return self.sif_path
+        if self.image_uri is None:
+            raise ValueError("image_uri is required when sif_path is unset")
+        if "://" in self.image_uri:
+            return self.image_uri
+        return f"docker://{self.image_uri}"
+
+
 class ClusterConfig(BaseModel):
     name: str
     partition: str
@@ -54,9 +97,7 @@ class ClusterConfig(BaseModel):
     gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
     jit_threshold_hours: float = Field(default=6.0, gt=0)
-    sif_path: str | None = None
-    image_uri: str | None = None
-    sif_cache_dir: str | None = None
+    worker_images: dict[str, WorkerImageSource] = Field(default_factory=dict)
     nodes: int | None = Field(default=None, ge=1)
     ntasks: int | None = Field(default=None, ge=1)
     qos: str | None = None
@@ -70,12 +111,25 @@ class ClusterConfig(BaseModel):
     wall_time: str = "4:00:00"
     log_directory: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_image_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            legacy_fields = {"sif_path", "image_uri", "sif_cache_dir"} & set(value)
+            if legacy_fields:
+                raise ValueError(
+                    "cluster-level image fields are unsupported; configure sources under "
+                    "worker_images"
+                )
+        return value
+
     @model_validator(mode="after")
     def _validate_image_source(self) -> ClusterConfig:
-        has_sif_path = bool(self.sif_path and self.sif_path.strip())
-        has_image_uri = bool(self.image_uri and self.image_uri.strip())
-        if has_sif_path == has_image_uri:
-            raise ValueError("set exactly one of 'sif_path' or 'image_uri'")
+        if not self.worker_images:
+            raise ValueError(
+                "configure at least one worker image source in 'worker_images' "
+                "(set exactly one of 'sif_path' or 'image_uri' per source)"
+            )
 
         if self.memory is not None:
             self.memory = self.memory.strip() or None
@@ -85,23 +139,17 @@ class ClusterConfig(BaseModel):
             self.qos = self.qos.strip() or None
         if self.gres is not None:
             self.gres = self.gres.strip() or None
-        if self.sif_cache_dir is not None:
-            self.sif_cache_dir = self.sif_cache_dir.strip() or None
-
         if self.memory and self.memory_per_gpu:
             raise ValueError("set at most one of 'memory' or 'memory_per_gpu'")
         return self
 
-    @property
-    def apptainer_image(self) -> str:
-        if self.sif_path and self.sif_path.strip():
-            return self.sif_path
-        if self.image_uri is None:
-            raise ValueError("image_uri is required when sif_path is unset")
-        image_uri = self.image_uri.strip()
-        if "://" in image_uri:
-            return image_uri
-        return f"docker://{image_uri}"
+    def worker_image_source(self, worker_image_key: str) -> WorkerImageSource:
+        try:
+            return self.worker_images[worker_image_key]
+        except KeyError as exc:
+            raise ValueError(
+                f"cluster '{self.name}' does not support worker image '{worker_image_key}'"
+            ) from exc
 
     @property
     def slurm_gres(self) -> str:
@@ -111,6 +159,12 @@ class ClusterConfig(BaseModel):
 
 
 class OrchestratorSettings(BaseSettings):
+    default_worker_image: str = "atom-openmm"
+    worker_image_profiles: dict[str, WorkerImageProfile] = Field(
+        default_factory=lambda: {
+            "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+        }
+    )
     storage_provider: Literal["cloudflare_backblaze", "purdue"] = Field(
         default="purdue",
         validation_alias=AliasChoices("storage_provider", "RELAYMD_STORAGE_PROVIDER"),
@@ -177,6 +231,7 @@ class OrchestratorSettings(BaseSettings):
     salad_org: str | None = None
     salad_project: str | None = None
     salad_container_group: str | None = None
+    salad_worker_image_key: str | None = None
     salad_max_replicas: int = 4
     salad_api_timeout_seconds: float = DEFAULT_SALAD_API_TIMEOUT_SECONDS
     relaymd_env: Literal["development", "production"] = "production"
@@ -269,7 +324,11 @@ class OrchestratorSettings(BaseSettings):
                 raw_cluster = dict(raw_cluster)
                 raw_cluster["extends"] = parent_name
 
+            inherited_worker_images = merged.get("worker_images")
+            child_worker_images = raw_cluster.get("worker_images")
             merged.update(raw_cluster)
+            if isinstance(inherited_worker_images, dict) and isinstance(child_worker_images, dict):
+                merged["worker_images"] = {**inherited_worker_images, **child_worker_images}
             merged["name"] = name
             if has_parent and "is_template" not in raw_cluster:
                 merged["is_template"] = False
@@ -295,6 +354,68 @@ class OrchestratorSettings(BaseSettings):
             runtime_clusters.append(cluster)
 
         return runtime_clusters
+
+    @field_validator("worker_image_profiles")
+    @classmethod
+    def _validate_worker_image_profiles(
+        cls, profiles: dict[str, WorkerImageProfile]
+    ) -> dict[str, WorkerImageProfile]:
+        if not profiles:
+            raise ValueError("worker_image_profiles must not be empty")
+        for key in profiles:
+            if not key or key != key.strip() or key.lower() != key:
+                raise ValueError("worker image profile keys must be lowercase, non-blank strings")
+        return profiles
+
+    @model_validator(mode="after")
+    def _validate_worker_image_catalog(self) -> OrchestratorSettings:
+        if self.default_worker_image not in self.worker_image_profiles:
+            raise ValueError(
+                "default_worker_image must reference a configured worker_image_profiles key"
+            )
+
+        configured_keys = set(self.worker_image_profiles)
+        if (
+            self.salad_worker_image_key is not None
+            and self.salad_worker_image_key not in configured_keys
+        ):
+            raise ValueError(
+                "salad_worker_image_key must reference a configured worker image profile"
+            )
+        for cluster in self.slurm_cluster_configs:
+            unknown_keys = sorted(set(cluster.worker_images) - configured_keys)
+            if unknown_keys:
+                raise ValueError(
+                    f"slurm cluster '{cluster.name}' configures unknown worker image keys: "
+                    f"{', '.join(unknown_keys)}"
+                )
+
+        default_supported_by_slurm = any(
+            self.default_worker_image in cluster.worker_images
+            for cluster in self.slurm_cluster_configs
+        )
+        default_supported_by_salad = (
+            self.salad_autoscaling_enabled
+            and (self.salad_worker_image_key or self.default_worker_image)
+            == self.default_worker_image
+        )
+        if (self.slurm_cluster_configs or self.salad_autoscaling_enabled) and not (
+            default_supported_by_slurm or default_supported_by_salad
+        ):
+            raise ValueError(
+                "default_worker_image is not supported by any configured compute backend"
+            )
+        return self
+
+    @property
+    def salad_autoscaling_enabled(self) -> bool:
+        """Whether Salad has every setting required for the scaler to run."""
+        return (
+            self.salad_api_key is not None
+            and self.salad_org is not None
+            and self.salad_project is not None
+            and self.salad_container_group is not None
+        )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -326,6 +447,7 @@ class OrchestratorSettings(BaseSettings):
                 "salad_org": ("SALAD_ORG",),
                 "salad_project": ("SALAD_PROJECT",),
                 "salad_container_group": ("SALAD_CONTAINER_GROUP",),
+                "salad_worker_image_key": ("SALAD_WORKER_IMAGE_KEY",),
                 "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
                 "sbatch_submit_timeout_seconds": ("SBATCH_SUBMIT_TIMEOUT_SECONDS",),
                 "axiom_dataset": ("AXIOM_DATASET",),

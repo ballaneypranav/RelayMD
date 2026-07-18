@@ -1,13 +1,13 @@
 # Salad Cloud Deployment (W-156)
 
-This runbook validates RelayMD worker deployment on Salad Cloud using the GHCR
-image from `W-150`, with secrets injected via Salad environment variables.
+This runbook validates an AToM-OpenMM RelayMD worker deployment on Salad Cloud,
+with secrets injected via Salad environment variables.
 
 ## Image and Container Group
 
 1. In Salad Cloud, create a new container group.
 2. Container image:
-   - `ghcr.io/<org>/relaymd-worker:sha-<shortsha>`
+   - `ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha>`
 3. Replica count:
    - start at `0`
 4. GPU selection:
@@ -20,11 +20,17 @@ Set these in the Salad dashboard:
 
 - `INFISICAL_TOKEN=<client_id>:<client_secret>`
 - `WORKER_PLATFORM=salad`
+- `RELAYMD_WORKER_IMAGE_KEY=atom-openmm`
 
-Current worker runtime compatibility notes:
+The container-group key must match the orchestrator's `salad_worker_image_key`
+(or `default_worker_image` when that setting is omitted). Salad currently
+scales one container group, so this group can claim only jobs with the
+`atom-openmm` key. To deploy GCNCMC-MD instead, change both the container image
+and key to `gcncmcmd`; one group cannot serve both profiles.
+
+Salad environment values are literal:
 
 - Salad does not expand `${...}` references in env-var values.
-- If you keep `INFISICAL_BOOTSTRAP_TOKEN` for compatibility with old runbooks, set `INFISICAL_TOKEN` to the same literal value.
 
 Optional runtime tuning env vars:
 - `HEARTBEAT_INTERVAL_SECONDS` (default `60`)
@@ -43,6 +49,7 @@ Optional runtime tuning env vars:
 6. Confirm worker record from orchestrator API:
    - `GET /workers` shows new worker with:
      - `platform="salad"`
+     - `worker_image_key="atom-openmm"`
      - expected `gpu_model`
      - expected `vram_gb`
 

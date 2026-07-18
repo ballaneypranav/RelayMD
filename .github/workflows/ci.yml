@@ -36,15 +36,18 @@ jobs:
               - 'uv.lock'
               - 'scripts/sync_workspace.sh'
             worker_base_image:
-              - 'Dockerfile.worker-base'
+              - 'Dockerfile.worker-atom-openmm-base'
+              - 'Dockerfile.worker-gcncmcmd-base'
               - '.github/workflows/ci.yml'
             orchestrator_base_image:
               - 'Dockerfile.orchestrator-base'
               - '.github/workflows/ci.yml'
             worker_image:
-              - 'Dockerfile'
-              - 'Dockerfile.worker-base'
-              - 'deploy/hpc/apptainer/relaymd-worker.localdev.def'
+              - 'Dockerfile.worker'
+              - 'Dockerfile.worker-atom-openmm-base'
+              - 'Dockerfile.worker-gcncmcmd-base'
+              - 'images/gcncmcmd/**'
+              - 'deploy/hpc/apptainer/relaymd-worker-*.localdev.def'
               - 'packages/**'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -132,45 +135,6 @@ jobs:
             exit 1
           fi
 
-  build-worker-base:
-    needs: [changes]
-    outputs:
-      image_digest: ${{ steps.build.outputs.digest }}
-    permissions:
-      contents: read
-      packages: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_base_image == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v6
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/relaymd-worker-base
-          tags: |
-            type=raw,value=latest
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
-        id: build
-        with:
-          context: .
-          file: Dockerfile.worker-base
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha,scope=worker-base
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker-base
-          provenance: false
-
   build-orchestrator-base:
     needs: [changes]
     outputs:
@@ -210,15 +174,21 @@ jobs:
           cache-to: type=gha,mode=max,ignore-error=true,scope=orchestrator-base
           provenance: false
 
-  build-worker:
-    needs: [changes, build-worker-base, cli-version-guard]
-    outputs:
-      image_digest: ${{ steps.build.outputs.digest }}
+  build-worker-images:
+    needs: [changes, cli-version-guard]
     permissions:
       contents: read
       packages: write
-    if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker-base.result == 'success' || needs.build-worker-base.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - key: atom-openmm
+            display_name: AToM-OpenMM
+          - key: gcncmcmd
+            display_name: GCNCMC-MD
     steps:
       - uses: actions/checkout@v6
         with:
@@ -230,122 +200,119 @@ jobs:
           cache-local-path: /tmp/uv-cache
       - run: ./scripts/generate_api_client.sh
       - uses: docker/login-action@v4
+        if: ${{ github.event_name != 'pull_request' }}
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/metadata-action@v6
-        id: meta
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/relaymd-worker
-          tags: |
-            type=sha,prefix=sha-,format=short
-            type=raw,value=latest
       - uses: docker/setup-buildx-action@v4
-      - name: Select worker base image
-        id: worker-base
+      - name: Select worker image references
+        id: refs
+        env:
+          OWNER: ${{ github.repository_owner }}
+          PROFILE: ${{ matrix.key }}
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" && "${{ needs.changes.outputs.worker_base_image }}" == "true" ]]; then
-            echo "base_image=relaymd-worker-base:ci" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base=relaymd-worker-${PROFILE}-base:ci" >> "$GITHUB_OUTPUT"
+            echo "worker=relaymd-worker-${PROFILE}:ci" >> "$GITHUB_OUTPUT"
           else
-            echo "base_image=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest" >> "$GITHUB_OUTPUT"
+            short_sha="${GITHUB_SHA::7}"
+            echo "base=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}-base:sha-${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "worker=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}:sha-${short_sha}" >> "$GITHUB_OUTPUT"
           fi
-      - name: Build worker base locally (PR)
-        id: build-worker-base-pr-attempt-1
-        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image == 'true' }}
-        uses: docker/build-push-action@v7
-        continue-on-error: true
-        with:
-          context: .
-          file: Dockerfile.worker-base
-          load: true
-          tags: relaymd-worker-base:ci
-          cache-from: |
-            type=gha,scope=worker-base
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker-base
-          provenance: false
-      - name: Build worker base locally (PR, retry)
-        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image == 'true' && steps.build-worker-base-pr-attempt-1.outcome == 'failure' }}
+      - name: Build ${{ matrix.display_name }} base
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile.worker-base
-          load: true
-          tags: relaymd-worker-base:ci
+          file: Dockerfile.worker-${{ matrix.key }}-base
+          load: ${{ github.event_name == 'pull_request' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.refs.outputs.base }}
+            ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}-base:latest
           cache-from: |
-            type=gha,scope=worker-base
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker-base
+            type=gha,scope=worker-base-${{ matrix.key }}
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}-base:latest
+          cache-to: type=gha,mode=max,ignore-error=true,scope=worker-base-${{ matrix.key }}
           provenance: false
-      - name: Build worker image (PR)
-        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image == 'true' }}
+      - name: Build ${{ matrix.display_name }} worker image locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_IMAGE: ${{ steps.refs.outputs.base }}
+          WORKER_IMAGE: ${{ steps.refs.outputs.worker }}
         run: |
           set -euo pipefail
-          docker image inspect relaymd-worker-base:ci
+          docker image inspect "${BASE_IMAGE}"
           docker buildx use default
           docker buildx inspect --bootstrap
           docker buildx build \
-            --build-arg BASE_IMAGE=relaymd-worker-base:ci \
-            --cache-from type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest \
+            --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
             --load \
-            -t relaymd-worker:ci \
+            --tag "${WORKER_IMAGE}" \
+            --file Dockerfile.worker \
             .
-      - name: Build worker image with cache (PR)
-        id: build-worker-pr-attempt-1
-        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image != 'true' }}
-        uses: docker/build-push-action@v7
-        continue-on-error: true
-        with:
-          context: .
-          push: false
-          build-args: |
-            BASE_IMAGE=${{ steps.worker-base.outputs.base_image }}
-          cache-from: |
-            type=gha,scope=worker
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker
-          provenance: false
-      - name: Build worker image with cache (PR, retry)
-        if: ${{ github.event_name == 'pull_request' && needs.changes.outputs.worker_base_image != 'true' && steps.build-worker-pr-attempt-1.outcome == 'failure' }}
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: false
-          build-args: |
-            BASE_IMAGE=${{ steps.worker-base.outputs.base_image }}
-          cache-from: |
-            type=gha,scope=worker
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker
-          provenance: false
-      - uses: docker/build-push-action@v7
-        id: build
+      - name: Build ${{ matrix.display_name }} worker image
         if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/build-push-action@v7
         with:
           context: .
+          file: Dockerfile.worker
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ steps.refs.outputs.worker }}
+            ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}:latest
           build-args: |
-            BASE_IMAGE=${{ steps.worker-base.outputs.base_image }}
+            BASE_IMAGE=${{ steps.refs.outputs.base }}
           cache-from: |
-            type=gha,scope=worker
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker:latest
-          cache-to: type=gha,mode=max,ignore-error=true,scope=worker
+            type=gha,scope=worker-${{ matrix.key }}
+            type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}:latest
+          cache-to: type=gha,mode=max,ignore-error=true,scope=worker-${{ matrix.key }}
           provenance: false
-      - name: Summary
+      - name: Smoke test ${{ matrix.display_name }} worker image
+        env:
+          WORKER_IMAGE: ${{ steps.refs.outputs.worker }}
+          PROFILE: ${{ matrix.key }}
         run: |
-          echo "### Worker image" >> $GITHUB_STEP_SUMMARY
-          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Pin a cluster to this build in \`relaymd-config.yaml\`:" >> $GITHUB_STEP_SUMMARY
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          echo "\`image_uri: ghcr.io/${{ github.repository_owner }}/relaymd-worker:sha-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+          docker run --rm --entrypoint python "${WORKER_IMAGE}" -c '
+          import relaymd, relaymd_api_client, openmm
+          if "'"${PROFILE}"'" == "atom-openmm":
+              import atom_openmm
+              assert openmm.version.version.startswith("8.4")
+          else:
+              import grand, openmmtools
+              assert grand.__version__ == "1.1.0"
+              assert openmm.version.version.startswith("8.2")
+          '
+          [[ "$(docker image inspect --format '{{join .Config.Entrypoint " "}}' "${WORKER_IMAGE}")" == "python -m relaymd.worker" ]]
+  build-worker-sifs:
+    needs: [changes, build-worker-images, cli-version-guard]
+    permissions:
+      contents: read
+      packages: write
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && needs.build-worker-images.result == 'success' && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        key: [atom-openmm, gcncmcmd]
+    steps:
+      - uses: eWaterCycle/setup-apptainer@3f706d898c9db585b1d741b4692e66755f3a1b40 # v2
+        with:
+          apptainer-version: 1.3.6
+      - name: Build and publish ${{ matrix.key }} SIF
+        env:
+          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
+          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PROFILE: ${{ matrix.key }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          image="docker://ghcr.io/${OWNER}/relaymd-worker-${PROFILE}:sha-${short_sha}"
+          sif="relaymd-worker-${PROFILE}.sif"
+          apptainer pull "${sif}" "${image}"
+          apptainer push "${sif}" "oras://ghcr.io/${OWNER}/relaymd-worker-${PROFILE}:sif-sha-${short_sha}"
 
   build-orchestrator:
     needs: [changes, build-orchestrator-base, cli-version-guard]
@@ -574,66 +541,6 @@ jobs:
           make_latest: true
           files: dist/relaymd-linux-x86_64
 
-  build-worker-base-sif:
-    needs: [changes, build-worker-base]
-    outputs:
-      sif_tag: ${{ steps.uri.outputs.tag }}
-      sif_uri: ${{ steps.uri.outputs.sif_uri }}
-    permissions:
-      contents: write
-      packages: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_base_image == 'true' && needs.build-worker-base.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: eWaterCycle/setup-apptainer@v2
-        with:
-          apptainer-version: 1.3.6
-      - name: Build release URI
-        id: uri
-        env:
-          IMAGE_DIGEST: ${{ needs.build-worker-base.outputs.image_digest }}
-          OWNER: ${{ github.repository_owner }}
-        run: |
-          set -euo pipefail
-          digest="${IMAGE_DIGEST#sha256:}"
-          if [[ -z "${digest}" || "${digest}" == "${IMAGE_DIGEST}" ]]; then
-            echo "Unexpected worker base digest: ${IMAGE_DIGEST}" >&2
-            exit 1
-          fi
-          tag="base-worker-sha256-${digest}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=oras://ghcr.io/${OWNER}/relaymd-worker-base:${tag}" >> "$GITHUB_OUTPUT"
-      - name: Restore worker base SIF cache
-        id: cache-worker-base
-        uses: actions/cache@v4
-        with:
-          path: relaymd-worker-base.sif
-          key: sif-worker-base-digest-${{ needs.build-worker-base.outputs.image_digest }}
-      - name: Restore Apptainer worker base OCI blob cache
-        if: ${{ steps.cache-worker-base.outputs.cache-hit != 'true' }}
-        uses: actions/cache@v4
-        with:
-          path: ~/.apptainer/cache
-          key: apptainer-oci-worker-base-${{ needs.build-worker-base.outputs.image_digest }}
-          restore-keys: |
-            apptainer-oci-worker-base-
-            apptainer-oci-
-      - name: Build worker base SIF
-        if: ${{ steps.cache-worker-base.outputs.cache-hit != 'true' }}
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          rm -f relaymd-worker-base.sif
-          apptainer pull relaymd-worker-base.sif "docker://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:latest"
-      - name: Push worker base SIF to GHCR
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          apptainer push relaymd-worker-base.sif \
-            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker-base:${{ steps.uri.outputs.tag }}"
-
   build-orchestrator-base-sif:
     needs: [changes, build-orchestrator-base]
     outputs:
@@ -693,105 +600,6 @@ jobs:
         run: |
           apptainer push relaymd-orchestrator-base.sif \
             "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator-base:${{ steps.uri.outputs.tag }}"
-
-  build-worker-sif:
-    needs: [changes, build-worker, build-worker-base-sif, cli-version-guard]
-    outputs:
-      sif_uri: ${{ steps.uri.outputs.sif_uri }}
-      sif_tag: ${{ steps.uri.outputs.sif_tag }}
-    permissions:
-      contents: read
-      packages: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && needs.changes.outputs.worker_image == 'true' && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: eWaterCycle/setup-apptainer@v2
-        with:
-          apptainer-version: 1.3.6
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 1
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.11"
-          enable-cache: true
-          cache-local-path: /tmp/uv-cache
-      - run: ./scripts/generate_api_client.sh
-      - name: Get short SHA
-        id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-      - name: Build release URI
-        id: uri
-        run: |
-          set -euo pipefail
-          tag="sif-sha-${{ steps.sha.outputs.short }}"
-          echo "sif_tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "sif_uri=oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker:${tag}" >> "$GITHUB_OUTPUT"
-      - name: Restore worker SIF cache
-        id: cache-worker
-        uses: actions/cache@v4
-        with:
-          path: relaymd-worker.sif
-          key: sif-worker-digest-${{ needs.build-worker.outputs.image_digest }}
-      - name: Resolve worker base SIF release
-        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
-        id: worker-base-sif
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
-        run: |
-          set -euo pipefail
-          sif_uri="${SIF_URI}"
-          if [[ -z "${sif_uri}" ]]; then
-            manifest="$(mktemp)"
-            gh release download latest --pattern relaymd-release-manifest.json --output "${manifest}" --clobber
-            sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${manifest}")"
-          fi
-          if [[ -z "${sif_uri}" ]]; then
-            echo "Unable to resolve worker base SIF URI from this run or latest release manifest." >&2
-            exit 1
-          fi
-          tag="${sif_uri##*:}"
-          if [[ -z "${tag}" || "${tag}" == "${sif_uri}" ]]; then
-            echo "Unable to parse tag from worker base SIF URI: ${sif_uri}" >&2
-            exit 1
-          fi
-          echo "uri=${sif_uri}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-      - name: Restore worker base SIF cache
-        id: cache-worker-base-for-app
-        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
-        uses: actions/cache@v4
-        with:
-          path: relaymd-worker-base.sif
-          key: sif-worker-base-release-${{ steps.worker-base-sif.outputs.tag }}
-      - name: Download worker base SIF
-        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' && steps.cache-worker-base-for-app.outputs.cache-hit != 'true' }}
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          rm -f relaymd-worker-base.sif
-          apptainer pull relaymd-worker-base.sif "${{ steps.worker-base-sif.outputs.uri }}"
-      - name: Build worker SIF
-        if: ${{ steps.cache-worker.outputs.cache-hit != 'true' }}
-        run: |
-          set -euo pipefail
-          worker_base_sif="$(pwd)/relaymd-worker-base.sif"
-          worker_def="${RUNNER_TEMP}/relaymd-worker.ci.def"
-          sed \
-            -e "s#^From: .*#From: ${worker_base_sif}#" \
-            -e 's#relaymd.localdev "true"#relaymd.localdev "false"#' \
-            deploy/hpc/apptainer/relaymd-worker.localdev.def > "${worker_def}"
-          rm -f relaymd-worker.sif
-          sudo apptainer build relaymd-worker.sif "${worker_def}"
-      - name: Push worker SIF to GHCR
-        env:
-          APPTAINER_DOCKER_USERNAME: ${{ github.actor }}
-          APPTAINER_DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          apptainer push relaymd-worker.sif \
-            "oras://ghcr.io/${{ github.repository_owner }}/relaymd-worker:${{ steps.uri.outputs.sif_tag }}"
 
   build-orchestrator-sif:
     needs: [changes, build-orchestrator, build-orchestrator-base-sif, cli-version-guard]
@@ -901,10 +709,10 @@ jobs:
             "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:${{ steps.uri.outputs.sif_tag }}"
 
   publish-release-manifest:
-    needs: [changes, test, cli-version-guard, build-worker, build-orchestrator, build-cli, build-worker-base-sif, build-orchestrator-base-sif, build-worker-sif, build-orchestrator-sif]
+    needs: [changes, test, cli-version-guard, build-worker-images, build-worker-sifs, build-orchestrator, build-cli, build-orchestrator-base-sif, build-orchestrator-sif]
     permissions:
       contents: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.build-worker-sif.result == 'success' || needs.build-worker-sif.result == 'skipped') && (needs.build-orchestrator-sif.result == 'success' || needs.build-orchestrator-sif.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker-images.result == 'success' || needs.build-worker-images.result == 'skipped') && (needs.build-worker-sifs.result == 'success' || needs.build-worker-sifs.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.build-orchestrator-sif.result == 'success' || needs.build-orchestrator-sif.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -921,9 +729,7 @@ jobs:
           CLI_CHANGED: ${{ needs.changes.outputs.cli }}
           WORKER_BASE_CHANGED: ${{ needs.changes.outputs.worker_base_image }}
           ORCH_BASE_CHANGED: ${{ needs.changes.outputs.orchestrator_base_image }}
-          WORKER_BASE_SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
           ORCH_BASE_SIF_URI: ${{ needs.build-orchestrator-base-sif.outputs.sif_uri }}
-          WORKER_SIF_URI: ${{ needs.build-worker-sif.outputs.sif_uri }}
           ORCH_SIF_URI: ${{ needs.build-orchestrator-sif.outputs.sif_uri }}
         run: |
           set -euo pipefail
@@ -940,11 +746,8 @@ jobs:
           fi
 
           prev_release_version="$(jq -r '.release_version // empty' "${prev_manifest}")"
-          prev_worker_image="$(jq -r '.worker_image // empty' "${prev_manifest}")"
           prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
-          prev_worker_base_sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${prev_manifest}")"
           prev_orch_base_sif_uri="$(jq -r '.orchestrator_base_sif_uri // empty' "${prev_manifest}")"
-          prev_worker_sif_uri="$(jq -r '.worker_sif_uri // empty' "${prev_manifest}")"
           prev_orch_sif_uri="$(jq -r '.orchestrator_sif_uri // empty' "${prev_manifest}")"
           prev_cli_uri="$(jq -r '.cli_uri // empty' "${prev_manifest}")"
           prev_cli_version="$(jq -r '.cli_version // empty' "${prev_manifest}")"
@@ -956,9 +759,20 @@ jobs:
           fi
 
           if [[ "${WORKER_CHANGED}" == "true" ]]; then
-            worker_image="docker://ghcr.io/${OWNER}/relaymd-worker:sha-${short_sha}"
+            worker_atom_image="docker://ghcr.io/${OWNER}/relaymd-worker-atom-openmm:sha-${short_sha}"
+            worker_gcn_image="docker://ghcr.io/${OWNER}/relaymd-worker-gcncmcmd:sha-${short_sha}"
+            worker_atom_sif_uri="oras://ghcr.io/${OWNER}/relaymd-worker-atom-openmm:sif-sha-${short_sha}"
+            worker_gcn_sif_uri="oras://ghcr.io/${OWNER}/relaymd-worker-gcncmcmd:sif-sha-${short_sha}"
           else
-            worker_image="${prev_worker_image:-docker://ghcr.io/${OWNER}/relaymd-worker:latest}"
+            worker_atom_image="$(jq -r '.worker_images["atom-openmm"].image_uri // empty' "${prev_manifest}")"
+            worker_gcn_image="$(jq -r '.worker_images.gcncmcmd.image_uri // empty' "${prev_manifest}")"
+            worker_atom_sif_uri="$(jq -r '.worker_images["atom-openmm"].sif_uri // empty' "${prev_manifest}")"
+            worker_gcn_sif_uri="$(jq -r '.worker_images.gcncmcmd.sif_uri // empty' "${prev_manifest}")"
+          fi
+
+          if [[ -z "${worker_atom_image}" || -z "${worker_gcn_image}" || -z "${worker_atom_sif_uri}" || -z "${worker_gcn_sif_uri}" ]]; then
+            echo "Release manifest requires complete atom-openmm and gcncmcmd worker artifacts." >&2
+            exit 1
           fi
 
           if [[ "${ORCH_CHANGED}" == "true" ]]; then
@@ -975,22 +789,11 @@ jobs:
             cli_version="${prev_cli_version:-${current_cli_version}}"
           fi
 
-          if [[ "${WORKER_BASE_CHANGED}" == "true" && -n "${WORKER_BASE_SIF_URI}" ]]; then
-            worker_base_sif_uri="${WORKER_BASE_SIF_URI}"
-          else
-            worker_base_sif_uri="${prev_worker_base_sif_uri}"
-          fi
 
           if [[ "${ORCH_BASE_CHANGED}" == "true" && -n "${ORCH_BASE_SIF_URI}" ]]; then
             orchestrator_base_sif_uri="${ORCH_BASE_SIF_URI}"
           else
             orchestrator_base_sif_uri="${prev_orch_base_sif_uri}"
-          fi
-
-          if [[ "${WORKER_CHANGED}" == "true" && -n "${WORKER_SIF_URI}" ]]; then
-            worker_sif_uri="${WORKER_SIF_URI}"
-          else
-            worker_sif_uri="${prev_worker_sif_uri}"
           fi
 
           if [[ "${ORCH_CHANGED}" == "true" && -n "${ORCH_SIF_URI}" ]]; then
@@ -1008,10 +811,11 @@ jobs:
           jq -n \
             --arg release_version "${release_version}" \
             --arg orchestrator_image "${orchestrator_image}" \
-            --arg worker_image "${worker_image}" \
-            --arg worker_base_sif_uri "${worker_base_sif_uri}" \
+            --arg worker_atom_image "${worker_atom_image}" \
+            --arg worker_gcn_image "${worker_gcn_image}" \
+            --arg worker_atom_sif_uri "${worker_atom_sif_uri}" \
+            --arg worker_gcn_sif_uri "${worker_gcn_sif_uri}" \
             --arg orchestrator_base_sif_uri "${orchestrator_base_sif_uri}" \
-            --arg worker_sif_uri "${worker_sif_uri}" \
             --arg orchestrator_sif_uri "${orchestrator_sif_uri}" \
             --arg cli_uri "${cli_uri}" \
             --arg cli_version "${cli_version}" \
@@ -1020,10 +824,11 @@ jobs:
             '{
               release_version: $release_version,
               orchestrator_image: $orchestrator_image,
-              worker_image: $worker_image,
-              worker_base_sif_uri: $worker_base_sif_uri,
+              worker_images: {
+                "atom-openmm": {image_uri: $worker_atom_image, sif_uri: $worker_atom_sif_uri},
+                gcncmcmd: {image_uri: $worker_gcn_image, sif_uri: $worker_gcn_sif_uri}
+              },
               orchestrator_base_sif_uri: $orchestrator_base_sif_uri,
-              worker_sif_uri: $worker_sif_uri,
               orchestrator_sif_uri: $orchestrator_sif_uri,
               cli_uri: $cli_uri,
               cli_version: $cli_version,

@@ -185,6 +185,16 @@ export function App() {
   const workers = data?.workers ?? [];
   const clusters = data?.clusters ?? [];
   const health = data?.health;
+  const workerImageDisplayNames = useMemo(
+    () =>
+      Object.fromEntries(
+        (data?.workerImageCatalog.worker_images ?? []).map((profile) => [
+          profile.key,
+          profile.display_name,
+        ]),
+      ),
+    [data?.workerImageCatalog],
+  );
   const clusterEditCount = useMemo(
     () => clusters.filter((cluster) => (clusterEdits[cluster.name] ?? cluster.enabled) !== cluster.enabled).length,
     [clusterEdits, clusters],
@@ -535,6 +545,7 @@ export function App() {
           onBulkRequeueJobs={(jobsToRequeue) => void handleBulkRequeue(jobsToRequeue)}
           loading={loading}
           selectedJobHistory={selectedJobHistory}
+          workerImageDisplayNames={workerImageDisplayNames}
         />
       ) : null}
 
@@ -546,6 +557,7 @@ export function App() {
           onDownloadExport={downloadText}
           toDelimited={toDelimited}
           toCsv={toCsv}
+          workerImageDisplayNames={workerImageDisplayNames}
         />
       ) : null}
 

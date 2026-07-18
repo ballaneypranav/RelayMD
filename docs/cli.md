@@ -86,13 +86,24 @@ Submit with an operator comment:
 relaymd submit ./my-input --title "my job" --comment "Nightly benchmark run"
 ```
 
+Submit to a specific configured worker-image profile:
+
+```bash
+relaymd submit ./my-input --title "gcncmc equilibration" --worker-image gcncmcmd
+```
+
+The value is an operator-controlled profile key, not an OCI URI or SIF path.
+When omitted, the orchestrator resolves and persists its configured default.
+The CLI validates explicit keys against the server catalog when available; the
+server remains the authoritative validator.
+
 Submit machine-readable output:
 
 ```bash
 relaymd submit ./my-input --title "my job" --json
 ```
 
-`submit --json` includes `preferred_clusters`, `comment`, and `queue_blocked_reason`
+`submit --json` includes `worker_image_key`, `preferred_clusters`, `comment`, and `queue_blocked_reason`
 in addition to `job_id`, `title`, `input_bundle_path`, and `status`.
 
 On shared HPC installs, API-backed commands automatically delegate over SSH to

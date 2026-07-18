@@ -58,6 +58,16 @@ worker_idle_poll_interval_seconds: 30
 worker_idle_poll_max_seconds: 600
 
 # SLURM cluster definitions used for sbatch submission.
+# Worker image profile keys are stable workload-compatibility contracts. The
+# default is resolved when a job is created (Phase 2); sources remain local to
+# each cluster so shared SIF paths and registry access can differ by site.
+default_worker_image: atom-openmm
+worker_image_profiles:
+  atom-openmm:
+    display_name: AToM-OpenMM
+  gcncmcmd:
+    display_name: GCNCMC-MD
+
 slurm_cluster_configs:
   - name: gilbreth-a30
     partition: a30
@@ -74,21 +84,18 @@ slurm_cluster_configs:
     # - jit_threshold: submits like reactive but ONLY if the oldest queued job has waited > jit_threshold_hours
     strategy: "reactive"
     # jit_threshold_hours: 6.0
-    # Choose exactly one image source.
-    # Phase 1 policy: keep one shared worker image for all clusters.
-    # Point every cluster to the same worker SIF promoted under current/.
-    sif_path: /depot/plow/apps/relaymd/current/relaymd-worker.sif
-    # Alternative: use a registry image directly (Apptainer uses docker://<image>)
-    # Prefer a SHA tag over :latest to pin to a specific build.
-    # The SHA tag is printed in the GitHub Actions job summary after each CI run.
-    # image_uri: ghcr.io/<org>/relaymd-worker:sha-abc1234
-    # For pre-built Apptainer artifacts from CI, use the oras URI directly:
-    # image_uri: oras://ghcr.io/<org>/relaymd-worker:sif-sha-abc1234
-    # Optional: move worker pull-cache off $HOME for quota-constrained clusters.
-    # sif_cache_dir: /anvil/projects/<project>/apps/relaymd/apptainer/cache
+    # Each source must configure exactly one of sif_path or image_uri.
+    worker_images:
+      atom-openmm:
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif
+        # Alternative registry source (Apptainer uses docker://<image>):
+        # image_uri: ghcr.io/<org>/relaymd-worker-atom-openmm:sha-abc1234
+        # Optional: move the pull cache off $HOME for quota-constrained clusters.
+        # sif_cache_dir: /anvil/projects/<project>/apps/relaymd/apptainer/cache
+      gcncmcmd:
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif
     # For private docker:// pulls, set APPTAINER_DOCKER_USERNAME and
     # APPTAINER_DOCKER_PASSWORD in relaymd-service.env (not in this YAML).
-    # Per-job worker image selection is not supported in phase 1.
     # Optional scheduler directives:
     # nodes: 1
     # ntasks: 8

@@ -132,6 +132,11 @@ class WorkerLifecycleService:
                 )
             ).first()
             if existing is not None:
+                if existing.worker_image_key != payload.worker_image_key:
+                    raise ValueError(
+                        "worker image does not match queued provider allocation: "
+                        f"expected {existing.worker_image_key}, got {payload.worker_image_key}"
+                    )
                 logger.info(
                     "queued_placeholder_activated",
                     provider_id=payload.provider_id,
@@ -157,6 +162,7 @@ class WorkerLifecycleService:
             gpu_model=payload.gpu_model,
             gpu_count=payload.gpu_count,
             vram_gb=payload.vram_gb,
+            worker_image_key=payload.worker_image_key,
             provider_id=payload.provider_id,
             status=WorkerStatus.active,
         )
@@ -168,6 +174,7 @@ class WorkerLifecycleService:
             worker_id=str(worker.id),
             provider_id=worker.provider_id,
             platform=str(worker.platform),
+            worker_image_key=worker.worker_image_key,
         )
         return worker
 

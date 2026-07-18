@@ -6,13 +6,20 @@ import type {
   JobRead,
   JobHistoryRead,
   WorkerRead,
+  WorkerImageCatalog,
 } from "./types";
+
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
 
 async function readJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `${response.status} ${response.statusText}`);
+    throw new HttpError(response.status, text || `${response.status} ${response.statusText}`);
   }
   return (await response.json()) as T;
 }
@@ -21,13 +28,25 @@ export async function fetchFrontendConfig(): Promise<FrontendConfig> {
   return readJson<FrontendConfig>("/config/frontend");
 }
 
+async function fetchWorkerImageCatalog(url: string): Promise<WorkerImageCatalog> {
+  try {
+    return await readJson<WorkerImageCatalog>(url);
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) {
+      return { default_worker_image: "", worker_images: [] };
+    }
+    throw error;
+  }
+}
+
 export async function fetchDashboardData(apiBaseUrl: string): Promise<DashboardPayload> {
   const base = apiBaseUrl || "";
-  const [jobs, workers, clustersPayload, health] = await Promise.all([
+  const [jobs, workers, clustersPayload, health, workerImageCatalog] = await Promise.all([
     readJson<JobRead[]>(`${base}/jobs`),
     readJson<WorkerRead[]>(`${base}/workers`),
     readJson<{ clusters: ClusterConfig[] }>(`${base}/config/slurm-clusters`),
     readJson<HealthStatus>(`${base}/healthz`),
+    fetchWorkerImageCatalog(`${base}/config/worker-images`),
   ]);
 
   return {
@@ -35,6 +54,7 @@ export async function fetchDashboardData(apiBaseUrl: string): Promise<DashboardP
     workers,
     clusters: clustersPayload.clusters,
     health,
+    workerImageCatalog,
   };
 }
 

@@ -4,7 +4,8 @@ set -euo pipefail
 usage() {
     cat <<'USAGE'
 Usage: local_build_sif_or_sandbox.sh [--release <name>] [--mode sif|sandbox] [--current-link <path>] \
-    [--worker-uri <uri>] [--orchestrator-uri <uri>] [--service-root <path>]
+    [--worker-profile atom-openmm|gcncmcmd|all] [--atom-openmm-uri <uri>] \
+    [--gcncmcmd-uri <uri>] [--orchestrator-uri <uri>] [--service-root <path>]
 
 Build local Apptainer runtime artifacts from OCI/docker URIs.
 Default mode is 'sif'.
@@ -15,7 +16,9 @@ RELEASE_NAME="${RELEASE_NAME:-local-dev}"
 MODE="${MODE:-sif}"
 RELAYMD_SERVICE_ROOT="${RELAYMD_SERVICE_ROOT:-/depot/plow/apps/relaymd}"
 CURRENT_LINK="${CURRENT_LINK:-}"
-WORKER_URI="${WORKER_URI:-docker-daemon://relaymd-worker:local-dev}"
+ATOM_OPENMM_URI="${ATOM_OPENMM_URI:-docker-daemon://relaymd-worker-atom-openmm:local-dev}"
+GCNCMC_URI="${GCNCMC_URI:-docker-daemon://relaymd-worker-gcncmcmd:local-dev}"
+WORKER_PROFILE="${WORKER_PROFILE:-all}"
 ORCHESTRATOR_URI="${ORCHESTRATOR_URI:-docker-daemon://relaymd-orchestrator:local-dev}"
 
 while [[ $# -gt 0 ]]; do
@@ -32,8 +35,16 @@ while [[ $# -gt 0 ]]; do
             CURRENT_LINK="$2"
             shift 2
             ;;
-        --worker-uri)
-            WORKER_URI="$2"
+        --atom-openmm-uri)
+            ATOM_OPENMM_URI="$2"
+            shift 2
+            ;;
+        --gcncmcmd-uri)
+            GCNCMC_URI="$2"
+            shift 2
+            ;;
+        --worker-profile)
+            WORKER_PROFILE="$2"
             shift 2
             ;;
         --orchestrator-uri)
@@ -58,6 +69,10 @@ done
 
 if [[ "${MODE}" != "sif" && "${MODE}" != "sandbox" ]]; then
     echo "Invalid --mode '${MODE}'. Expected 'sif' or 'sandbox'." >&2
+    exit 1
+fi
+if [[ "${WORKER_PROFILE}" != "atom-openmm" && "${WORKER_PROFILE}" != "gcncmcmd" && "${WORKER_PROFILE}" != "all" ]]; then
+    echo "Invalid --worker-profile '${WORKER_PROFILE}'. Expected atom-openmm|gcncmcmd|all." >&2
     exit 1
 fi
 
@@ -93,28 +108,38 @@ _build_artifact() {
     mv "${tmp_output}" "${output}"
 }
 
-if [[ "${MODE}" == "sif" ]]; then
-    worker_output="${RELEASE_DIR}/relaymd-worker.sif"
-    orchestrator_output="${RELEASE_DIR}/relaymd-orchestrator.sif"
-else
-    worker_output="${RELEASE_DIR}/relaymd-worker.sandbox"
-    orchestrator_output="${RELEASE_DIR}/relaymd-orchestrator.sandbox"
+artifact_extension="sif"
+[[ "${MODE}" == "sif" ]] || artifact_extension="sandbox"
+orchestrator_output="${RELEASE_DIR}/relaymd-orchestrator.${artifact_extension}"
+worker_pids=()
+if [[ "${WORKER_PROFILE}" == "atom-openmm" || "${WORKER_PROFILE}" == "all" ]]; then
+    _build_artifact "worker-atom-openmm" "${ATOM_OPENMM_URI}" "${RELEASE_DIR}/relaymd-worker-atom-openmm.${artifact_extension}" &
+    worker_pids+=("$!")
 fi
-
-_build_artifact "worker" "${WORKER_URI}" "${worker_output}" &
-WORKER_PID=$!
+if [[ "${WORKER_PROFILE}" == "gcncmcmd" || "${WORKER_PROFILE}" == "all" ]]; then
+    _build_artifact "worker-gcncmcmd" "${GCNCMC_URI}" "${RELEASE_DIR}/relaymd-worker-gcncmcmd.${artifact_extension}" &
+    worker_pids+=("$!")
+fi
 _build_artifact "orchestrator" "${ORCHESTRATOR_URI}" "${orchestrator_output}" &
 ORCH_PID=$!
 
-WORKER_EXIT=0; wait "${WORKER_PID}" || WORKER_EXIT=$?
+WORKER_EXIT=0
+for worker_pid in "${worker_pids[@]}"; do
+    wait "${worker_pid}" || WORKER_EXIT=$?
+done
 ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
 [[ "${WORKER_EXIT}" -eq 0 ]] || echo "[worker] Local artifact build failed (exit ${WORKER_EXIT})." >&2
 [[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] Local artifact build failed (exit ${ORCH_EXIT})." >&2
 [[ "${WORKER_EXIT}" -eq 0 && "${ORCH_EXIT}" -eq 0 ]] || exit 1
 
 if [[ "${MODE}" == "sandbox" ]]; then
-    ln -sfn "relaymd-worker.sandbox" "${RELEASE_DIR}/relaymd-worker.sif"
     ln -sfn "relaymd-orchestrator.sandbox" "${RELEASE_DIR}/relaymd-orchestrator.sif"
+    if [[ "${WORKER_PROFILE}" == "atom-openmm" || "${WORKER_PROFILE}" == "all" ]]; then
+        ln -sfn "relaymd-worker-atom-openmm.sandbox" "${RELEASE_DIR}/relaymd-worker-atom-openmm.sif"
+    fi
+    if [[ "${WORKER_PROFILE}" == "gcncmcmd" || "${WORKER_PROFILE}" == "all" ]]; then
+        ln -sfn "relaymd-worker-gcncmcmd.sandbox" "${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif"
+    fi
 fi
 
 if [[ -z "${CURRENT_LINK}" ]]; then

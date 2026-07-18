@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  ./INSTALL [release-version] [orchestrator-image-uri] [worker-image-uri]
+  ./INSTALL [release-version] [orchestrator-image-uri atom-openmm-image-uri gcncmcmd-image-uri]
 
 Examples:
   ./INSTALL
@@ -12,7 +12,8 @@ Examples:
   ./INSTALL sha-abc1234
   ./INSTALL sha-abc1234 \
     docker://ghcr.io/<org>/relaymd-orchestrator:sha-abc1234 \
-    docker://ghcr.io/<org>/relaymd-worker:sha-abc1234
+    docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-abc1234 \
+    docker://ghcr.io/<org>/relaymd-worker-gcncmcmd:sha-abc1234
 
 Behavior:
   1) Installs/updates service layout and modulefile
@@ -29,21 +30,17 @@ fi
 
 RELEASE_VERSION="${1:-latest}"
 ORCH_IMAGE_URI="${2:-}"
-WORKER_IMAGE_URI="${3:-}"
+ATOM_OPENMM_IMAGE_URI="${3:-}"
+GCNCMC_IMAGE_URI="${4:-}"
 
-if [[ -n "${ORCH_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
-  echo "If you pass orchestrator image URI, you must also pass worker image URI." >&2
+if [[ -n "${ORCH_IMAGE_URI}${ATOM_OPENMM_IMAGE_URI}${GCNCMC_IMAGE_URI}" \
+  && ( -z "${ORCH_IMAGE_URI}" || -z "${ATOM_OPENMM_IMAGE_URI}" || -z "${GCNCMC_IMAGE_URI}" ) ]]; then
+  echo "Explicit upgrades require the orchestrator and both named worker image URIs." >&2
   usage >&2
   exit 1
 fi
 
-if [[ -z "${ORCH_IMAGE_URI}" && -n "${WORKER_IMAGE_URI}" ]]; then
-  echo "If you pass worker image URI, you must also pass orchestrator image URI." >&2
-  usage >&2
-  exit 1
-fi
-
-if [[ $# -gt 3 ]]; then
+if [[ $# -gt 4 ]]; then
   usage >&2
   exit 1
 fi
@@ -72,7 +69,11 @@ module load relaymd/current
 
 echo "[3/4] Pulling and activating release: ${RELEASE_VERSION}"
 if [[ -n "${ORCH_IMAGE_URI}" ]]; then
-  ./deploy/hpc/relaymd-service-pull "${RELEASE_VERSION}" "${ORCH_IMAGE_URI}" "${WORKER_IMAGE_URI}"
+  ./deploy/hpc/relaymd-service-pull \
+    "${RELEASE_VERSION}" \
+    "${ORCH_IMAGE_URI}" \
+    "${ATOM_OPENMM_IMAGE_URI}" \
+    "${GCNCMC_IMAGE_URI}"
 else
   ./deploy/hpc/relaymd-service-pull "${RELEASE_VERSION}"
 fi

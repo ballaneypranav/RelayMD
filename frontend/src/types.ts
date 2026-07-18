@@ -13,6 +13,7 @@ export interface JobRead {
   title: string;
   status: JobStatus;
   input_bundle_path: string;
+  worker_image_key: string;
   preferred_clusters: string[];
   comment: string | null;
   queue_blocked_reason: string | null;
@@ -73,6 +74,7 @@ export interface WorkerRead {
   gpu_count: number;
   vram_gb: number;
   status: string;
+  worker_image_key: string;
   provider_id: string | null;
   provider_state: string | null;
   provider_state_raw: string | null;
@@ -109,9 +111,20 @@ export interface FrontendConfig {
   refresh_interval_seconds: number;
 }
 
+export interface WorkerImageProfile {
+  key: string;
+  display_name: string;
+}
+
+export interface WorkerImageCatalog {
+  default_worker_image: string;
+  worker_images: WorkerImageProfile[];
+}
+
 export interface DashboardPayload {
   jobs: JobRead[];
   workers: WorkerRead[];
   clusters: ClusterConfig[];
   health: HealthStatus;
+  workerImageCatalog: WorkerImageCatalog;
 }

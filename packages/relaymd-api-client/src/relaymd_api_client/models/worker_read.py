@@ -35,6 +35,7 @@ class WorkerRead:
             gpu_count (int):
             vram_gb (int):
             status (WorkerStatus):
+            worker_image_key (str):
             last_heartbeat (datetime.datetime):
             registered_at (datetime.datetime):
             provider_id (None | str | Unset):
@@ -50,6 +51,7 @@ class WorkerRead:
     gpu_count: int
     vram_gb: int
     status: WorkerStatus
+    worker_image_key: str
     last_heartbeat: datetime.datetime
     registered_at: datetime.datetime
     provider_id: None | str | Unset = UNSET
@@ -75,6 +77,8 @@ class WorkerRead:
         vram_gb = self.vram_gb
 
         status = self.status.value
+
+        worker_image_key = self.worker_image_key
 
         last_heartbeat = self.last_heartbeat.isoformat()
 
@@ -122,6 +126,7 @@ class WorkerRead:
             "gpu_count": gpu_count,
             "vram_gb": vram_gb,
             "status": status,
+            "worker_image_key": worker_image_key,
             "last_heartbeat": last_heartbeat,
             "registered_at": registered_at,
         })
@@ -163,6 +168,8 @@ class WorkerRead:
 
 
 
+
+        worker_image_key = d.pop("worker_image_key")
 
         last_heartbeat = isoparse(d.pop("last_heartbeat"))
 
@@ -241,6 +248,7 @@ class WorkerRead:
             gpu_count=gpu_count,
             vram_gb=vram_gb,
             status=status,
+            worker_image_key=worker_image_key,
             last_heartbeat=last_heartbeat,
             registered_at=registered_at,
             provider_id=provider_id,

@@ -393,9 +393,13 @@ def upgrade(
         str | None,
         typer.Option("--orchestrator-image", help="Explicit orchestrator image URI."),
     ] = None,
-    worker_image: Annotated[
+    atom_openmm_image: Annotated[
         str | None,
-        typer.Option("--worker-image", help="Explicit worker image URI."),
+        typer.Option("--atom-openmm-image", help="Explicit AToM-OpenMM worker image URI."),
+    ] = None,
+    gcncmcmd_image: Annotated[
+        str | None,
+        typer.Option("--gcncmcmd-image", help="Explicit GCNCMC-MD worker image URI."),
     ] = None,
     cli_uri: Annotated[
         str | None,
@@ -405,12 +409,17 @@ def upgrade(
     """Pull and activate a RelayMD release."""
     paths = resolve_paths()
     command = [_service_script("relaymd-service-pull", paths), release]
-    if orchestrator_image or worker_image:
-        if not orchestrator_image or not worker_image:
+    explicit_images = (orchestrator_image, atom_openmm_image, gcncmcmd_image)
+    if any(explicit_images):
+        if not all(explicit_images):
             raise typer.BadParameter(
-                "--orchestrator-image and --worker-image must be used together"
+                "--orchestrator-image, --atom-openmm-image, and --gcncmcmd-image "
+                "must be used together"
             )
-        command.extend([orchestrator_image, worker_image])
+        assert orchestrator_image is not None
+        assert atom_openmm_image is not None
+        assert gcncmcmd_image is not None
+        command.extend([orchestrator_image, atom_openmm_image, gcncmcmd_image])
     env = os.environ.copy()
     if cli_uri:
         env["RELAYMD_CLI_URI"] = cli_uri

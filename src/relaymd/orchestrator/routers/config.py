@@ -31,6 +31,29 @@ class ClusterEnabledMapUpdate(BaseModel):
     enabled: dict[str, bool]
 
 
+class WorkerImageProfileRead(BaseModel):
+    key: str
+    display_name: str
+
+
+class WorkerImageCatalogRead(BaseModel):
+    default_worker_image: str
+    worker_images: list[WorkerImageProfileRead]
+
+
+@router.get("/worker-images", response_model=WorkerImageCatalogRead)
+async def get_worker_images(request: Request) -> WorkerImageCatalogRead:
+    """Return the operator-configured worker image compatibility profiles."""
+    settings: OrchestratorSettings = request.app.state.settings
+    return WorkerImageCatalogRead(
+        default_worker_image=settings.default_worker_image,
+        worker_images=[
+            WorkerImageProfileRead(key=key, display_name=profile.display_name)
+            for key, profile in sorted(settings.worker_image_profiles.items())
+        ],
+    )
+
+
 @router.get("/slurm-clusters")
 async def get_slurm_clusters(
     request: Request,

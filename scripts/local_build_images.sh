@@ -3,22 +3,20 @@ set -euo pipefail
 
 usage() {
     cat <<'USAGE'
-Usage: local_build_images.sh [--engine auto|docker|podman] [--tag <tag>] [--worker-image <name>] [--orchestrator-image <name>] [--base-image <name>]
+Usage: local_build_images.sh [--engine auto|docker|podman] [--tag <tag>] [--worker-profile atom-openmm|gcncmcmd|all] [--orchestrator-image <name>]
 
 Build worker + orchestrator Docker images from the current workspace for local Apptainer conversion.
 Defaults:
   tag: local-dev
-  worker image: relaymd-worker
+  worker images: relaymd-worker-atom-openmm and relaymd-worker-gcncmcmd
   orchestrator image: relaymd-orchestrator
-  base image: ghcr.io/your-org/relaymd-base:latest
 USAGE
 }
 
 ENGINE="${ENGINE:-auto}"
 TAG="${TAG:-local-dev}"
-WORKER_IMAGE_NAME="${WORKER_IMAGE_NAME:-relaymd-worker}"
 ORCHESTRATOR_IMAGE_NAME="${ORCHESTRATOR_IMAGE_NAME:-relaymd-orchestrator}"
-BASE_IMAGE="${BASE_IMAGE:-ghcr.io/your-org/relaymd-base:latest}"
+WORKER_PROFILE="${WORKER_PROFILE:-all}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,8 +28,8 @@ while [[ $# -gt 0 ]]; do
             TAG="$2"
             shift 2
             ;;
-        --worker-image)
-            WORKER_IMAGE_NAME="$2"
+        --worker-profile)
+            WORKER_PROFILE="$2"
             shift 2
             ;;
         --orchestrator-image)
@@ -39,8 +37,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --base-image)
-            BASE_IMAGE="$2"
-            shift 2
+            echo "--base-image is no longer supported: worker profiles build their own base images." >&2
+            exit 2
             ;;
         -h|--help)
             usage
@@ -74,7 +72,7 @@ if [[ "${BUILD_ENGINE}" == "auto" ]]; then
         echo "Remediation options:" >&2
         echo "  1) Install Docker or Podman, then rerun make local-build-images." >&2
         echo "  2) Use prebuilt GHCR images via relaymd upgrade <sha|latest> (no local image build)." >&2
-        echo "  3) Try make local-build-from-def (experimental; requires working apptainer fakeroot)." >&2
+        echo "  3) Build on a host with Docker or Podman, then convert the named images with make local-build-sif-or-sandbox." >&2
         exit 1
     fi
 elif ! command -v "${BUILD_ENGINE}" >/dev/null 2>&1; then
@@ -82,22 +80,34 @@ elif ! command -v "${BUILD_ENGINE}" >/dev/null 2>&1; then
     exit 1
 fi
 
-WORKER_REF="${WORKER_IMAGE_NAME}:${TAG}"
 ORCHESTRATOR_REF="${ORCHESTRATOR_IMAGE_NAME}:${TAG}"
+WORKER_REFS=()
 
 printf 'Using build engine: %s\n' "${BUILD_ENGINE}"
-printf 'Building worker image: %s\n' "${WORKER_REF}"
-"${BUILD_ENGINE}" build --build-arg BASE_IMAGE="${BASE_IMAGE}" -t "${WORKER_REF}" .
+if [[ "${WORKER_PROFILE}" != "atom-openmm" && "${WORKER_PROFILE}" != "gcncmcmd" && "${WORKER_PROFILE}" != "all" ]]; then
+    echo "Invalid --worker-profile '${WORKER_PROFILE}'. Expected atom-openmm|gcncmcmd|all." >&2
+    exit 1
+fi
+for profile in atom-openmm gcncmcmd; do
+    [[ "${WORKER_PROFILE}" == "all" || "${WORKER_PROFILE}" == "${profile}" ]] || continue
+    base_ref="relaymd-worker-${profile}-base:${TAG}"
+    worker_ref="relaymd-worker-${profile}:${TAG}"
+    printf 'Building %s worker base: %s\n' "${profile}" "${base_ref}"
+    "${BUILD_ENGINE}" build -f "Dockerfile.worker-${profile}-base" -t "${base_ref}" .
+    printf 'Building %s worker image: %s\n' "${profile}" "${worker_ref}"
+    "${BUILD_ENGINE}" build -f Dockerfile.worker --build-arg BASE_IMAGE="${base_ref}" -t "${worker_ref}" .
+    WORKER_REFS+=("${worker_ref}")
+done
 
 printf 'Building orchestrator image: %s\n' "${ORCHESTRATOR_REF}"
 "${BUILD_ENGINE}" build -f Dockerfile.orchestrator -t "${ORCHESTRATOR_REF}" .
 
 cat <<OUT
 Built local images:
-  worker:       ${WORKER_REF}
+$(for worker_ref in "${WORKER_REFS[@]}"; do printf '  worker:       %s\n' "${worker_ref}"; done)
   orchestrator: ${ORCHESTRATOR_REF}
 
 Apptainer source URIs:
-  worker:       docker-daemon://${WORKER_REF}
+$(for worker_ref in "${WORKER_REFS[@]}"; do printf '  worker:       docker-daemon://%s\n' "${worker_ref}"; done)
   orchestrator: docker-daemon://${ORCHESTRATOR_REF}
 OUT

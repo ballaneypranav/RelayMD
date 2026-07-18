@@ -13,22 +13,24 @@ Salad Cloud workers are eligible for any job but are assigned only when no HPC w
 The orchestrator schedules a 60-second sbatch submission job. Each cycle runs as two phases:
 
 1. **Dead-placeholder reap**: all pending placeholder workers are checked against `squeue`. Any whose SLURM job is no longer alive (failed or cancelled before the worker started) are deleted, freeing up the `max_pending_jobs` slot.
-2. **New submission**: for each configured cluster, if there are affinity-compatible queued jobs and no active/pending HPC workers for that cluster, a new SLURM job is rendered and submitted. The returned job ID is stored in the DB as a placeholder worker record (`provider_id = "<cluster>:<id>"`) to prevent duplicate submissions during the SLURM pending window.
+2. **New submission**: for each configured cluster/image pair, if there are affinity-compatible queued jobs for that image and no active/pending HPC workers for that pair, a new SLURM job is rendered and submitted. The returned job ID is stored in the DB as an image-matched placeholder worker record (`provider_id = "<cluster>:<id>"`) to prevent duplicate submissions during the SLURM pending window.
 
 Per-job cluster affinity:
 - Jobs may include `preferred_clusters` (exact cluster `name` values).
 - No fallback: pinned jobs are considered only for listed clusters.
 - Unpinned jobs are eligible for any cluster.
-- Assignment also enforces affinity when workers poll for work.
+- Assignment also enforces affinity and an exact `worker_image_key` match when workers poll for work.
 
 Queue blocking visibility:
 - Job lifecycle status remains `queued` (no new enum).
 - When a pinned job cannot currently run, `queue_blocked_reason` is populated:
   - `no_enabled_pinned_clusters`
   - `no_matching_pinned_clusters`
+  - `unsupported_worker_image`
+  - `no_enabled_image_compatible_clusters`
 - The reason is cleared when the job becomes schedulable or leaves queued state.
 
-When the SLURM job starts, the worker registers itself with the orchestrator and includes `$SLURM_JOB_ID` in the registration payload. The orchestrator uses this to locate and atomically delete the placeholder row, so only the real worker row remains visible in the UI.
+When the SLURM job starts, the worker registers itself with the orchestrator and includes `$SLURM_JOB_ID` and `RELAYMD_WORKER_IMAGE_KEY` in the registration payload. The orchestrator uses both to locate and atomically delete the placeholder row, so a worker cannot activate a placeholder for a different image.
 
 ---
 
@@ -41,6 +43,6 @@ When the SLURM job starts, the worker registers itself with the orchestrator and
 | clusterB | partitionC | 14d | Long-running preferred |
 | clusterB | partitionD | 14d |                        |
 
-Each partition is a separate `ClusterConfig` entry in the YAML config. The orchestrator submits to all configured clusters independently. Each cluster uses either a shared-filesystem `.sif` path (`sif_path`) or a registry image reference (`image_uri`) for Apptainer.
+Each partition is a separate `ClusterConfig` entry in the YAML config. Image sources are configured per `worker_images.<profile-key>`; each source uses either a shared-filesystem `.sif` path (`sif_path`) or a registry image reference (`image_uri`) for Apptainer. `max_pending_jobs` applies per cluster/image pair.
 
 The orchestrator runs on the clusterA login node and calls `sbatch` as a direct subprocess (no SSH). clusterB support requires cross-cluster SSH submission, which is not yet implemented.

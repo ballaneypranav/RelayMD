@@ -1,0 +1,25 @@
+name: gcncmcmd
+channels:
+  - nvidia
+  - conda-forge
+dependencies:
+  # Runtime contract.  Do not add solver-generated build pins here: those
+  # disappear from channel metadata and make image builds unreproducible.
+  - python=3.12
+  - cuda-version=12.6
+  - openmm=8.2.0
+  - openmmtools=0.24.2
+  - openmmforcefields=0.14.2
+  - ambertools=24.8
+  - acpype=2023.10.27
+  # GRAND runtime dependencies installed from conda-forge. GRAND itself is
+  # installed from the immutable source revision in the Dockerfile.
+  - mdtraj
+  - networkx
+  - numpy
+  - parmed
+  - pdbfixer
+  - pymbar
+  - scipy
+  - tqdm
+  - pip

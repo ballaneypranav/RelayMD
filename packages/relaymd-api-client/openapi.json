@@ -1240,6 +1240,53 @@
         }
       }
     },
+    "/config/worker-images": {
+      "get": {
+        "summary": "Get Worker Images",
+        "description": "Return the operator-configured worker image compatibility profiles.",
+        "operationId": "get_worker_images_config_worker_images_get",
+        "parameters": [
+          {
+            "name": "X-API-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerImageCatalogRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/config/slurm-clusters": {
       "get": {
         "summary": "Get Slurm Clusters",
@@ -1829,6 +1876,17 @@
             "type": "string",
             "title": "Input Bundle Path"
           },
+          "worker_image_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Image Key"
+          },
           "preferred_clusters": {
             "items": {
               "type": "string"
@@ -1995,6 +2053,10 @@
           "input_bundle_path": {
             "type": "string",
             "title": "Input Bundle Path"
+          },
+          "worker_image_key": {
+            "type": "string",
+            "title": "Worker Image Key"
           },
           "preferred_clusters": {
             "items": {
@@ -2198,6 +2260,7 @@
           "title",
           "status",
           "input_bundle_path",
+          "worker_image_key",
           "assigned_at",
           "started_at",
           "status_changed_at",
@@ -2393,6 +2456,45 @@
         "type": "object",
         "title": "WorkerHeartbeat"
       },
+      "WorkerImageCatalogRead": {
+        "properties": {
+          "default_worker_image": {
+            "type": "string",
+            "title": "Default Worker Image"
+          },
+          "worker_images": {
+            "items": {
+              "$ref": "#/components/schemas/WorkerImageProfileRead"
+            },
+            "type": "array",
+            "title": "Worker Images"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_worker_image",
+          "worker_images"
+        ],
+        "title": "WorkerImageCatalogRead"
+      },
+      "WorkerImageProfileRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "display_name"
+        ],
+        "title": "WorkerImageProfileRead"
+      },
       "WorkerRead": {
         "properties": {
           "id": {
@@ -2417,6 +2519,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/WorkerStatus"
+          },
+          "worker_image_key": {
+            "type": "string",
+            "title": "Worker Image Key"
           },
           "provider_id": {
             "anyOf": [
@@ -2493,6 +2599,7 @@
           "gpu_count",
           "vram_gb",
           "status",
+          "worker_image_key",
           "last_heartbeat",
           "registered_at"
         ],
@@ -2515,6 +2622,10 @@
             "type": "integer",
             "title": "Vram Gb"
           },
+          "worker_image_key": {
+            "type": "string",
+            "title": "Worker Image Key"
+          },
           "provider_id": {
             "anyOf": [
               {
@@ -2532,7 +2643,8 @@
           "platform",
           "gpu_model",
           "gpu_count",
-          "vram_gb"
+          "vram_gb",
+          "worker_image_key"
         ],
         "title": "WorkerRegister"
       },

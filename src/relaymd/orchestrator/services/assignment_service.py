@@ -69,7 +69,11 @@ class AssignmentService:
             return []
         return [name for item in parsed if (name := str(item).strip())]
 
-    def _worker_can_run_job(self, *, worker_cluster: str | None, job: Job) -> bool:
+    def _worker_can_run_job(
+        self, *, worker_cluster: str | None, worker_image_key: str, job: Job
+    ) -> bool:
+        if worker_image_key != job.worker_image_key:
+            return False
         preferred_clusters = self._job_preferred_clusters(job)
         if not preferred_clusters:
             return True
@@ -77,7 +81,9 @@ class AssignmentService:
             return False
         return worker_cluster in preferred_clusters
 
-    async def _next_queued_job_id_for_worker(self, *, worker_cluster: str | None) -> UUID | None:
+    async def _next_queued_job_id_for_worker(
+        self, *, worker_cluster: str | None, worker_image_key: str
+    ) -> UUID | None:
         queued_jobs = (
             await self._session.exec(
                 select(Job)
@@ -86,14 +92,18 @@ class AssignmentService:
             )
         ).all()
         return self._next_queued_job_id_for_worker_from_jobs(
-            queued_jobs=queued_jobs, worker_cluster=worker_cluster
+            queued_jobs=queued_jobs,
+            worker_cluster=worker_cluster,
+            worker_image_key=worker_image_key,
         )
 
     def _next_queued_job_id_for_worker_from_jobs(
-        self, *, queued_jobs: Sequence[Job], worker_cluster: str | None
+        self, *, queued_jobs: Sequence[Job], worker_cluster: str | None, worker_image_key: str
     ) -> UUID | None:
         for job in queued_jobs:
-            if self._worker_can_run_job(worker_cluster=worker_cluster, job=job):
+            if self._worker_can_run_job(
+                worker_cluster=worker_cluster, worker_image_key=worker_image_key, job=job
+            ):
                 return job.id
         return None
 
@@ -136,10 +146,12 @@ class AssignmentService:
         return await self._session.get(Job, job_id)
 
     async def _claim_next_queued_job_for_worker(
-        self, *, worker_id: UUID, worker_cluster: str | None
+        self, *, worker_id: UUID, worker_cluster: str | None, worker_image_key: str
     ) -> Job | None:
         for _attempt in range(CLAIM_RETRY_LIMIT):
-            job_id = await self._next_queued_job_id_for_worker(worker_cluster=worker_cluster)
+            job_id = await self._next_queued_job_id_for_worker(
+                worker_cluster=worker_cluster, worker_image_key=worker_image_key
+            )
             if job_id is None:
                 return None
 
@@ -164,6 +176,7 @@ class AssignmentService:
         worker_id = worker.id
         worker_provider_id = worker.provider_id
         worker_cluster = self._worker_cluster_name(worker)
+        worker_image_key = worker.worker_image_key
 
         # Ensure worker is not stale
         stale_cutoff = self._stale_cutoff()
@@ -202,7 +215,7 @@ class AssignmentService:
             return None
 
         queued_job = await self._claim_next_queued_job_for_worker(
-            worker_id=worker_id, worker_cluster=worker_cluster
+            worker_id=worker_id, worker_cluster=worker_cluster, worker_image_key=worker_image_key
         )
         if queued_job is None:
             return None
@@ -213,6 +226,8 @@ class AssignmentService:
             job_id=str(queued_job.id),
             worker_id=str(worker_id),
             provider_id=worker_provider_id,
+            worker_image_key=worker_image_key,
+            job_worker_image_key=queued_job.worker_image_key,
         )
         return queued_job
 
@@ -264,6 +279,7 @@ class AssignmentService:
                 job_id = self._next_queued_job_id_for_worker_from_jobs(
                     queued_jobs=queued_jobs,
                     worker_cluster=worker_cluster,
+                    worker_image_key=worker.worker_image_key,
                 )
                 if job_id is None:
                     break
@@ -288,5 +304,7 @@ class AssignmentService:
             job_id=str(queued_job.id),
             worker_id=str(selected_worker.id),
             provider_id=selected_worker.provider_id,
+            worker_image_key=selected_worker.worker_image_key,
+            job_worker_image_key=queued_job.worker_image_key,
         )
         return queued_job, selected_worker

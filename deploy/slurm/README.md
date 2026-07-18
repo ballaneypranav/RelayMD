@@ -15,9 +15,14 @@ Per-cluster required keys:
 - `account`
 - `gpu_type`
 - `gpu_count`
-- exactly one of:
+- `worker_images`, mapping each supported profile key to exactly one of:
   - `sif_path` (shared filesystem path to a `.sif`)
-  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker:sha-abc1234`)
+  - `image_uri` (registry image such as `ghcr.io/<org>/relaymd-worker-gcncmcmd:sha-abc1234`)
+
+The root configuration declares `worker_image_profiles` and
+`default_worker_image`. Jobs persist one profile key, and the scheduler only
+provisions workers from a matching `worker_images` source. Cluster-level image
+source fields are unsupported; every source belongs under `worker_images`.
 
 Optional keys:
 
@@ -29,7 +34,7 @@ Optional keys:
 - at most one of:
   - `memory` (renders `#SBATCH --mem=<value>`)
   - `memory_per_gpu` (renders `#SBATCH --mem-per-gpu=<value>`)
-- `sif_cache_dir` (directory for cached pulled SIFs when using `image_uri`; defaults to `$RELAYMD_SIF_CACHE_DIR` or `~/.apptainer/relaymd-sif-cache`)
+- `worker_images.<key>.sif_cache_dir` (directory for cached pulled SIFs when using `image_uri`; defaults to `$RELAYMD_SIF_CACHE_DIR` or `~/.apptainer/relaymd-sif-cache`)
 
 ## Template Rendering
 
@@ -46,6 +51,7 @@ The orchestrator provides template variables:
 - `memory_per_gpu`
 - `wall_time`
 - `apptainer_image` (resolved from `sif_path` or `image_uri`)
+- `worker_image_key` (passed to the container as `RELAYMD_WORKER_IMAGE_KEY`)
 - `infisical_token`
 - `apptainer_docker_username_shell_quoted` / `apptainer_docker_password_shell_quoted` (optional; sourced from host environment variables, not YAML)
 
@@ -70,22 +76,23 @@ service env file before startup:
 
 - `APPTAINER_DOCKER_USERNAME`
 - `APPTAINER_DOCKER_PASSWORD`
-- compatibility aliases: `SINGULARITY_DOCKER_USERNAME` / `SINGULARITY_DOCKER_PASSWORD`
 
 Runtime command includes validated Apptainer flags from `docs/hpc-notes.md`:
 
 ```bash
-apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp <sif_path> python -m relaymd.worker
-
-# or when using image_uri:
 apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
-  docker://ghcr.io/<org>/relaymd-worker:sha-abc1234 python -m relaymd.worker
+  --env RELAYMD_WORKER_IMAGE_KEY=atom-openmm \
+  /depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif python -m relaymd.worker
+
+# GCNCMC-MD registry source:
+apptainer exec --nv --cleanenv --writable-tmpfs --bind /tmp:/tmp \
+  --env RELAYMD_WORKER_IMAGE_KEY=gcncmcmd \
+  docker://ghcr.io/<org>/relaymd-worker-gcncmcmd:sha-abc1234 python -m relaymd.worker
 ```
 
-Phase-1 deployment policy uses one shared worker image contract for all
-clusters. In production config, point each cluster at the same SIF promoted
-under `/depot/plow/apps/relaymd/current/relaymd-worker.sif` (or the same pinned
-immutable `image_uri`) to avoid accidental image heterogeneity.
+Use immutable image tags, digests, or versioned SIF paths. A cluster can support
+one or both profiles, but it must explicitly map each supported key. Pending and
+active worker limits are evaluated per cluster/profile pair.
 
 Runtime env vars are injected by the template (`WORKER_PLATFORM`, heartbeat/checkpoint intervals, and timeout knobs) from orchestrator config defaults.
 

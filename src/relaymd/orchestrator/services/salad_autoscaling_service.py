@@ -16,24 +16,29 @@ class SaladAutoscalingService:
 
     async def apply(self) -> None:
         settings = self._settings
-        if (
-            settings.salad_api_key is None
-            or settings.salad_org is None
-            or settings.salad_project is None
-            or settings.salad_container_group is None
-        ):
+        if not settings.salad_autoscaling_enabled:
             return
+        assert settings.salad_api_key is not None
+        assert settings.salad_org is not None
+        assert settings.salad_project is not None
+        assert settings.salad_container_group is not None
 
         timeout_seconds = (
             settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds
         )
         stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
+        worker_image_key = settings.salad_worker_image_key or settings.default_worker_image
 
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
             queued_jobs_count = (
                 await session.exec(
-                    select(func.count()).select_from(Job).where(Job.status == JobStatus.queued)
+                    select(func.count())
+                    .select_from(Job)
+                    .where(
+                        Job.status == JobStatus.queued,
+                        Job.worker_image_key == worker_image_key,
+                    )
                 )
             ).one()
             busy_worker_ids = (
@@ -51,6 +56,7 @@ class SaladAutoscalingService:
                 await session.exec(
                     select(Worker).where(
                         Worker.platform == Platform.hpc,
+                        Worker.worker_image_key == worker_image_key,
                         col(Worker.last_heartbeat) >= stale_cutoff,
                     )
                 )

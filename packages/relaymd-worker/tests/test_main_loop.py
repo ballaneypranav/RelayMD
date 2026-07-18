@@ -54,6 +54,22 @@ def _write_bundle_tar(local_path: Path) -> None:
         archive.addfile(checkpoint_info, io.BytesIO(checkpoint_bytes))
 
 
+def test_run_worker_rejects_blank_worker_image_key(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", " \t ")
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.example.test",
+        bucket_name="relaymd-bucket",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.test:36158",
+    )
+
+    with pytest.raises(SystemExit, match="1"):
+        run_worker(config)
+
+
 def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
@@ -74,6 +90,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -299,6 +316,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     )
 
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -308,6 +326,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     assert captured["cf_bearer_token"] == "runtime-token"
 
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -340,6 +359,7 @@ def test_build_storage_client_uses_purdue_credentials(monkeypatch) -> None:
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         axiom_token="test",
         storage_provider="purdue",
         cf_worker_url="https://cf.example",
@@ -357,6 +377,7 @@ def test_build_storage_client_uses_purdue_credentials(monkeypatch) -> None:
 
 
 def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -380,7 +401,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
     monkeypatch.setattr(
         "relaymd.worker.main.WorkerRuntimeSettings",
-        lambda: SimpleNamespace(
+        lambda **_: SimpleNamespace(
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
@@ -392,6 +413,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            worker_image_key="atom-openmm",
             axiom_token="test",
         ),
     )
@@ -527,6 +549,7 @@ def test_detect_openmm_platforms_returns_empty_list_when_import_fails(monkeypatc
 
 
 def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -541,7 +564,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
     monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
     monkeypatch.setattr(
         "relaymd.worker.main.WorkerRuntimeSettings",
-        lambda: SimpleNamespace(
+        lambda **_: SimpleNamespace(
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
@@ -553,6 +576,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
             idle_strategy="immediate_exit",
             idle_poll_interval_seconds=1,
             idle_poll_max_seconds=1,
+            worker_image_key="atom-openmm",
             axiom_token="test",
         ),
     )
@@ -1897,6 +1921,7 @@ def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monk
 
 
 def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -1922,9 +1947,10 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=25,
+        worker_image_key="atom-openmm",
         axiom_token="test",
     )
-    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda **_: runtime_settings)
 
     heartbeat_thread = Mock()
     monkeypatch.setattr(
@@ -2012,6 +2038,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
 
 
 def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -2037,9 +2064,10 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
         idle_strategy="poll_then_exit",
         idle_poll_interval_seconds=10,
         idle_poll_max_seconds=600,
+        worker_image_key="atom-openmm",
         axiom_token="test",
     )
-    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda **_: runtime_settings)
 
     heartbeat_thread = Mock()
     monkeypatch.setattr(

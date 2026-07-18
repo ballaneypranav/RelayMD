@@ -33,6 +33,7 @@ async def _sessionmaker(
 def _worker(*, gpu_model: str) -> Worker:
     return Worker(
         platform=Platform.hpc,
+        worker_image_key="atom-openmm",
         gpu_model=gpu_model,
         gpu_count=1,
         vram_gb=80,
@@ -41,7 +42,11 @@ def _worker(*, gpu_model: str) -> Worker:
 
 
 def _job(*, title: str) -> Job:
-    return Job(title=title, input_bundle_path=f"jobs/{title}/input/bundle.tar.gz")
+    return Job(
+        title=title,
+        input_bundle_path=f"jobs/{title}/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+    )
 
 
 async def _assign(

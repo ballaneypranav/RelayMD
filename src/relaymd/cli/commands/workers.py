@@ -14,7 +14,9 @@ console = Console()
 
 
 def _render_workers_plain_lines(workers: list[dict[str, object]]) -> list[str]:
-    lines = ["id\tplatform\tgpu_model\tvram_gb\tlast_heartbeat\tjobs_completed\tstatus"]
+    lines = [
+        "id\tplatform\tworker_image_key\tgpu_model\tvram_gb\tlast_heartbeat\tjobs_completed\tstatus"
+    ]
     for worker in workers:
         vram_gb = worker.get("vram_gb")
         jobs_completed = worker.get("jobs_completed")
@@ -23,6 +25,7 @@ def _render_workers_plain_lines(workers: list[dict[str, object]]) -> list[str]:
                 [
                     str(worker.get("id") or "-"),
                     str(worker.get("platform") or "-"),
+                    str(worker.get("worker_image_key") or "-"),
                     str(worker.get("gpu_model") or "-"),
                     "-" if vram_gb is None else str(vram_gb),
                     str(worker.get("last_heartbeat") or "-"),
