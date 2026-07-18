@@ -19,6 +19,10 @@ from relaymd.orchestrator.services.cluster_provisioning_state_service import (
     ClusterProvisioningStateService,
 )
 from relaymd.orchestrator.slurm import SlurmSubmissionError, submit_slurm_job
+from relaymd.orchestrator.worker_image_compatibility import (
+    WorkerImageAvailability,
+    queue_blocked_reason,
+)
 
 logger = structlog.get_logger(__name__)
 _ALL_CLUSTERS_DISABLED_WARNING = (
@@ -322,6 +326,7 @@ class SlurmProvisioningService:
                         Worker.platform == Platform.hpc,
                         Worker.status == WorkerStatus.active,
                         Worker.worker_image_key == queued_job.worker_image_key,
+                        col(Worker.provider_id).startswith(f"{cluster.name}:"),
                         col(Worker.last_heartbeat) >= self._stale_cutoff,
                     )
                 )
@@ -533,7 +538,6 @@ async def submit_pending_slurm_jobs(
     submissions = 0
     async with sessionmaker() as session:
         cluster_state_service = ClusterProvisioningStateService(session)
-        configured_cluster_names = {cluster.name for cluster in settings.slurm_cluster_configs}
         enabled_map = await cluster_state_service.get_enabled_map(settings.slurm_cluster_configs)
         enabled_clusters = [
             cluster
@@ -563,7 +567,6 @@ async def submit_pending_slurm_jobs(
             for job in queued_jobs
         ]
         for job in queued_jobs:
-            reason: str | None = None
             preferred_clusters: list[str] = []
             if job.preferred_clusters_json:
                 try:
@@ -574,11 +577,17 @@ async def submit_pending_slurm_jobs(
                         ]
                 except Exception:
                     preferred_clusters = []
-            if preferred_clusters:
-                if not any(name in configured_cluster_names for name in preferred_clusters):
-                    reason = "no_matching_pinned_clusters"
-                elif not any(enabled_map.get(name, False) for name in preferred_clusters):
-                    reason = "no_enabled_pinned_clusters"
+            reason = queue_blocked_reason(
+                preferred_clusters=preferred_clusters,
+                worker_image_key=job.worker_image_key,
+                availability=WorkerImageAvailability(
+                    clusters=settings.slurm_cluster_configs,
+                    enabled_map=enabled_map,
+                    salad_worker_image_key=settings.salad_worker_image_key
+                    or settings.default_worker_image,
+                    salad_enabled=settings.salad_container_group is not None,
+                ),
+            )
             if job.queue_blocked_reason != reason:
                 job.queue_blocked_reason = reason
                 job.updated_at = datetime.now(UTC).replace(tzinfo=None)

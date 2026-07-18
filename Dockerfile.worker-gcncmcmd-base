@@ -13,13 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
     && apt-get update && apt-get install -y --no-install-recommends tailscale \
-    && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 -o /tmp/micromamba.tar.bz2 \
+    && echo 'e7274528ceb9c20d048a428d6c22d7e02e268f8ffb762c4c365422347c8b8ba2  /tmp/micromamba.tar.bz2' | sha256sum -c - \
+    && tar -xjf /tmp/micromamba.tar.bz2 -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && rm /tmp/micromamba.tar.bz2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY images/gcncmcmd/openmm.yml /tmp/openmm.yml
+COPY images/gcncmcmd/openmm.yml images/gcncmcmd/grand.source /tmp/
 RUN CONDA_OVERRIDE_CUDA=12.6 micromamba create -y -p /opt/gcncmcmd -f /tmp/openmm.yml \
-    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir --no-deps git+https://github.com/essex-lab/grand.git@f58784faeaaabbe054b306f7a474e0eaec5ff878 \
-    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir uv boto3 infisical-python nvidia-ml-py orjson pydantic-settings structlog tenacity \
+    && . /tmp/grand.source \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir --no-deps "git+${url}@${commit}" \
+    && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir uv \
     && micromamba clean -a -y
 
 RUN python -c "import grand, openmm, openmmtools; assert grand.__version__ == '1.1.0'; assert openmm.version.version.startswith('8.2')"

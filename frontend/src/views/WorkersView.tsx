@@ -12,6 +12,7 @@ import {
 } from "../format";
 import { StatusPill } from "../components/StatusPill";
 import type { WorkerRead } from "../types";
+import { displayWorkerImage } from "../workerImages";
 
 interface WorkersViewProps {
   rows: WorkerRow[];
@@ -54,9 +55,7 @@ function WorkerExpandedDetails({
         <div>
           <dt>Worker Image</dt>
           <dd>
-            {worker
-              ? (workerImageDisplayNames[worker.worker_image_key ?? ""] ?? worker.worker_image_key ?? "-")
-              : "-"}
+            {worker ? displayWorkerImage(worker.worker_image_key, workerImageDisplayNames) : "-"}
           </dd>
         </div>
         <div>
@@ -164,7 +163,7 @@ export function WorkersView({
           worker,
           worker_id_full: worker?.id ?? row.id,
           worker_image: worker
-            ? (workerImageDisplayNames[worker.worker_image_key ?? ""] ?? worker.worker_image_key ?? "-")
+            ? displayWorkerImage(worker.worker_image_key, workerImageDisplayNames)
             : "-",
           provider_raw_state: worker?.provider_state_raw || "-",
           provider_reason: worker?.provider_reason || "-",

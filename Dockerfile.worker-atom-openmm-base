@@ -16,7 +16,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends software-proper
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
     && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
     && apt-get update && apt-get install -y --no-install-recommends python3.11 python3.11-venv python3.11-distutils tailscale \
-    && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && curl -fLsS https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 -o /tmp/micromamba.tar.bz2 \
+    && echo 'e7274528ceb9c20d048a428d6c22d7e02e268f8ffb762c4c365422347c8b8ba2  /tmp/micromamba.tar.bz2' | sha256sum -c - \
+    && tar -xjf /tmp/micromamba.tar.bz2 -C /usr/local/bin --strip-components=1 bin/micromamba \
+    && rm /tmp/micromamba.tar.bz2 \
     && micromamba create -y -p /opt/atom-openmm -c conda-forge python=3.11 openmm=8.4.0 cuda-version=12.6 configobj numpy setproctitle pip \
     && micromamba clean -a -y && ln -sf /opt/atom-openmm/bin/python /usr/local/bin/python \
     && python -m pip install --no-cache-dir --upgrade pip uv \

@@ -128,11 +128,15 @@ class WorkerLifecycleService:
                     select(Worker).where(
                         Worker.provider_id == payload.provider_id,
                         Worker.status == WorkerStatus.queued,
-                        Worker.worker_image_key == payload.worker_image_key,
                     )
                 )
             ).first()
             if existing is not None:
+                if existing.worker_image_key != payload.worker_image_key:
+                    raise ValueError(
+                        "worker image does not match queued provider allocation: "
+                        f"expected {existing.worker_image_key}, got {payload.worker_image_key}"
+                    )
                 logger.info(
                     "queued_placeholder_activated",
                     provider_id=payload.provider_id,

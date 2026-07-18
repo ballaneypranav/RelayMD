@@ -113,8 +113,10 @@ Expected internal behavior:
 
 1. Upload the new bundle to `jobs/<new-job-id>/input/bundle.tar.gz`.
 2. Create a new queued job with the new `input_bundle_path`.
-3. Copy `latest_checkpoint_manifest_path` and `last_checkpoint_at` from the old
-   job.
+3. Copy the old checkpoint manifest and every checkpoint file it references into
+   `jobs/<new-job-id>/checkpoints/`, then set the new job's manifest path and
+   `last_checkpoint_at`. The worker resolves manifests under its assigned job ID,
+   so retaining an old-job path alone would resume with an empty checkpoint.
 4. Apply new cluster affinity supplied by the operator.
 5. Record job history linking the new job to the old job and checkpoint source.
 

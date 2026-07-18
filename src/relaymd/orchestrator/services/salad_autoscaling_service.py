@@ -28,12 +28,18 @@ class SaladAutoscalingService:
             settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds
         )
         stale_cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=timeout_seconds)
+        worker_image_key = settings.salad_worker_image_key or settings.default_worker_image
 
         sessionmaker = get_sessionmaker()
         async with sessionmaker() as session:
             queued_jobs_count = (
                 await session.exec(
-                    select(func.count()).select_from(Job).where(Job.status == JobStatus.queued)
+                    select(func.count())
+                    .select_from(Job)
+                    .where(
+                        Job.status == JobStatus.queued,
+                        Job.worker_image_key == worker_image_key,
+                    )
                 )
             ).one()
             busy_worker_ids = (
@@ -51,6 +57,7 @@ class SaladAutoscalingService:
                 await session.exec(
                     select(Worker).where(
                         Worker.platform == Platform.hpc,
+                        Worker.worker_image_key == worker_image_key,
                         col(Worker.last_heartbeat) >= stale_cutoff,
                     )
                 )

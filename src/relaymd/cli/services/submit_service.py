@@ -78,7 +78,9 @@ class SubmitService:
         except UnexpectedStatus as exc:
             if exc.status_code == 404:
                 return None
-            raise
+            raise RuntimeError(f"Worker image discovery failed: {exc}") from exc
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"Worker image discovery failed: {exc}") from exc
         if isinstance(response, WorkerImageCatalogRead):
             return response
         if isinstance(response, HTTPValidationError):

@@ -173,9 +173,10 @@ def _render_sbatch_script(
     *,
     settings: OrchestratorSettings,
     worker_id: UUID | None = None,
-    worker_image_key: str = "atom-openmm",
+    worker_image_key: str | None = None,
 ) -> str:
     worker_id = worker_id or uuid4()
+    worker_image_key = worker_image_key or settings.default_worker_image
     docker_username = os.environ.get("APPTAINER_DOCKER_USERNAME", "").strip()
     docker_password = os.environ.get("APPTAINER_DOCKER_PASSWORD", "")
     worker_bind_paths = os.environ.get("RELAYMD_WORKER_BIND_PATHS", "").strip()
@@ -245,7 +246,7 @@ def _render_sbatch_script(
             else settings.worker_idle_poll_max_seconds
         ),
         worker_platform="hpc",
-        worker_image_key=worker_image_key,
+        worker_image_key_shell_quoted=_shell_single_quote(worker_image_key),
         log_directory=cluster.log_directory,
     )
 
@@ -297,9 +298,10 @@ async def submit_slurm_job(
     settings: OrchestratorSettings,
     *,
     worker_id: UUID | None = None,
-    worker_image_key: str = "atom-openmm",
+    worker_image_key: str | None = None,
 ) -> str:
     worker_id = worker_id or uuid4()
+    worker_image_key = worker_image_key or settings.default_worker_image
     rendered = _render_sbatch_script(
         cluster,
         settings=settings,

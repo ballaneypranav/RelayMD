@@ -89,3 +89,38 @@ def test_settings_accepts_a_configured_two_image_catalog() -> None:
 
     assert settings.default_worker_image == "atom-openmm"
     assert settings.worker_image_profiles["gcncmcmd"].display_name == "GCNCMC-MD"
+
+
+def test_cluster_inheritance_merges_worker_images_by_profile() -> None:
+    settings = OrchestratorSettings.model_validate(
+        {
+            "axiom_token": "test",
+            "worker_image_profiles": {
+                "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+                "gcncmcmd": WorkerImageProfile(display_name="GCNCMC-MD"),
+            },
+            "slurm_cluster_configs": [
+                {
+                    "name": "base",
+                    "is_template": True,
+                    "partition": "gpu",
+                    "account": "lab",
+                    "ssh_host": "test-host",
+                    "ssh_username": "test-user",
+                    "worker_images": {
+                        "atom-openmm": {"sif_path": "/shared/atom.sif"},
+                        "gcncmcmd": {"sif_path": "/shared/gcn.sif"},
+                    },
+                },
+                {
+                    "name": "child",
+                    "extends": "base",
+                    "worker_images": {"gcncmcmd": {"sif_path": "/override/gcn.sif"}},
+                },
+            ],
+        }
+    )
+
+    child = settings.slurm_cluster_configs[0]
+    assert child.worker_images["atom-openmm"].sif_path == "/shared/atom.sif"
+    assert child.worker_images["gcncmcmd"].sif_path == "/override/gcn.sif"

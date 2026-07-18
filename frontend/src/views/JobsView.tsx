@@ -12,6 +12,7 @@ import {
 } from "../format";
 import { ConsoleTable, type ConsoleTableToolbarContext } from "../components/ConsoleTable";
 import { StatusPill } from "../components/StatusPill";
+import { displayWorkerImage } from "../workerImages";
 import type { JobHistoryRead, JobRead } from "../types";
 
 const BLOCKED_REASON_LABELS: Record<string, string> = {
@@ -136,13 +137,6 @@ interface JobsViewProps {
   loading: boolean;
   selectedJobHistory: JobHistoryRead | null;
   workerImageDisplayNames: Record<string, string>;
-}
-
-function displayWorkerImage(key: string | undefined, displayNames: Record<string, string>): string {
-  if (!key) {
-    return "-";
-  }
-  return displayNames[key] ?? key;
 }
 
 function canCancel(job: JobRead): boolean {
@@ -627,7 +621,7 @@ export function JobsView({
         ),
       },
     ],
-    [onCancelJob, onRequeueJob, onSelectJob],
+    [onCancelJob, onRequeueJob, onSelectJob, workerImageDisplayNames],
   );
 
   const selectedHistory =

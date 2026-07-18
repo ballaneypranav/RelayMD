@@ -485,7 +485,7 @@ jobs:
       matrix:
         key: [atom-openmm, gcncmcmd]
     steps:
-      - uses: eWaterCycle/setup-apptainer@v2
+      - uses: eWaterCycle/setup-apptainer@3f706d898c9db585b1d741b4692e66755f3a1b40 # v2
         with:
           apptainer-version: 1.3.6
       - name: Build and publish ${{ matrix.key }} SIF
@@ -1059,10 +1059,10 @@ jobs:
             "oras://ghcr.io/${{ github.repository_owner }}/relaymd-orchestrator:${{ steps.uri.outputs.sif_tag }}"
 
   publish-release-manifest:
-    needs: [changes, test, cli-version-guard, build-worker-images, build-worker-sifs, build-orchestrator, build-cli, build-worker-base-sif, build-orchestrator-base-sif, build-orchestrator-sif]
+    needs: [changes, test, cli-version-guard, build-worker-images, build-worker-sifs, build-orchestrator, build-cli, build-orchestrator-base-sif, build-orchestrator-sif]
     permissions:
       contents: write
-    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker-images.result == 'success' || needs.build-worker-images.result == 'skipped') && (needs.build-worker-sifs.result == 'success' || needs.build-worker-sifs.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-worker-base-sif.result == 'success' || needs.build-worker-base-sif.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.build-orchestrator-sif.result == 'success' || needs.build-orchestrator-sif.result == 'skipped') }}
+    if: ${{ github.event_name != 'pull_request' && !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') && (needs.cli-version-guard.result == 'success' || needs.cli-version-guard.result == 'skipped') && (needs.build-worker-images.result == 'success' || needs.build-worker-images.result == 'skipped') && (needs.build-worker-sifs.result == 'success' || needs.build-worker-sifs.result == 'skipped') && (needs.build-orchestrator.result == 'success' || needs.build-orchestrator.result == 'skipped') && (needs.build-cli.result == 'success' || needs.build-cli.result == 'skipped') && (needs.build-orchestrator-base-sif.result == 'success' || needs.build-orchestrator-base-sif.result == 'skipped') && (needs.build-orchestrator-sif.result == 'success' || needs.build-orchestrator-sif.result == 'skipped') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -1079,7 +1079,6 @@ jobs:
           CLI_CHANGED: ${{ needs.changes.outputs.cli }}
           WORKER_BASE_CHANGED: ${{ needs.changes.outputs.worker_base_image }}
           ORCH_BASE_CHANGED: ${{ needs.changes.outputs.orchestrator_base_image }}
-          WORKER_BASE_SIF_URI: ${{ needs.build-worker-base-sif.outputs.sif_uri }}
           ORCH_BASE_SIF_URI: ${{ needs.build-orchestrator-base-sif.outputs.sif_uri }}
           ORCH_SIF_URI: ${{ needs.build-orchestrator-sif.outputs.sif_uri }}
         run: |
@@ -1099,7 +1098,6 @@ jobs:
           prev_release_version="$(jq -r '.release_version // empty' "${prev_manifest}")"
           prev_worker_image="$(jq -r '.worker_image // empty' "${prev_manifest}")"
           prev_orch_image="$(jq -r '.orchestrator_image // empty' "${prev_manifest}")"
-          prev_worker_base_sif_uri="$(jq -r '.worker_base_sif_uri // empty' "${prev_manifest}")"
           prev_orch_base_sif_uri="$(jq -r '.orchestrator_base_sif_uri // empty' "${prev_manifest}")"
           prev_worker_sif_uri="$(jq -r '.worker_sif_uri // empty' "${prev_manifest}")"
           prev_orch_sif_uri="$(jq -r '.orchestrator_sif_uri // empty' "${prev_manifest}")"
@@ -1147,11 +1145,6 @@ jobs:
             cli_version="${prev_cli_version:-${current_cli_version}}"
           fi
 
-          if [[ "${WORKER_BASE_CHANGED}" == "true" && -n "${WORKER_BASE_SIF_URI}" ]]; then
-            worker_base_sif_uri="${WORKER_BASE_SIF_URI}"
-          else
-            worker_base_sif_uri="${prev_worker_base_sif_uri}"
-          fi
 
           if [[ "${ORCH_BASE_CHANGED}" == "true" && -n "${ORCH_BASE_SIF_URI}" ]]; then
             orchestrator_base_sif_uri="${ORCH_BASE_SIF_URI}"
@@ -1179,7 +1172,6 @@ jobs:
             --arg worker_gcn_image "${worker_gcn_image}" \
             --arg worker_atom_sif_uri "${worker_atom_sif_uri}" \
             --arg worker_gcn_sif_uri "${worker_gcn_sif_uri}" \
-            --arg worker_base_sif_uri "${worker_base_sif_uri}" \
             --arg orchestrator_base_sif_uri "${orchestrator_base_sif_uri}" \
             --arg worker_sif_uri "${worker_sif_uri}" \
             --arg orchestrator_sif_uri "${orchestrator_sif_uri}" \
@@ -1195,7 +1187,6 @@ jobs:
                 "atom-openmm": {image_uri: $worker_atom_image, sif_uri: $worker_atom_sif_uri},
                 gcncmcmd: {image_uri: $worker_gcn_image, sif_uri: $worker_gcn_sif_uri}
               },
-              worker_base_sif_uri: $worker_base_sif_uri,
               orchestrator_base_sif_uri: $orchestrator_base_sif_uri,
               worker_sif_uri: $worker_sif_uri,
               orchestrator_sif_uri: $orchestrator_sif_uri,

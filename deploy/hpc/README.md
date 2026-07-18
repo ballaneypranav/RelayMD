@@ -178,7 +178,7 @@ Pull and activate using explicit image URIs (backward-compatible mode):
 ```bash
 relaymd upgrade <release-version> \
   --orchestrator-image docker://ghcr.io/<org>/relaymd-orchestrator:sha-<shortsha> \
-  --worker-image docker://ghcr.io/<org>/relaymd-worker-atom-openmm:sha-<shortsha>
+  --worker-image docker://ghcr.io/<org>/relaymd-worker:sha-<shortsha>
 ```
 
 Each pull also installs a host-side `relaymd` CLI into the active release

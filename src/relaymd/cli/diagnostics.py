@@ -242,11 +242,13 @@ def _scheduler_section(
     sif_paths = [
         {
             "cluster": cluster.name,
-            "path": cluster.sif_path,
-            "exists": Path(cluster.sif_path).expanduser().is_file(),
+            "worker_image_key": worker_image_key,
+            "path": source.sif_path,
+            "exists": Path(source.sif_path).expanduser().is_file(),
         }
         for cluster in clusters
-        if cluster.sif_path
+        for worker_image_key, source in cluster.worker_images.items()
+        if source.sif_path
     ]
     sif_paths_ok = all(item["exists"] for item in sif_paths)
     ok = (not clusters) or (sbatch == "present" and sif_paths_ok)

@@ -255,6 +255,7 @@ class OrchestratorSettings(BaseSettings):
     salad_org: str | None = None
     salad_project: str | None = None
     salad_container_group: str | None = None
+    salad_worker_image_key: str | None = None
     salad_max_replicas: int = 4
     salad_api_timeout_seconds: float = DEFAULT_SALAD_API_TIMEOUT_SECONDS
     relaymd_env: Literal["development", "production"] = "production"
@@ -352,7 +353,11 @@ class OrchestratorSettings(BaseSettings):
                 raw_cluster = dict(raw_cluster)
                 raw_cluster["extends"] = parent_name
 
+            inherited_worker_images = merged.get("worker_images")
+            child_worker_images = raw_cluster.get("worker_images")
             merged.update(raw_cluster)
+            if isinstance(inherited_worker_images, dict) and isinstance(child_worker_images, dict):
+                merged["worker_images"] = {**inherited_worker_images, **child_worker_images}
             merged["name"] = name
             if has_parent and "is_template" not in raw_cluster:
                 merged["is_template"] = False
@@ -399,6 +404,13 @@ class OrchestratorSettings(BaseSettings):
             )
 
         configured_keys = set(self.worker_image_profiles)
+        if (
+            self.salad_worker_image_key is not None
+            and self.salad_worker_image_key not in configured_keys
+        ):
+            raise ValueError(
+                "salad_worker_image_key must reference a configured worker image profile"
+            )
         for cluster in self.slurm_cluster_configs:
             unknown_keys = sorted(set(cluster.worker_images) - configured_keys)
             if unknown_keys:

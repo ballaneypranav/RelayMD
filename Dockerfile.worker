@@ -1,4 +1,4 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=ghcr.io/ballaneypranav/relaymd-worker-base:latest
 FROM ${BASE_IMAGE}
 
 LABEL relaymd.component=worker
@@ -9,7 +9,9 @@ COPY pyproject.toml uv.lock ./
 COPY packages ./packages
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system --no-deps \
+    uv export --locked --no-dev --package relaymd-worker --no-emit-project --output-file /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && uv pip install --system --no-deps \
     ./packages/relaymd-core \
     ./packages/relaymd-api-client \
     ./packages/relaymd-worker

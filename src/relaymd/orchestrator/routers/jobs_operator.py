@@ -35,6 +35,10 @@ from relaymd.orchestrator.services.job_history_service import (
     load_job_history_events,
     load_job_history_events_for_jobs,
 )
+from relaymd.orchestrator.worker_image_compatibility import (
+    WorkerImageAvailability,
+    queue_blocked_reason,
+)
 
 from ._responses import job_transition_conflict_response
 
@@ -80,21 +84,6 @@ def _normalize_comment(comment: str | None) -> str | None:
             detail="comment must be 2000 characters or fewer",
         )
     return trimmed
-
-
-def _compute_queue_blocked_reason(
-    *,
-    preferred_clusters: list[str],
-    known_cluster_names: set[str],
-    enabled_map: dict[str, bool],
-) -> str | None:
-    if not preferred_clusters:
-        return None
-    if not any(cluster in known_cluster_names for cluster in preferred_clusters):
-        return "no_matching_pinned_clusters"
-    if not any(enabled_map.get(cluster, False) for cluster in preferred_clusters):
-        return "no_enabled_pinned_clusters"
-    return None
 
 
 def _job_to_read(job: Job) -> JobRead:
@@ -213,7 +202,11 @@ async def create_job(
         payload.preferred_clusters, known_cluster_names=known_cluster_names
     )
     normalized_comment = _normalize_comment(payload.comment)
-    worker_image_key = payload.worker_image_key or settings.default_worker_image
+    worker_image_key = (
+        payload.worker_image_key
+        if payload.worker_image_key is not None
+        else settings.default_worker_image
+    )
     if worker_image_key not in settings.worker_image_profiles:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -222,10 +215,15 @@ async def create_job(
     enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(
         settings.slurm_cluster_configs
     )
-    queue_blocked_reason = _compute_queue_blocked_reason(
+    queue_reason = queue_blocked_reason(
         preferred_clusters=normalized_clusters,
-        known_cluster_names=known_cluster_names,
-        enabled_map=enabled_map,
+        worker_image_key=worker_image_key,
+        availability=WorkerImageAvailability(
+            clusters=settings.slurm_cluster_configs,
+            enabled_map=enabled_map,
+            salad_worker_image_key=settings.salad_worker_image_key or settings.default_worker_image,
+            salad_enabled=settings.salad_container_group is not None,
+        ),
     )
     now = datetime.now(UTC).replace(tzinfo=None)
     job = Job(
@@ -235,7 +233,7 @@ async def create_job(
         worker_image_key=worker_image_key,
         preferred_clusters_json=(json.dumps(normalized_clusters) if normalized_clusters else None),
         comment=normalized_comment,
-        queue_blocked_reason=queue_blocked_reason,
+        queue_blocked_reason=queue_reason,
         status=JobStatus.queued,
         created_at=now,
         status_changed_at=now,
@@ -434,7 +432,6 @@ async def requeue_job(
         return job_transition_conflict_response(exc)
 
     settings: OrchestratorSettings = request.app.state.settings
-    known_cluster_names = {cluster.name for cluster in settings.slurm_cluster_configs}
     preferred_clusters: list[str] = []
     if requeued_job.preferred_clusters_json:
         try:
@@ -446,10 +443,15 @@ async def requeue_job(
     enabled_map = await ClusterProvisioningStateService(session).get_enabled_map(
         settings.slurm_cluster_configs
     )
-    requeued_job.queue_blocked_reason = _compute_queue_blocked_reason(
+    requeued_job.queue_blocked_reason = queue_blocked_reason(
         preferred_clusters=preferred_clusters,
-        known_cluster_names=known_cluster_names,
-        enabled_map=enabled_map,
+        worker_image_key=requeued_job.worker_image_key,
+        availability=WorkerImageAvailability(
+            clusters=settings.slurm_cluster_configs,
+            enabled_map=enabled_map,
+            salad_worker_image_key=settings.salad_worker_image_key or settings.default_worker_image,
+            salad_enabled=settings.salad_container_group is not None,
+        ),
     )
 
     session.add(existing_job)

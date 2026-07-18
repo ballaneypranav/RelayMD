@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any, NoReturn
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
@@ -39,6 +40,22 @@ def _exit_submit_error(*, json_mode: bool, code: str, message: str) -> NoReturn:
     else:
         console.print(message, markup=False)
     raise typer.Exit(code=1)
+
+
+def _catalog_for_explicit_worker_image(
+    *, worker_image: str | None, submit_service: SubmitService, json_mode: bool
+) -> Any:
+    if worker_image is None:
+        return None
+    catalog_getter = getattr(submit_service, "worker_image_catalog", None)
+    try:
+        return catalog_getter() if catalog_getter else None
+    except Exception as exc:  # noqa: BLE001
+        _exit_submit_error(
+            json_mode=json_mode,
+            code="worker_image_discovery_failed",
+            message=f"Failed to discover worker images: {exc}",
+        )
 
 
 def ensure_worker_config(
@@ -294,8 +311,11 @@ def submit(
     try:
         normalized_clusters = normalize_submit_clusters(clusters or [], known_clusters)
         normalized_comment = normalize_submit_comment(comment)
-        catalog_getter = getattr(submit_service, "worker_image_catalog", None)
-        catalog = catalog_getter() if catalog_getter else None
+        catalog = _catalog_for_explicit_worker_image(
+            worker_image=worker_image,
+            submit_service=submit_service,
+            json_mode=json_mode,
+        )
         normalized_worker_image = normalize_worker_image_key(
             worker_image,
             {profile.key for profile in catalog.worker_images} if catalog else None,
@@ -367,7 +387,7 @@ def submit(
         Panel.fit(
             "[bold green]Job submitted[/bold green]\n"
             f"[bold]{created_job.id}[/bold]\n"
-            f"Worker image: {created_job.worker_image_key}",
+            f"Worker image: {escape(created_job.worker_image_key)}",
             title="RelayMD",
         )
     )

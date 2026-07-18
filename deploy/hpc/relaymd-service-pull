@@ -21,6 +21,8 @@ USAGE
 
 AUTO_RESOLVED_CLI_URI=""
 AUTO_RESOLVED_WORKER_SIF_URI=""
+AUTO_RESOLVED_WORKER_ATOM_SIF_URI=""
+AUTO_RESOLVED_WORKER_GCNCMC_SIF_URI=""
 AUTO_RESOLVED_ORCH_SIF_URI=""
 ALLOW_CLI_FALLBACK=1
 REQUESTED_RELEASE="${1:-}"
@@ -283,7 +285,7 @@ resolve_latest_shared_sha_tag() {
 
 resolve_latest_release_manifest() {
     local manifest_uri="$1"
-    local manifest_json release_version manifest_orch manifest_worker manifest_cli manifest_worker_atom manifest_worker_gcn
+    local manifest_json release_version manifest_orch manifest_worker manifest_cli manifest_worker_atom manifest_worker_gcn manifest_worker_atom_sif manifest_worker_gcn_sif
 
     require_cmd jq "Install jq and rerun relaymd-service-pull latest"
 
@@ -299,13 +301,15 @@ resolve_latest_release_manifest() {
     manifest_worker="$(jq -r '.worker_image // empty' "${manifest_json}")"
     manifest_worker_atom="$(jq -r '.worker_images["atom-openmm"].image_uri // empty' "${manifest_json}")"
     manifest_worker_gcn="$(jq -r '.worker_images.gcncmcmd.image_uri // empty' "${manifest_json}")"
+    manifest_worker_atom_sif="$(jq -r '.worker_images["atom-openmm"].sif_uri // empty' "${manifest_json}")"
+    manifest_worker_gcn_sif="$(jq -r '.worker_images.gcncmcmd.sif_uri // empty' "${manifest_json}")"
     manifest_cli="$(jq -r '.cli_uri // empty' "${manifest_json}")"
     manifest_worker_sif="$(jq -r '.worker_sif_uri // empty' "${manifest_json}")"
     manifest_orch_sif="$(jq -r '.orchestrator_sif_uri // empty' "${manifest_json}")"
     rm -f "${manifest_json}" 2>/dev/null || true
 
     manifest_worker="${manifest_worker_atom:-${manifest_worker}}"
-    if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_cli}" ]]; then
+    if [[ -z "${release_version}" || -z "${manifest_orch}" || -z "${manifest_worker}" || -z "${manifest_worker_gcn}" || -z "${manifest_worker_atom_sif}" || -z "${manifest_worker_gcn_sif}" || -z "${manifest_cli}" ]]; then
         echo "Release manifest '${manifest_uri}' is missing required fields." >&2
         return 1
     fi
@@ -317,6 +321,8 @@ resolve_latest_release_manifest() {
     WORKER_GCNCMC_IMAGE_URI="${manifest_worker_gcn}"
     AUTO_RESOLVED_CLI_URI="${manifest_cli}"
     AUTO_RESOLVED_WORKER_SIF_URI="${manifest_worker_sif}"
+    AUTO_RESOLVED_WORKER_ATOM_SIF_URI="${manifest_worker_atom_sif}"
+    AUTO_RESOLVED_WORKER_GCNCMC_SIF_URI="${manifest_worker_gcn_sif}"
     AUTO_RESOLVED_ORCH_SIF_URI="${manifest_orch_sif}"
     ALLOW_CLI_FALLBACK=0
     return 0
@@ -325,7 +331,8 @@ resolve_latest_release_manifest() {
 manifest_images_are_resolvable() {
     local orch_uri="$1"
     local worker_uri="$2"
-    local owner orch_tag worker_tag worker_owner tmp_dir orch_json worker_json
+    local gcn_uri="$3"
+    local owner orch_tag worker_tag worker_owner gcn_tag gcn_owner tmp_dir orch_json worker_json gcn_json
 
     if [[ "${orch_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-orchestrator:(sha-[A-Za-z0-9._-]+)$ ]]; then
         owner="${BASH_REMATCH[1]}"
@@ -334,14 +341,20 @@ manifest_images_are_resolvable() {
         return 0
     fi
 
-    if [[ "${worker_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker:(sha-[A-Za-z0-9._-]+)$ ]]; then
+    if [[ "${worker_uri}" =~ ^docker://ghcr\.io/([^/]+)/(relaymd-worker|relaymd-worker-atom-openmm):(sha-[A-Za-z0-9._-]+)$ ]]; then
         worker_owner="${BASH_REMATCH[1]}"
-        worker_tag="${BASH_REMATCH[2]}"
+        worker_tag="${BASH_REMATCH[3]}"
+    else
+        return 0
+    fi
+    if [[ "${gcn_uri}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker-gcncmcmd:(sha-[A-Za-z0-9._-]+)$ ]]; then
+        gcn_owner="${BASH_REMATCH[1]}"
+        gcn_tag="${BASH_REMATCH[2]}"
     else
         return 0
     fi
 
-    if [[ "${owner}" != "${worker_owner}" ]]; then
+    if [[ "${owner}" != "${worker_owner}" || "${owner}" != "${gcn_owner}" ]]; then
         return 1
     fi
 
@@ -353,14 +366,19 @@ manifest_images_are_resolvable() {
     trap 'rm -rf "${tmp_dir}"' RETURN
     orch_json="${tmp_dir}/orchestrator.json"
     worker_json="${tmp_dir}/worker.json"
+    gcn_json="${tmp_dir}/worker-gcncmcmd.json"
 
     fetch_package_versions_json "${owner}" "relaymd-orchestrator" "${orch_json}"
-    fetch_package_versions_json "${owner}" "relaymd-worker" "${worker_json}"
+    fetch_package_versions_json "${owner}" "relaymd-worker-atom-openmm" "${worker_json}"
+    fetch_package_versions_json "${owner}" "relaymd-worker-gcncmcmd" "${gcn_json}"
 
     if ! jq -e --arg tag "${orch_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${orch_json}" >/dev/null; then
         return 1
     fi
     if ! jq -e --arg tag "${worker_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${worker_json}" >/dev/null; then
+        return 1
+    fi
+    if ! jq -e --arg tag "${gcn_tag}" 'any(.[]; ((.metadata.container.tags // []) | index($tag) != null))' "${gcn_json}" >/dev/null; then
         return 1
     fi
     return 0
@@ -486,7 +504,7 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
         fi
 
         if [[ "${resolved_from_manifest}" -eq 1 ]]; then
-            if ! manifest_images_are_resolvable "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_IMAGE_URI}"; then
+            if ! manifest_images_are_resolvable "${ORCHESTRATOR_IMAGE_URI}" "${WORKER_ATOM_IMAGE_URI}" "${WORKER_GCNCMC_IMAGE_URI}"; then
                 echo "Manifest image tags are not currently resolvable in GHCR; falling back to newest shared sha-* image tag." >&2
                 if [[ -z "${owner}" ]]; then
                     owner="$(resolve_owner)"
@@ -508,8 +526,8 @@ if [[ -z "${ORCHESTRATOR_IMAGE_URI}" && -z "${WORKER_IMAGE_URI}" ]]; then
 fi
 
 WORKER_ATOM_IMAGE_URI="${WORKER_ATOM_IMAGE_URI:-${WORKER_IMAGE_URI}}"
-if [[ -z "${WORKER_GCNCMC_IMAGE_URI}" && "${WORKER_ATOM_IMAGE_URI}" =~ ^docker://ghcr\.io/([^/]+)/relaymd-worker:(sha-[A-Za-z0-9._-]+)$ ]]; then
-    WORKER_GCNCMC_IMAGE_URI="docker://ghcr.io/${BASH_REMATCH[1]}/relaymd-worker-gcncmcmd:${BASH_REMATCH[2]}"
+if [[ -z "${WORKER_GCNCMC_IMAGE_URI}" && "${WORKER_ATOM_IMAGE_URI}" =~ ^docker://ghcr\.io/([^/]+)/(relaymd-worker|relaymd-worker-atom-openmm):(sha-[A-Za-z0-9._-]+)$ ]]; then
+    WORKER_GCNCMC_IMAGE_URI="docker://ghcr.io/${BASH_REMATCH[1]}/relaymd-worker-gcncmcmd:${BASH_REMATCH[3]}"
 fi
 
 if [[ -z "${ORCHESTRATOR_IMAGE_URI}" ]]; then
@@ -612,10 +630,10 @@ _pull_sif() {
 
 _pull_sif "orchestrator" "${ORCHESTRATOR_IMAGE_URI}" "${ORCH_SIF}" "${ORCH_TMP}" "${AUTO_RESOLVED_ORCH_SIF_URI}" &
 ORCH_PID=$!
-_pull_sif "worker-atom-openmm" "${WORKER_ATOM_IMAGE_URI}" "${WORKER_ATOM_SIF}" "${WORKER_ATOM_SIF}.tmp" "${AUTO_RESOLVED_WORKER_SIF_URI}" &
+_pull_sif "worker-atom-openmm" "${WORKER_ATOM_IMAGE_URI}" "${WORKER_ATOM_SIF}" "${WORKER_ATOM_SIF}.tmp" "${AUTO_RESOLVED_WORKER_ATOM_SIF_URI:-${AUTO_RESOLVED_WORKER_SIF_URI}}" &
 WORKER_PID=$!
 if [[ -n "${WORKER_GCNCMC_IMAGE_URI}" ]]; then
-    _pull_sif "worker-gcncmcmd" "${WORKER_GCNCMC_IMAGE_URI}" "${WORKER_GCNCMC_SIF}" "${WORKER_GCNCMC_SIF}.tmp" &
+    _pull_sif "worker-gcncmcmd" "${WORKER_GCNCMC_IMAGE_URI}" "${WORKER_GCNCMC_SIF}" "${WORKER_GCNCMC_SIF}.tmp" "${AUTO_RESOLVED_WORKER_GCNCMC_SIF_URI}" &
     GCNCMC_PID=$!
 else
     GCNCMC_PID=""
