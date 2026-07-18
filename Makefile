@@ -1,37 +1,36 @@
-.PHONY: frontend-build docker-build docker-push docker-build-worker docker-push-worker docker-build-orchestrator docker-push-orchestrator release-cli setup-hooks local-build-images local-build-sif-or-sandbox local-build-from-def local-activate-bind local-install-cli local-smoke
+.PHONY: frontend-build docker-build-atom-openmm docker-build-gcncmcmd docker-build-orchestrator docker-push-atom-openmm docker-push-gcncmcmd docker-push-orchestrator release-cli setup-hooks local-build-images local-build-sif-or-sandbox local-install-cli local-smoke
 
 setup-hooks:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit .githooks/pre-push
 
 ORG ?= your-org
-BASE_IMAGE ?= ghcr.io/$(ORG)/relaymd-base:latest
-WORKER_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker:latest
+ATOM_OPENMM_BASE_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker-atom-openmm-base:latest
+GCNCMC_BASE_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker-gcncmcmd-base:latest
+ATOM_OPENMM_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker-atom-openmm:latest
+GCNCMC_IMAGE ?= ghcr.io/$(ORG)/relaymd-worker-gcncmcmd:latest
 ORCHESTRATOR_IMAGE ?= ghcr.io/$(ORG)/relaymd-orchestrator:latest
-IMAGE ?= $(WORKER_IMAGE)
 BUILD ?= 0
 
 frontend-build:
 	cd frontend && npm --cache ./.npm install
 	cd frontend && npm --cache ./.npm run build
 
-docker-build-base:
-	docker build -t $(BASE_IMAGE) -f Dockerfile.base .
+docker-build-atom-openmm:
+	docker build -t $(ATOM_OPENMM_BASE_IMAGE) -f Dockerfile.worker-atom-openmm-base .
+	docker build --build-arg BASE_IMAGE=$(ATOM_OPENMM_BASE_IMAGE) -t $(ATOM_OPENMM_IMAGE) -f Dockerfile.worker .
 
-docker-push-base:
-	docker push $(BASE_IMAGE)
+docker-push-atom-openmm:
+	docker push $(ATOM_OPENMM_BASE_IMAGE)
+	docker push $(ATOM_OPENMM_IMAGE)
 
-docker-build:
-	docker build --build-arg BASE_IMAGE=$(BASE_IMAGE) -t $(IMAGE) .
+docker-build-gcncmcmd:
+	docker build -t $(GCNCMC_BASE_IMAGE) -f Dockerfile.worker-gcncmcmd-base .
+	docker build --build-arg BASE_IMAGE=$(GCNCMC_BASE_IMAGE) -t $(GCNCMC_IMAGE) -f Dockerfile.worker .
 
-docker-push:
-	docker push $(IMAGE)
-
-docker-build-worker:
-	docker build --build-arg BASE_IMAGE=$(BASE_IMAGE) -t $(IMAGE) .
-
-docker-push-worker:
-	docker push $(IMAGE)
+docker-push-gcncmcmd:
+	docker push $(GCNCMC_BASE_IMAGE)
+	docker push $(GCNCMC_IMAGE)
 
 docker-build-orchestrator:
 	docker build -f Dockerfile.orchestrator -t $(ORCHESTRATOR_IMAGE) .
@@ -65,12 +64,6 @@ local-build-images:
 
 local-build-sif-or-sandbox:
 	./scripts/local_build_sif_or_sandbox.sh
-
-local-build-from-def:
-	./scripts/local_build_from_def.sh
-
-local-activate-bind:
-	./scripts/local_activate_bind_mount.sh
 
 local-install-cli:
 ifeq ($(BUILD),0)

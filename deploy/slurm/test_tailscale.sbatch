@@ -20,8 +20,8 @@ if [[ -z "${ORCHESTRATOR_HOSTNAME:-}" ]]; then
   exit 2
 fi
 
-if [[ -z "${RELAYMD_SIF_PATH:-}" ]]; then
-  echo "RELAYMD_SIF_PATH must point to relaymd.sif"
+if [[ -z "${RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH:-}" ]]; then
+  echo "RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH must point to relaymd-worker-atom-openmm.sif"
   exit 2
 fi
 
@@ -30,12 +30,12 @@ RUN_ID="${SLURM_JOB_ID:-manual}-$(hostname)"
 CONTAINER_HOSTNAME="relaymd-test-${RUN_ID}"
 LOG_FILE="tailscale-healthz-${RUN_ID}.log"
 
-echo "Using image: ${RELAYMD_SIF_PATH}"
+echo "Using image: ${RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH}"
 echo "Apptainer flags: ${APPTAINER_FLAGS}"
 echo "Container hostname: ${CONTAINER_HOSTNAME}"
 
 # shellcheck disable=SC2086
-apptainer exec ${APPTAINER_FLAGS} "${RELAYMD_SIF_PATH}" /bin/bash -lc '
+apptainer exec ${APPTAINER_FLAGS} "${RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH}" /bin/bash -lc '
   set -euo pipefail
   cleanup() {
     if [[ -n "${TS_PID:-}" ]]; then

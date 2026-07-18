@@ -87,15 +87,13 @@ slurm_cluster_configs:
     # Each source must configure exactly one of sif_path or image_uri.
     worker_images:
       atom-openmm:
-        # Keep the compatibility alias through the migration release.
-        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker.sif
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-atom-openmm.sif
         # Alternative registry source (Apptainer uses docker://<image>):
         # image_uri: ghcr.io/<org>/relaymd-worker-atom-openmm:sha-abc1234
         # Optional: move the pull cache off $HOME for quota-constrained clusters.
         # sif_cache_dir: /anvil/projects/<project>/apps/relaymd/apptainer/cache
-      # Enable this after its named image is published for this cluster:
-      # gcncmcmd:
-      #   sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif
+      gcncmcmd:
+        sif_path: /depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif
     # For private docker:// pulls, set APPTAINER_DOCKER_USERNAME and
     # APPTAINER_DOCKER_PASSWORD in relaymd-service.env (not in this YAML).
     # Optional scheduler directives:
