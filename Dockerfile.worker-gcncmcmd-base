@@ -8,7 +8,11 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 
     MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/gcncmcmd/bin:${PATH} \
     PYTHONNOUSERSITE=1 OPENMM_CPU_THREADS=1 RELAYMD_WORKER_IMAGE_KEY=gcncmcmd
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git bzip2 bash coreutils tar procps tailscale \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates gnupg curl git bzip2 bash coreutils tar procps \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
+    && apt-get update && apt-get install -y --no-install-recommends tailscale \
     && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba \
     && rm -rf /var/lib/apt/lists/*
 

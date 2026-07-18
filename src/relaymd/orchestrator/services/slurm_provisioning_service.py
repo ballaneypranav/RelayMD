@@ -405,6 +405,7 @@ class SlurmProvisioningService:
             slurm_job_id=raw_slurm_id,
             provider_id=placeholder.provider_id,
             worker_id=str(placeholder.id),
+            worker_image_key=queued_job.worker_image_key,
             **_cluster_submission_log_fields(cluster),
         )
         return True

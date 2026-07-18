@@ -12,6 +12,9 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 
 
 RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common ca-certificates gnupg curl git wget bzip2 bash coreutils tar procps python3-pip \
     && add-apt-repository -y ppa:deadsnakes/ppa \
+    && mkdir -p --mode=0755 /usr/share/keyrings \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list \
     && apt-get update && apt-get install -y --no-install-recommends python3.11 python3.11-venv python3.11-distutils tailscale \
     && curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/2.3.3 | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba \
     && micromamba create -y -p /opt/atom-openmm -c conda-forge python=3.11 openmm=8.4.0 cuda-version=12.6 configobj numpy setproctitle pip \
