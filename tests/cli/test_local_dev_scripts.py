@@ -24,6 +24,8 @@ def test_local_build_sif_or_sandbox_uses_named_worker_profiles() -> None:
     assert "relaymd-worker-atom-openmm" in script
     assert "relaymd-worker-gcncmcmd" in script
     assert "relaymd-worker.sif" not in script
+    assert 'ln -sfn "relaymd-worker-atom-openmm.sandbox"' in script
+    assert 'ln -sfn "relaymd-worker-gcncmcmd.sandbox"' in script
 
 
 def test_local_install_cli_uses_dist_binary_and_atomic_replace() -> None:
@@ -54,3 +56,4 @@ def test_local_build_images_supports_engine_selection_and_remediation() -> None:
         in script
     )
     assert '"${BUILD_ENGINE}" build' in script
+    assert 'WORKER_PROFILE="${WORKER_PROFILE:-all}"' in script

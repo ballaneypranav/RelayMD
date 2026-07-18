@@ -16,13 +16,12 @@ class SaladAutoscalingService:
 
     async def apply(self) -> None:
         settings = self._settings
-        if (
-            settings.salad_api_key is None
-            or settings.salad_org is None
-            or settings.salad_project is None
-            or settings.salad_container_group is None
-        ):
+        if not settings.salad_autoscaling_enabled:
             return
+        assert settings.salad_api_key is not None
+        assert settings.salad_org is not None
+        assert settings.salad_project is not None
+        assert settings.salad_container_group is not None
 
         timeout_seconds = (
             settings.heartbeat_timeout_multiplier * settings.heartbeat_interval_seconds

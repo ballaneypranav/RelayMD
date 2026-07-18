@@ -54,6 +54,22 @@ def _write_bundle_tar(local_path: Path) -> None:
         archive.addfile(checkpoint_info, io.BytesIO(checkpoint_bytes))
 
 
+def test_run_worker_rejects_blank_worker_image_key(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", " \t ")
+    config = WorkerConfig(
+        b2_application_key_id="id",
+        b2_application_key="secret",
+        b2_endpoint="https://s3.example.test",
+        bucket_name="relaymd-bucket",
+        tailscale_auth_key="tskey",
+        relaymd_api_token="api-token",
+        relaymd_orchestrator_url="http://orchestrator.test:36158",
+    )
+
+    with pytest.raises(SystemExit, match="1"):
+        run_worker(config)
+
+
 def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

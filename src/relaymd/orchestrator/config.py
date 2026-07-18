@@ -390,14 +390,32 @@ class OrchestratorSettings(BaseSettings):
                     f"{', '.join(unknown_keys)}"
                 )
 
-        if self.slurm_cluster_configs and not any(
+        default_supported_by_slurm = any(
             self.default_worker_image in cluster.worker_images
             for cluster in self.slurm_cluster_configs
+        )
+        default_supported_by_salad = (
+            self.salad_autoscaling_enabled
+            and (self.salad_worker_image_key or self.default_worker_image)
+            == self.default_worker_image
+        )
+        if (self.slurm_cluster_configs or self.salad_autoscaling_enabled) and not (
+            default_supported_by_slurm or default_supported_by_salad
         ):
             raise ValueError(
-                "default_worker_image is not supported by any configured SLURM cluster"
+                "default_worker_image is not supported by any configured compute backend"
             )
         return self
+
+    @property
+    def salad_autoscaling_enabled(self) -> bool:
+        """Whether Salad has every setting required for the scaler to run."""
+        return (
+            self.salad_api_key is not None
+            and self.salad_org is not None
+            and self.salad_project is not None
+            and self.salad_container_group is not None
+        )
 
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
@@ -429,6 +447,7 @@ class OrchestratorSettings(BaseSettings):
                 "salad_org": ("SALAD_ORG",),
                 "salad_project": ("SALAD_PROJECT",),
                 "salad_container_group": ("SALAD_CONTAINER_GROUP",),
+                "salad_worker_image_key": ("SALAD_WORKER_IMAGE_KEY",),
                 "salad_max_replicas": ("SALAD_MAX_REPLICAS",),
                 "sbatch_submit_timeout_seconds": ("SBATCH_SUBMIT_TIMEOUT_SECONDS",),
                 "axiom_dataset": ("AXIOM_DATASET",),

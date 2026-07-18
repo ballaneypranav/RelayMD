@@ -24,7 +24,7 @@ download_file() {
         wget --show-progress -O "${output}" "${uri}"
     else
         echo "Install curl or wget, or set RELAYMD_CLI_URI to a local file." >&2
-        exit 1
+        return 1
     fi
 }
 
@@ -40,21 +40,77 @@ resolve_owner() {
 }
 
 resolve_latest_manifest() {
-    local uri="$1" manifest
+    local uri="$1" manifest manifest_cli_uri
+    require_cmd jq
     manifest="$(mktemp)"
-    trap 'rm -f "${manifest}"' RETURN
-    download_file "${uri}" "${manifest}"
+    if ! download_file "${uri}" "${manifest}"; then
+        rm -f "${manifest}"
+        return 1
+    fi
     ORCHESTRATOR_IMAGE_URI="$(jq -r '.orchestrator_image // empty' "${manifest}")"
+    ORCHESTRATOR_SIF_URI="$(jq -r '.orchestrator_sif_uri // empty' "${manifest}")"
     ATOM_OPENMM_IMAGE_URI="$(jq -r '.worker_images["atom-openmm"].image_uri // empty' "${manifest}")"
     GCNCMC_IMAGE_URI="$(jq -r '.worker_images.gcncmcmd.image_uri // empty' "${manifest}")"
     ATOM_OPENMM_SIF_URI="$(jq -r '.worker_images["atom-openmm"].sif_uri // empty' "${manifest}")"
     GCNCMC_SIF_URI="$(jq -r '.worker_images.gcncmcmd.sif_uri // empty' "${manifest}")"
-    CLI_URI="$(jq -r '.cli_uri // empty' "${manifest}")"
+    manifest_cli_uri="$(jq -r '.cli_uri // empty' "${manifest}")"
     RELEASE_VERSION="$(jq -r '.release_version // empty' "${manifest}")"
-    [[ -n "${ORCHESTRATOR_IMAGE_URI}" && -n "${ATOM_OPENMM_IMAGE_URI}" && -n "${GCNCMC_IMAGE_URI}" && -n "${ATOM_OPENMM_SIF_URI}" && -n "${GCNCMC_SIF_URI}" && -n "${CLI_URI}" && -n "${RELEASE_VERSION}" ]] || {
+    rm -f "${manifest}"
+    [[ -n "${ORCHESTRATOR_IMAGE_URI}" && -n "${ATOM_OPENMM_IMAGE_URI}" && -n "${GCNCMC_IMAGE_URI}" && -n "${ATOM_OPENMM_SIF_URI}" && -n "${GCNCMC_SIF_URI}" && -n "${manifest_cli_uri}" && -n "${RELEASE_VERSION}" ]] || {
         echo "Release manifest must contain orchestrator, CLI, and both named worker image/SIF entries." >&2
-        exit 1
+        return 1
     }
+    [[ -n "${CLI_URI}" ]] || CLI_URI="${manifest_cli_uri}"
+}
+
+fetch_package_versions_json() {
+    local owner="$1" package_name="$2" output="$3"
+    gh api -H "Accept: application/vnd.github+json" \
+        "/orgs/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}" 2>/dev/null \
+        || gh api -H "Accept: application/vnd.github+json" \
+            "/users/${owner}/packages/container/${package_name}/versions?per_page=100" >"${output}"
+}
+
+resolve_latest_shared_sha_tag() {
+    local owner="$1" tmp_dir orch_json atom_json gcn_json latest_shared
+    require_cmd gh
+    require_cmd jq
+    tmp_dir="$(mktemp -d)"
+    orch_json="${tmp_dir}/orchestrator.json"
+    atom_json="${tmp_dir}/atom-openmm.json"
+    gcn_json="${tmp_dir}/gcncmcmd.json"
+    if ! fetch_package_versions_json "${owner}" relaymd-orchestrator "${orch_json}" \
+        || ! fetch_package_versions_json "${owner}" relaymd-worker-atom-openmm "${atom_json}" \
+        || ! fetch_package_versions_json "${owner}" relaymd-worker-gcncmcmd "${gcn_json}"; then
+        rm -rf "${tmp_dir}"
+        echo "Failed to query named RelayMD package tags for '${owner}'." >&2
+        return 1
+    fi
+    latest_shared="$(
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${atom_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/atom.tsv"
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${gcn_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/gcn.tsv"
+        jq -r '.[] | .updated_at as $updated_at | (.metadata.container.tags // [])[] | select(test("^sha-")) | "\(.)\t\($updated_at)"' "${orch_json}" \
+            | sort -t $'\t' -k1,1 -k2,2r | awk -F $'\t' '!seen[$1]++' >"${tmp_dir}/orchestrator.tsv"
+        awk -F $'\t' '
+            NR == FNR { atom[$1] = $2; next }
+            FILENAME == ARGV[2] { gcn[$1] = $2; next }
+            ($1 in atom) && ($1 in gcn) {
+                newest = $2
+                if (atom[$1] > newest) newest = atom[$1]
+                if (gcn[$1] > newest) newest = gcn[$1]
+                print $1 "\t" newest
+            }
+        ' "${tmp_dir}/atom.tsv" "${tmp_dir}/gcn.tsv" "${tmp_dir}/orchestrator.tsv" \
+            | sort -t $'\t' -k2,2r | head -n1 | cut -f1
+    )"
+    rm -rf "${tmp_dir}"
+    if [[ -z "${latest_shared}" ]]; then
+        echo "No shared sha-* tag found across all named RelayMD images for '${owner}'." >&2
+        return 1
+    fi
+    printf '%s' "${latest_shared}"
 }
 
 pull_artifact() {
@@ -86,6 +142,7 @@ ATOM_OPENMM_IMAGE_URI="${RELAYMD_WORKER_ATOM_OPENMM_IMAGE_URI:-}"
 GCNCMC_IMAGE_URI="${RELAYMD_WORKER_GCNCMC_IMAGE_URI:-}"
 ATOM_OPENMM_SIF_URI=""
 GCNCMC_SIF_URI=""
+ORCHESTRATOR_SIF_URI="${RELAYMD_ORCHESTRATOR_SIF_URI:-}"
 CLI_URI="${RELAYMD_CLI_URI:-}"
 
 if [[ $# -eq 4 ]]; then
@@ -95,7 +152,16 @@ if [[ $# -eq 4 ]]; then
 elif [[ -z "${ORCHESTRATOR_IMAGE_URI}${ATOM_OPENMM_IMAGE_URI}${GCNCMC_IMAGE_URI}" ]]; then
     owner="$(resolve_owner)"
     if [[ "${RELEASE_VERSION}" == "latest" ]]; then
-        resolve_latest_manifest "${RELAYMD_RELEASE_MANIFEST_URI:-https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json}"
+        if ! resolve_latest_manifest "${RELAYMD_RELEASE_MANIFEST_URI:-https://github.com/${owner}/relaymd/releases/latest/download/relaymd-release-manifest.json}"; then
+            echo "Failed to resolve latest via release manifest; falling back to newest shared sha-* image tag." >&2
+            RELEASE_VERSION="$(resolve_latest_shared_sha_tag "${owner}")"
+            ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${RELEASE_VERSION}"
+            ATOM_OPENMM_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-atom-openmm:${RELEASE_VERSION}"
+            GCNCMC_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-gcncmcmd:${RELEASE_VERSION}"
+            ORCHESTRATOR_SIF_URI=""
+            ATOM_OPENMM_SIF_URI=""
+            GCNCMC_SIF_URI=""
+        fi
     else
         ORCHESTRATOR_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-orchestrator:${RELEASE_VERSION}"
         ATOM_OPENMM_IMAGE_URI="docker://ghcr.io/${owner}/relaymd-worker-atom-openmm:${RELEASE_VERSION}"
@@ -116,18 +182,31 @@ fi
 
 RELEASE_DIR="${RELEASES_DIR}/${RELEASE_VERSION}"
 mkdir -p "${RELEASE_DIR}"
-pull_artifact orchestrator "${ORCHESTRATOR_IMAGE_URI}" "${RELEASE_DIR}/relaymd-orchestrator.sif" "" &
+pull_artifact orchestrator "${ORCHESTRATOR_IMAGE_URI}" "${RELEASE_DIR}/relaymd-orchestrator.sif" "${ORCHESTRATOR_SIF_URI}" &
 ORCH_PID=$!
 pull_artifact worker-atom-openmm "${ATOM_OPENMM_IMAGE_URI}" "${RELEASE_DIR}/relaymd-worker-atom-openmm.sif" "${ATOM_OPENMM_SIF_URI}" &
 ATOM_PID=$!
 pull_artifact worker-gcncmcmd "${GCNCMC_IMAGE_URI}" "${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif" "${GCNCMC_SIF_URI}" &
 GCN_PID=$!
-wait "${ORCH_PID}" && wait "${ATOM_PID}" && wait "${GCN_PID}"
+ORCH_EXIT=0
+ATOM_EXIT=0
+GCN_EXIT=0
+wait "${ORCH_PID}" || ORCH_EXIT=$?
+wait "${ATOM_PID}" || ATOM_EXIT=$?
+wait "${GCN_PID}" || GCN_EXIT=$?
+[[ "${ORCH_EXIT}" -eq 0 ]] || echo "[orchestrator] SIF pull failed (exit ${ORCH_EXIT})." >&2
+[[ "${ATOM_EXIT}" -eq 0 ]] || echo "[worker-atom-openmm] SIF pull failed (exit ${ATOM_EXIT})." >&2
+[[ "${GCN_EXIT}" -eq 0 ]] || echo "[worker-gcncmcmd] SIF pull failed (exit ${GCN_EXIT})." >&2
+[[ "${ORCH_EXIT}" -eq 0 && "${ATOM_EXIT}" -eq 0 && "${GCN_EXIT}" -eq 0 ]] || exit 1
 
 cli_tmp="${RELEASE_DIR}/relaymd.tmp.$$"
-download_file "${CLI_URI}" "${cli_tmp}"
+download_file "${CLI_URI}" "${cli_tmp}" || {
+    echo "Failed to download RelayMD CLI from '${CLI_URI}'." >&2
+    exit 1
+}
 chmod 0755 "${cli_tmp}"
 "${cli_tmp}" --help >/dev/null
+"${cli_tmp}" submit --help >/dev/null
 mv "${cli_tmp}" "${RELEASE_DIR}/relaymd"
 ln -sfn "${RELEASE_DIR}" "${CURRENT_LINK}"
 

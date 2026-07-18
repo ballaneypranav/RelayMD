@@ -134,6 +134,12 @@ ORCH_EXIT=0; wait "${ORCH_PID}" || ORCH_EXIT=$?
 
 if [[ "${MODE}" == "sandbox" ]]; then
     ln -sfn "relaymd-orchestrator.sandbox" "${RELEASE_DIR}/relaymd-orchestrator.sif"
+    if [[ "${WORKER_PROFILE}" == "atom-openmm" || "${WORKER_PROFILE}" == "all" ]]; then
+        ln -sfn "relaymd-worker-atom-openmm.sandbox" "${RELEASE_DIR}/relaymd-worker-atom-openmm.sif"
+    fi
+    if [[ "${WORKER_PROFILE}" == "gcncmcmd" || "${WORKER_PROFILE}" == "all" ]]; then
+        ln -sfn "relaymd-worker-gcncmcmd.sandbox" "${RELEASE_DIR}/relaymd-worker-gcncmcmd.sif"
+    fi
 fi
 
 if [[ -z "${CURRENT_LINK}" ]]; then

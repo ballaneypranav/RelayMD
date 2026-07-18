@@ -16,7 +16,7 @@ USAGE
 ENGINE="${ENGINE:-auto}"
 TAG="${TAG:-local-dev}"
 ORCHESTRATOR_IMAGE_NAME="${ORCHESTRATOR_IMAGE_NAME:-relaymd-orchestrator}"
-WORKER_PROFILE="${WORKER_PROFILE:-atom-openmm}"
+WORKER_PROFILE="${WORKER_PROFILE:-all}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

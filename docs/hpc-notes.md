@@ -41,8 +41,9 @@ export RELAYMD_WORKER_IMAGE_KEY=atom-openmm
 sbatch deploy/slurm/test_tailscale.sbatch
 ```
 
-For a GCNCMC-MD validation, use `relaymd-worker-gcncmcmd.sif` and set
-`RELAYMD_WORKER_IMAGE_KEY=gcncmcmd`. Production worker starts receive this key
+For a GCNCMC-MD validation, set
+`RELAYMD_WORKER_ATOM_OPENMM_SIF_PATH=/depot/plow/apps/relaymd/current/relaymd-worker-gcncmcmd.sif`
+and `RELAYMD_WORKER_IMAGE_KEY=gcncmcmd`. Production workers receive this key
 from the rendered SLURM template and must register it unchanged.
 
 Success criteria:

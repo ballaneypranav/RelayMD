@@ -221,10 +221,13 @@ GCNCMC-MD job. Define the existing `max_pending_jobs` limit as per
 cluster/image pair for this first implementation and document the changed
 meaning.
 
-Extend queue diagnostics with image-specific reasons:
-
-- `unsupported_worker_image`
-- `no_enabled_image_compatible_clusters`
+Extend queue diagnostics with image-specific reasons. The implementation keeps
+the affinity distinction, so the unpinned cases are
+`no_compatible_worker_image_clusters` and
+`no_enabled_worker_image_clusters`; pinned jobs use the corresponding
+`no_compatible_pinned_worker_image_clusters` and
+`no_enabled_pinned_clusters` reasons. A job whose requested pins name no
+configured cluster uses `no_matching_pinned_clusters`.
 
 Keep job lifecycle status as `queued`; use `queue_blocked_reason` for operator
 visibility as with cluster affinity.

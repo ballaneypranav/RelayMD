@@ -4,7 +4,7 @@ LABEL relaymd.component=worker \
       relaymd.worker_image_key=atom-openmm \
       relaymd.worker_image_name=AToM-OpenMM
 
-ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1 \
     ATOM_REPO_URL=https://github.com/ballaneypranav/AToM-OpenMM \
     ATOM_REPO_REF=71f2f4e6b90f3cfd8ff3ab0ec46e32922e9c2f56 \
     MAMBA_ROOT_PREFIX=/opt/micromamba PATH=/opt/atom-openmm/bin:${PATH} \

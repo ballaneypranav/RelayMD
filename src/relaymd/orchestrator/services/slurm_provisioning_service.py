@@ -585,7 +585,7 @@ async def submit_pending_slurm_jobs(
                     enabled_map=enabled_map,
                     salad_worker_image_key=settings.salad_worker_image_key
                     or settings.default_worker_image,
-                    salad_enabled=settings.salad_container_group is not None,
+                    salad_enabled=settings.salad_autoscaling_enabled,
                 ),
             )
             if job.queue_blocked_reason != reason:

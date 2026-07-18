@@ -1,4 +1,4 @@
-ARG BASE_IMAGE
+ARG BASE_IMAGE=ghcr.io/ballaneypranav/relaymd-worker-atom-openmm-base:latest
 FROM ${BASE_IMAGE}
 
 LABEL relaymd.component=worker

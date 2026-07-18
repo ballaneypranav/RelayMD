@@ -10,6 +10,12 @@ from relaymd.orchestrator.config import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _ignore_host_service_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep settings validation tests independent from host configuration."""
+    monkeypatch.setenv("RELAYMD_CONFIG", "/tmp/relaymd-test-config-does-not-exist.yaml")
+
+
 def test_cluster_config_supports_multiple_named_worker_images() -> None:
     cluster = ClusterConfig(
         name="test",
@@ -89,6 +95,61 @@ def test_settings_accepts_a_configured_two_image_catalog() -> None:
 
     assert settings.default_worker_image == "atom-openmm"
     assert settings.worker_image_profiles["gcncmcmd"].display_name == "GCNCMC-MD"
+
+
+def test_settings_accepts_default_image_supported_only_by_salad() -> None:
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        worker_image_profiles={
+            "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+            "gcncmcmd": WorkerImageProfile(display_name="GCNCMC-MD"),
+        },
+        slurm_cluster_configs=[
+            ClusterConfig(
+                name="gcncmcmd-only",
+                partition="gpu",
+                account="lab",
+                ssh_host="test-host",
+                ssh_username="test-user",
+                worker_images={"gcncmcmd": WorkerImageSource(sif_path="/shared/gcncmcmd.sif")},
+            )
+        ],
+        salad_api_key="salad-key",
+        salad_org="org",
+        salad_project="project",
+        salad_container_group="group",
+    )
+
+    assert settings.salad_autoscaling_enabled is True
+
+
+def test_settings_rejects_default_image_unsupported_by_salad_only() -> None:
+    with pytest.raises(ValueError, match="not supported by any configured compute backend"):
+        OrchestratorSettings(
+            axiom_token="test",
+            worker_image_profiles={
+                "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+                "gcncmcmd": WorkerImageProfile(display_name="GCNCMC-MD"),
+            },
+            salad_api_key="salad-key",
+            salad_org="org",
+            salad_project="project",
+            salad_container_group="group",
+            salad_worker_image_key="gcncmcmd",
+        )
+
+
+def test_salad_worker_image_key_reads_environment_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SALAD_WORKER_IMAGE_KEY", "gcncmcmd")
+    settings = OrchestratorSettings(
+        axiom_token="test",
+        worker_image_profiles={
+            "atom-openmm": WorkerImageProfile(display_name="AToM-OpenMM"),
+            "gcncmcmd": WorkerImageProfile(display_name="GCNCMC-MD"),
+        },
+    )
+
+    assert settings.salad_worker_image_key == "gcncmcmd"
 
 
 def test_cluster_inheritance_merges_worker_images_by_profile() -> None:

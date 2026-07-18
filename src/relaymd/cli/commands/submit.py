@@ -311,13 +311,14 @@ def submit(
     try:
         normalized_clusters = normalize_submit_clusters(clusters or [], known_clusters)
         normalized_comment = normalize_submit_comment(comment)
+        normalized_worker_image = normalize_worker_image_key(worker_image, None)
         catalog = _catalog_for_explicit_worker_image(
-            worker_image=worker_image,
+            worker_image=normalized_worker_image,
             submit_service=submit_service,
             json_mode=json_mode,
         )
         normalized_worker_image = normalize_worker_image_key(
-            worker_image,
+            normalized_worker_image,
             {profile.key for profile in catalog.worker_images} if catalog else None,
         )
     except SubmitCommandError as exc:

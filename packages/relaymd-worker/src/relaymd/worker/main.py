@@ -1758,7 +1758,7 @@ def _run_assigned_job(
 def run_worker(config: WorkerConfig) -> None:
     import sys
 
-    worker_image_key = os.environ.get("RELAYMD_WORKER_IMAGE_KEY")
+    worker_image_key = os.environ.get("RELAYMD_WORKER_IMAGE_KEY", "").strip()
     if not worker_image_key:
         LOG.error(
             "worker_image_key_missing",
