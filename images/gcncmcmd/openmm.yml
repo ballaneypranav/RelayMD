@@ -1,5 +1,6 @@
 name: openmm
 channels:
+  - nvidia
   - conda-forge
 dependencies:
   - _openmp_mutex=4.5=3_kmp_llvm

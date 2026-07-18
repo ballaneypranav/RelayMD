@@ -382,15 +382,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@v4
-      - name: Select immutable image references
+      - name: Select worker image references
         id: refs
         env:
           OWNER: ${{ github.repository_owner }}
           PROFILE: ${{ matrix.key }}
         run: |
-          short_sha="${GITHUB_SHA::7}"
-          echo "base=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}-base:sha-${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "worker=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}:sha-${short_sha}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "base=relaymd-worker-${PROFILE}-base:ci" >> "$GITHUB_OUTPUT"
+            echo "worker=relaymd-worker-${PROFILE}:ci" >> "$GITHUB_OUTPUT"
+          else
+            short_sha="${GITHUB_SHA::7}"
+            echo "base=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}-base:sha-${short_sha}" >> "$GITHUB_OUTPUT"
+            echo "worker=ghcr.io/${OWNER}/relaymd-worker-${PROFILE}:sha-${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build ${{ matrix.display_name }} base
         uses: docker/build-push-action@v7
         with:
@@ -406,13 +411,29 @@ jobs:
             type=registry,ref=ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}-base:latest
           cache-to: type=gha,mode=max,ignore-error=true,scope=worker-base-${{ matrix.key }}
           provenance: false
+      - name: Build ${{ matrix.display_name }} worker image locally (PR)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_IMAGE: ${{ steps.refs.outputs.base }}
+          WORKER_IMAGE: ${{ steps.refs.outputs.worker }}
+        run: |
+          set -euo pipefail
+          docker image inspect "${BASE_IMAGE}"
+          docker buildx use default
+          docker buildx inspect --bootstrap
+          docker buildx build \
+            --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+            --load \
+            --tag "${WORKER_IMAGE}" \
+            --file Dockerfile.worker \
+            .
       - name: Build ${{ matrix.display_name }} worker image
+        if: ${{ github.event_name != 'pull_request' }}
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.worker
-          load: ${{ github.event_name == 'pull_request' }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: |
             ${{ steps.refs.outputs.worker }}
             ghcr.io/${{ github.repository_owner }}/relaymd-worker-${{ matrix.key }}:latest
