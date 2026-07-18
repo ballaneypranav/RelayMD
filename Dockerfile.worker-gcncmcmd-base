@@ -17,8 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/*
 
 COPY images/gcncmcmd/openmm.yml /tmp/openmm.yml
-RUN sed -i '/^prefix:/d; /grand==1.1.0/d' /tmp/openmm.yml \
-    && CONDA_OVERRIDE_CUDA=12.6 micromamba create -y -p /opt/gcncmcmd -f /tmp/openmm.yml \
+RUN CONDA_OVERRIDE_CUDA=12.6 micromamba create -y -p /opt/gcncmcmd -f /tmp/openmm.yml \
     && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir --no-deps git+https://github.com/essex-lab/grand.git@f58784faeaaabbe054b306f7a474e0eaec5ff878 \
     && micromamba run -p /opt/gcncmcmd python -m pip install --no-cache-dir uv boto3 infisical-python nvidia-ml-py orjson pydantic-settings structlog tenacity \
     && micromamba clean -a -y

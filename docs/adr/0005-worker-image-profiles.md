@@ -11,7 +11,7 @@ worker image sources.
 
 The GCNCMC OpenMM environment input is committed under `images/gcncmcmd/`
 (`openmm.yml` SHA-256:
-`b649078b395dd0f801311e6e06dc12817c5d0a2aa9040e3a16a3fe30da9e86cc`).
+`262b32995509d88cca1b590fb9419fe8b381a240680954a128dbef9266a5c5e5`).
 GCNCMC-MD uses the public HTTPS GRAND source at
 `https://github.com/essex-lab/grand.git`, pinned to the `v1.1.0` release
 commit `f58784faeaaabbe054b306f7a474e0eaec5ff878`. Image builds must install
