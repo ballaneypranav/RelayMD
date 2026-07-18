@@ -134,7 +134,7 @@ class ApiOrchestratorGateway:
         gpu_count: int,
         vram_gb: int,
         provider_id: str | None = None,
-        worker_image_key: str = "atom-openmm",
+        worker_image_key: str,
     ) -> UUID:
         response = register_worker_workers_register_post.sync(
             client=self.client,
@@ -164,7 +164,7 @@ class ApiOrchestratorGateway:
         gpu_count: int,
         vram_gb: int,
         provider_id: str | None = None,
-        worker_image_key: str = "atom-openmm",
+        worker_image_key: str,
     ) -> UUID:
         retrying = Retrying(
             wait=wait_exponential(multiplier=1, min=1, max=30),

@@ -17,7 +17,13 @@ from ._worker_endpoints_test_helpers import app_client, make_settings
     [
         (
             "/workers/register",
-            {"platform": "hpc", "gpu_model": "A100", "gpu_count": 1, "vram_gb": 80},
+            {
+                "platform": "hpc",
+                "gpu_model": "A100",
+                "gpu_count": 1,
+                "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
+            },
         ),
         ("/workers/11111111-1111-1111-1111-111111111111/heartbeat", None),
         ("/workers/22222222-2222-2222-2222-222222222222/deregister", None),
@@ -54,6 +60,7 @@ async def test_request_returns_no_job_available_when_queue_empty() -> None:
                 "gpu_model": "A100",
                 "gpu_count": 1,
                 "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
             },
         )
         worker_id = register_response.json()["worker_id"]
@@ -80,6 +87,7 @@ async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
                 "gpu_model": "NVIDIA A10",
                 "gpu_count": 1,
                 "vram_gb": 24,
+                "worker_image_key": "atom-openmm",
             },
         )
         worker_id = register.json()["worker_id"]
@@ -91,6 +99,7 @@ async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
                     gpu_model="NVIDIA H100",
                     gpu_count=8,
                     vram_gb=0,
+                    worker_image_key="atom-openmm",
                     status=WorkerStatus.queued,
                     provider_id="gilbreth:placeholder",
                     last_heartbeat=datetime.now(UTC).replace(tzinfo=None),
@@ -100,6 +109,7 @@ async def test_request_ignores_pending_slurm_placeholder_workers() -> None:
                 Job(
                     title="train-with-placeholder",
                     input_bundle_path="jobs/placeholder/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.queued,
                 )
             )
@@ -128,6 +138,7 @@ async def test_list_workers_returns_registered_workers() -> None:
                 "gpu_model": "NVIDIA A100",
                 "gpu_count": 4,
                 "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
             },
         )
         second_register = await client.post(
@@ -138,6 +149,7 @@ async def test_list_workers_returns_registered_workers() -> None:
                 "gpu_model": "NVIDIA A10",
                 "gpu_count": 1,
                 "vram_gb": 24,
+                "worker_image_key": "atom-openmm",
             },
         )
 
@@ -161,6 +173,7 @@ async def test_register_worker_with_provider_id_activates_matching_placeholder()
                 gpu_model="a100",
                 gpu_count=2,
                 vram_gb=0,
+                worker_image_key="atom-openmm",
                 status=WorkerStatus.queued,
                 provider_id="gilbreth:99001",
                 last_heartbeat=datetime.now(UTC).replace(tzinfo=None),
@@ -181,6 +194,7 @@ async def test_register_worker_with_provider_id_activates_matching_placeholder()
                     "gpu_model": "a100",
                     "gpu_count": 2,
                     "vram_gb": 80,
+                    "worker_image_key": "atom-openmm",
                     "provider_id": "gilbreth:99001",
                 },
             )
@@ -225,6 +239,7 @@ async def test_late_worker_callbacks_return_typed_conflicts() -> None:
             job = Job(
                 title="already-done",
                 input_bundle_path="jobs/done/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
                 status=JobStatus.completed,
             )
             session.add(job)
@@ -257,12 +272,22 @@ async def test_handoff_start_and_complete_requeues_job() -> None:
         register_response = await client.post(
             "/workers/register",
             headers=headers,
-            json={"platform": "hpc", "gpu_model": "A100", "gpu_count": 1, "vram_gb": 80},
+            json={
+                "platform": "hpc",
+                "gpu_model": "A100",
+                "gpu_count": 1,
+                "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
+            },
         )
         worker_id = register_response.json()["worker_id"]
 
         async with get_sessionmaker()() as session:
-            job = Job(title="handoff", input_bundle_path="jobs/h/input/bundle.tar.gz")
+            job = Job(
+                title="handoff",
+                input_bundle_path="jobs/h/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
+            )
             session.add(job)
             await session.commit()
             await session.refresh(job)

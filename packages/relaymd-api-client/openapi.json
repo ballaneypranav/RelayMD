@@ -2624,8 +2624,7 @@
           },
           "worker_image_key": {
             "type": "string",
-            "title": "Worker Image Key",
-            "default": "atom-openmm"
+            "title": "Worker Image Key"
           },
           "provider_id": {
             "anyOf": [
@@ -2644,7 +2643,8 @@
           "platform",
           "gpu_model",
           "gpu_count",
-          "vram_gb"
+          "vram_gb",
+          "worker_image_key"
         ],
         "title": "WorkerRegister"
       },

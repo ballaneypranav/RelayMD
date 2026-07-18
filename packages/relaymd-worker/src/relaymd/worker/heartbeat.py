@@ -4,7 +4,6 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 import httpx
@@ -14,6 +13,7 @@ from relaymd_api_client.client import Client as RelaymdApiClient
 from relaymd_api_client.models.http_validation_error import (
     HTTPValidationError as ApiHTTPValidationError,
 )
+from relaymd_api_client.models.worker_heartbeat import WorkerHeartbeat as ApiWorkerHeartbeat
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from relaymd.runtime_defaults import DEFAULT_ORCHESTRATOR_TIMEOUT_SECONDS
@@ -127,19 +127,19 @@ class HeartbeatThread(threading.Thread):
         reraise=True,
     )
     def _send(self, client: RelaymdApiClient) -> None:
-        payload: dict[str, Any] = {}
+        payload = ApiWorkerHeartbeat()
         with self._state_lock:
             if self._job_id is not None:
-                payload["job_id"] = self._job_id
+                payload.job_id = UUID(self._job_id)
             if self._progress is not None:
-                payload["progress"] = self._progress
-            payload["progress_codes"] = list(self._progress_codes)
+                payload.progress = self._progress
+            payload.progress_codes = list(self._progress_codes)
 
         response = heartbeat_worker_workers_worker_id_heartbeat_post.sync(
             worker_id=self._worker_id,
             client=client,
             x_api_token=self._api_token,
-            body=payload if payload else None,
+            body=payload,
         )
         if isinstance(response, ApiHTTPValidationError):
             raise RuntimeError(response.to_dict())

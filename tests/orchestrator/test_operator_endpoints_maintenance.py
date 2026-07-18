@@ -28,6 +28,7 @@ async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
                     Job(
                         title="old-completed",
                         input_bundle_path="x",
+                        worker_image_key="atom-openmm",
                         status=JobStatus.completed,
                         created_at=old,
                         updated_at=old,
@@ -35,6 +36,7 @@ async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
                     Job(
                         title="old-failed",
                         input_bundle_path="x",
+                        worker_image_key="atom-openmm",
                         status=JobStatus.failed,
                         created_at=old,
                         updated_at=old,
@@ -42,6 +44,7 @@ async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
                     Job(
                         title="recent-completed",
                         input_bundle_path="x",
+                        worker_image_key="atom-openmm",
                         status=JobStatus.completed,
                         created_at=recent,
                         updated_at=recent,
@@ -49,6 +52,7 @@ async def test_prune_jobs_deletes_terminal_jobs_older_than_cutoff() -> None:
                     Job(
                         title="old-queued",
                         input_bundle_path="x",
+                        worker_image_key="atom-openmm",
                         status=JobStatus.queued,
                         created_at=old,
                         updated_at=old,

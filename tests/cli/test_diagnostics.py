@@ -54,7 +54,12 @@ def _fake_orchestrator_settings(tmp_path: Path) -> SimpleNamespace:
         api_token="api-token",
         axiom_token="axiom-token",
         tailscale_auth_key="tskey",
-        slurm_cluster_configs=[SimpleNamespace(name="gpu", sif_path=str(sif_path), image_uri=None)],
+        slurm_cluster_configs=[
+            SimpleNamespace(
+                name="gpu",
+                worker_images={"atom-openmm": SimpleNamespace(sif_path=str(sif_path))},
+            )
+        ],
         salad_api_key=None,
         salad_org=None,
         salad_project=None,

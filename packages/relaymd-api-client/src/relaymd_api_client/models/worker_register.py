@@ -29,7 +29,7 @@ class WorkerRegister:
             gpu_model (str):
             gpu_count (int):
             vram_gb (int):
-            worker_image_key (str | Unset):  Default: 'atom-openmm'.
+            worker_image_key (str):
             provider_id (None | str | Unset):
      """
 
@@ -37,7 +37,7 @@ class WorkerRegister:
     gpu_model: str
     gpu_count: int
     vram_gb: int
-    worker_image_key: str | Unset = 'atom-openmm'
+    worker_image_key: str
     provider_id: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -70,9 +70,8 @@ class WorkerRegister:
             "gpu_model": gpu_model,
             "gpu_count": gpu_count,
             "vram_gb": vram_gb,
+            "worker_image_key": worker_image_key,
         })
-        if worker_image_key is not UNSET:
-            field_dict["worker_image_key"] = worker_image_key
         if provider_id is not UNSET:
             field_dict["provider_id"] = provider_id
 
@@ -94,7 +93,7 @@ class WorkerRegister:
 
         vram_gb = d.pop("vram_gb")
 
-        worker_image_key = d.pop("worker_image_key", UNSET)
+        worker_image_key = d.pop("worker_image_key")
 
         def _parse_provider_id(data: object) -> None | str | Unset:
             if data is None:

@@ -31,7 +31,12 @@ from relaymd.orchestrator.services import JobTransitionConflictError, JobTransit
 )
 def test_transition_matrix_allows_expected_edges(start: JobStatus, target: JobStatus) -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=start)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=start,
+    )
 
     service.ensure_transition(job, target)
 
@@ -51,7 +56,12 @@ def test_transition_matrix_allows_expected_edges(start: JobStatus, target: JobSt
 )
 def test_transition_matrix_rejects_invalid_edges(start: JobStatus, target: JobStatus) -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=start)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=start,
+    )
 
     with pytest.raises(JobTransitionConflictError):
         service.ensure_transition(job, target)
@@ -60,7 +70,12 @@ def test_transition_matrix_rejects_invalid_edges(start: JobStatus, target: JobSt
 @pytest.mark.parametrize("status", [JobStatus.assigned, JobStatus.running, JobStatus.handoff])
 def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=status)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=status,
+    )
     status_changed_at = job.status_changed_at
 
     service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
@@ -72,7 +87,11 @@ def test_checkpoint_allowed_in_active_states(status: JobStatus) -> None:
 
 def test_assignment_and_running_transitions_set_lifecycle_timestamps() -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz")
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+    )
     worker_id = job.id
 
     service.assign_job(job, worker_id=worker_id)
@@ -95,6 +114,7 @@ def test_mark_running_is_idempotent_without_resetting_timestamps() -> None:
     job = Job(
         title="job",
         input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
         status=JobStatus.running,
         started_at=started_at,
         status_changed_at=started_at,
@@ -108,7 +128,12 @@ def test_mark_running_is_idempotent_without_resetting_timestamps() -> None:
 
 def test_checkpoint_allowed_in_active_states_logs_checkpoint_recorded() -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=JobStatus.running)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=JobStatus.running,
+    )
 
     with patch("relaymd.orchestrator.services.job_transitions.logger.info") as info_mock:
         service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
@@ -122,6 +147,7 @@ def test_checkpoint_omitted_progress_fields_do_not_clear_existing_values() -> No
     job = Job(
         title="job",
         input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
         status=JobStatus.running,
         progress=0.55,
         progress_codes_json='["progress_missing"]',
@@ -139,7 +165,12 @@ def test_checkpoint_omitted_progress_fields_do_not_clear_existing_values() -> No
 )
 def test_checkpoint_rejected_outside_active_states(status: JobStatus) -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=status)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=status,
+    )
 
     with pytest.raises(JobTransitionConflictError):
         service.report_checkpoint(job, checkpoint_path="jobs/1/checkpoints/latest")
@@ -147,7 +178,12 @@ def test_checkpoint_rejected_outside_active_states(status: JobStatus) -> None:
 
 def test_requeue_clone_requires_terminal_status() -> None:
     service = JobTransitionService()
-    job = Job(title="job", input_bundle_path="jobs/1/input/bundle.tar.gz", status=JobStatus.running)
+    job = Job(
+        title="job",
+        input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
+        status=JobStatus.running,
+    )
 
     with pytest.raises(JobTransitionConflictError):
         service.build_requeue_clone(job)
@@ -158,6 +194,7 @@ def test_requeue_clone_preserves_checkpoint_metadata() -> None:
     job = Job(
         title="job",
         input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
         status=JobStatus.failed,
         latest_checkpoint_manifest_path="jobs/1/checkpoints/latest",
         last_checkpoint_at=datetime.now(),
@@ -177,6 +214,7 @@ def test_complete_handoff_requeues_without_clearing_existing_checkpoint() -> Non
     job = Job(
         title="job",
         input_bundle_path="jobs/1/input/bundle.tar.gz",
+        worker_image_key="atom-openmm",
         status=JobStatus.handoff,
         latest_checkpoint_manifest_path="jobs/1/checkpoints/existing",
     )

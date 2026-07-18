@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 from typing import Any, Literal
 
@@ -98,9 +97,6 @@ class ClusterConfig(BaseModel):
     gpu_count: int = 0
     strategy: Literal["reactive", "continuous", "jit_threshold"] = "reactive"
     jit_threshold_hours: float = Field(default=6.0, gt=0)
-    sif_path: str | None = None
-    image_uri: str | None = None
-    sif_cache_dir: str | None = None
     worker_images: dict[str, WorkerImageSource] = Field(default_factory=dict)
     nodes: int | None = Field(default=None, ge=1)
     ntasks: int | None = Field(default=None, ge=1)
@@ -115,32 +111,20 @@ class ClusterConfig(BaseModel):
     wall_time: str = "4:00:00"
     log_directory: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_image_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            legacy_fields = {"sif_path", "image_uri", "sif_cache_dir"} & set(value)
+            if legacy_fields:
+                raise ValueError(
+                    "cluster-level image fields are unsupported; configure sources under "
+                    "worker_images"
+                )
+        return value
+
     @model_validator(mode="after")
     def _validate_image_source(self) -> ClusterConfig:
-        has_sif_path = bool(self.sif_path and self.sif_path.strip())
-        has_image_uri = bool(self.image_uri and self.image_uri.strip())
-        if has_sif_path == has_image_uri and (has_sif_path or has_image_uri):
-            raise ValueError("set exactly one of 'sif_path' or 'image_uri'")
-
-        if has_sif_path or has_image_uri:
-            if self.worker_images:
-                raise ValueError(
-                    "legacy cluster-level image fields cannot be combined with 'worker_images'"
-                )
-            warnings.warn(
-                "cluster-level sif_path/image_uri is deprecated; configure "
-                "worker_images.atom-openmm instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self.worker_images = {
-                "atom-openmm": WorkerImageSource(
-                    sif_path=self.sif_path,
-                    image_uri=self.image_uri,
-                    sif_cache_dir=self.sif_cache_dir,
-                )
-            }
-
         if not self.worker_images:
             raise ValueError(
                 "configure at least one worker image source in 'worker_images' "
@@ -155,17 +139,9 @@ class ClusterConfig(BaseModel):
             self.qos = self.qos.strip() or None
         if self.gres is not None:
             self.gres = self.gres.strip() or None
-        if self.sif_cache_dir is not None:
-            self.sif_cache_dir = self.sif_cache_dir.strip() or None
-
         if self.memory and self.memory_per_gpu:
             raise ValueError("set at most one of 'memory' or 'memory_per_gpu'")
         return self
-
-    @property
-    def apptainer_image(self) -> str:
-        """Compatibility accessor for the legacy default worker image."""
-        return self.worker_image_source("atom-openmm").apptainer_image
 
     def worker_image_source(self, worker_image_key: str) -> WorkerImageSource:
         try:
@@ -293,12 +269,7 @@ class OrchestratorSettings(BaseSettings):
         for index, raw_cluster in enumerate(raw_cluster_configs):
             if isinstance(raw_cluster, ClusterConfig):
                 cluster_name = raw_cluster.name
-                # A legacy ClusterConfig is already normalized to worker_images.
-                # Do not feed its retained compatibility fields back through
-                # validation alongside the normalized source map.
-                raw_cluster_dict = raw_cluster.model_dump(
-                    exclude={"sif_path", "image_uri", "sif_cache_dir"}
-                )
+                raw_cluster_dict = raw_cluster.model_dump()
             elif isinstance(raw_cluster, dict):
                 cluster_name_value = raw_cluster.get("name")
                 if not isinstance(cluster_name_value, str) or not cluster_name_value.strip():

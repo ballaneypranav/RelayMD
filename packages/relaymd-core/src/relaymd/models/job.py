@@ -19,7 +19,7 @@ class Job(SQLModel, table=True):
     title: str
     status: JobStatus = JobStatus.queued
     input_bundle_path: str
-    worker_image_key: str = "atom-openmm"
+    worker_image_key: str
     preferred_clusters_json: str | None = None
     comment: str | None = None
     queue_blocked_reason: str | None = None

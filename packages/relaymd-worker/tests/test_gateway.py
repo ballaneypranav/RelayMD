@@ -49,6 +49,7 @@ def test_register_worker_retries_connect_timeout_then_succeeds(monkeypatch) -> N
         gpu_model="NVIDIA A100",
         gpu_count=1,
         vram_gb=80,
+        worker_image_key="atom-openmm",
     )
 
     assert str(worker_id) == expected_worker_id
@@ -72,6 +73,7 @@ def test_register_worker_raises_after_exhausting_retries(monkeypatch) -> None:
             gpu_model="NVIDIA A100",
             gpu_count=1,
             vram_gb=80,
+            worker_image_key="atom-openmm",
         )
 
     assert "after 3 attempts" in str(excinfo.value)
@@ -91,6 +93,7 @@ def test_register_worker_does_not_retry_on_unexpected_status_401(monkeypatch) ->
             gpu_model="NVIDIA A100",
             gpu_count=1,
             vram_gb=80,
+            worker_image_key="atom-openmm",
         )
 
     assert register_sync.call_count == 1

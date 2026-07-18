@@ -74,6 +74,7 @@ def test_build_storage_client_prefers_download_bearer_token(monkeypatch) -> None
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -299,6 +300,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     )
 
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -308,6 +310,7 @@ def test_build_storage_client_fallbacks_to_runtime_then_api_token(monkeypatch) -
     assert captured["cf_bearer_token"] == "runtime-token"
 
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         storage_provider="cloudflare_backblaze",
         axiom_token="test",
         cf_worker_url="https://cf.example",
@@ -340,6 +343,7 @@ def test_build_storage_client_uses_purdue_credentials(monkeypatch) -> None:
         relaymd_orchestrator_url="http://orchestrator.tail.ts.net:36158",
     )
     runtime_settings = WorkerRuntimeSettings(
+        worker_image_key="atom-openmm",
         axiom_token="test",
         storage_provider="purdue",
         cf_worker_url="https://cf.example",
@@ -357,6 +361,7 @@ def test_build_storage_client_uses_purdue_credentials(monkeypatch) -> None:
 
 
 def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -380,7 +385,7 @@ def test_run_worker_full_cycle_with_assignment_then_no_job(monkeypatch) -> None:
     monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
     monkeypatch.setattr(
         "relaymd.worker.main.WorkerRuntimeSettings",
-        lambda: SimpleNamespace(
+        lambda **_: SimpleNamespace(
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
@@ -528,6 +533,7 @@ def test_detect_openmm_platforms_returns_empty_list_when_import_fails(monkeypatc
 
 
 def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -542,7 +548,7 @@ def test_sigterm_request_triggers_graceful_deregister(monkeypatch) -> None:
     monkeypatch.setattr("relaymd.worker.main.detect_gpu_info", lambda: ("NVIDIA A100", 2, 80))
     monkeypatch.setattr(
         "relaymd.worker.main.WorkerRuntimeSettings",
-        lambda: SimpleNamespace(
+        lambda **_: SimpleNamespace(
             worker_platform="salad",
             heartbeat_interval_seconds=1,
             orchestrator_timeout_seconds=1.0,
@@ -1899,6 +1905,7 @@ def test_run_assigned_job_heartbeat_degraded_beyond_grace_triggers_shutdown(monk
 
 
 def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -1927,7 +1934,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
         worker_image_key="atom-openmm",
         axiom_token="test",
     )
-    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda **_: runtime_settings)
 
     heartbeat_thread = Mock()
     monkeypatch.setattr(
@@ -2015,6 +2022,7 @@ def test_run_worker_poll_then_exit_timeout(monkeypatch) -> None:
 
 
 def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
+    monkeypatch.setenv("RELAYMD_WORKER_IMAGE_KEY", "atom-openmm")
     config = WorkerConfig(
         b2_application_key_id="id",
         b2_application_key="secret",
@@ -2043,7 +2051,7 @@ def test_run_worker_poll_then_exit_finds_job(monkeypatch) -> None:
         worker_image_key="atom-openmm",
         axiom_token="test",
     )
-    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda: runtime_settings)
+    monkeypatch.setattr("relaymd.worker.main.WorkerRuntimeSettings", lambda **_: runtime_settings)
 
     heartbeat_thread = Mock()
     monkeypatch.setattr(

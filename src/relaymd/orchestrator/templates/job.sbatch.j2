@@ -64,7 +64,7 @@ export APPTAINER_DOCKER_PASSWORD={{ apptainer_docker_password_shell_quoted }}
 # reproducibility.  To force a re-pull set RELAYMD_SIF_MAX_AGE_HOURS, or
 # manually delete the cached SIF:
 #   rm ~/.apptainer/relaymd-sif-cache/<key>.sif
-_APPTAINER_IMAGE="{{ apptainer_image | default(sif_path) }}"
+_APPTAINER_IMAGE="{{ apptainer_image }}"
 
 if [[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]; then
   _IMAGE_KEY="$(printf '%s' "${_APPTAINER_IMAGE}" | sha256sum | cut -c1-16)"

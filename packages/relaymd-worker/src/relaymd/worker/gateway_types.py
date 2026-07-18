@@ -17,7 +17,7 @@ class OrchestratorGateway(Protocol):
         gpu_count: int,
         vram_gb: int,
         provider_id: str | None = None,
-        worker_image_key: str = "atom-openmm",
+        worker_image_key: str,
     ) -> UUID: ...
 
     def request_job(self, *, worker_id: UUID) -> ApiJobAssigned | ApiNoJobAvailable: ...

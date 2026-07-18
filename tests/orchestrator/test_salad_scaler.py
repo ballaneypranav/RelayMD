@@ -65,6 +65,7 @@ async def test_scale_up_when_jobs_queued_and_no_idle_hpc_workers() -> None:
                 Job(
                     title="queued-job",
                     input_bundle_path="jobs/1/input/bundle.tar.gz",
+                    worker_image_key="atom-openmm",
                     status=JobStatus.queued,
                 )
             )

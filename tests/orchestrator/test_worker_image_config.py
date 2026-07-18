@@ -26,7 +26,7 @@ def test_cluster_config_supports_multiple_named_worker_images() -> None:
         },
     )
 
-    assert cluster.apptainer_image == "/shared/atom-openmm.sif"
+    assert cluster.worker_image_source("atom-openmm").apptainer_image == "/shared/atom-openmm.sif"
     assert (
         cluster.worker_image_source("gcncmcmd").apptainer_image
         == "docker://ghcr.io/acme/relaymd-worker-gcncmcmd:sha-abc1234"
@@ -34,18 +34,18 @@ def test_cluster_config_supports_multiple_named_worker_images() -> None:
     assert cluster.worker_image_source("gcncmcmd").sif_cache_dir == "/shared/apptainer-cache"
 
 
-def test_legacy_cluster_image_is_translated_to_atom_openmm() -> None:
-    with pytest.warns(DeprecationWarning, match="worker_images.atom-openmm"):
-        cluster = ClusterConfig(
-            name="test",
-            partition="gpu",
-            account="lab",
-            ssh_host="test-host",
-            ssh_username="test-user",
-            sif_path="/shared/relaymd-worker.sif",
+def test_legacy_cluster_image_fields_are_rejected() -> None:
+    with pytest.raises(ValueError, match="cluster-level image fields are unsupported"):
+        ClusterConfig.model_validate(
+            {
+                "name": "test",
+                "partition": "gpu",
+                "account": "lab",
+                "ssh_host": "test-host",
+                "ssh_username": "test-user",
+                "sif_path": "/shared/atom-openmm.sif",
+            }
         )
-
-    assert cluster.worker_images["atom-openmm"].sif_path == "/shared/relaymd-worker.sif"
 
 
 def test_settings_reject_unknown_cluster_worker_image_key() -> None:

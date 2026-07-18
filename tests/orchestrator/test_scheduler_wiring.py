@@ -15,6 +15,7 @@ def _settings(**overrides: object) -> OrchestratorSettings:
     base: dict[str, object] = {
         "database_url": "sqlite+aiosqlite:///:memory:",
         "api_token": "test-token",
+        "slurm_cluster_configs": [],
     }
     base.update(overrides)
     return OrchestratorSettings.model_validate(base)

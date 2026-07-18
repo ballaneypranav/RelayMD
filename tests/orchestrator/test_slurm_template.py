@@ -15,6 +15,19 @@ def _render_template(payload: dict[str, object]) -> str:
     return template.render(**payload)
 
 
+def test_sbatch_templates_require_resolved_profile_image() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    template_paths = (
+        repo_root / "src/relaymd/orchestrator/templates/job.sbatch.j2",
+        repo_root / "deploy/slurm/job.sbatch.j2",
+    )
+
+    for template_path in template_paths:
+        template = template_path.read_text(encoding="utf-8")
+        assert "{{ apptainer_image }}" in template
+        assert "default(sif_path)" not in template
+
+
 def test_job_template_renders_cluster_a_values() -> None:
     rendered = _render_template(
         {
@@ -24,7 +37,7 @@ def test_job_template_renders_cluster_a_values() -> None:
             "gpu_type": "a100",
             "gpu_count": 2,
             "wall_time": "3:30:00",
-            "sif_path": "/shared/containers/relaymd.sif",
+            "apptainer_image": "/shared/containers/atom-openmm.sif",
             "memory_per_gpu": "60G",
             "infisical_token": "client-id:client-secret",
         }
@@ -55,7 +68,7 @@ def test_job_template_renders_cluster_b_values_with_default_wall_time() -> None:
             "nodes": 1,
             "ntasks": 8,
             "qos": "standby",
-            "sif_path": "/anvil/projects/proj-999/containers/relaymd.sif",
+            "apptainer_image": "/anvil/projects/proj-999/containers/atom-openmm.sif",
             "memory": "80G",
             "infisical_token": "other-client:other-secret",
         }
@@ -86,13 +99,13 @@ def test_job_template_renders_registry_backed_image() -> None:
             "account": "lab-123",
             "gpu_type": "a100",
             "gpu_count": 1,
-            "apptainer_image": "docker://ghcr.io/acme/relaymd-worker:latest",
+            "apptainer_image": "docker://ghcr.io/acme/relaymd-worker-atom-openmm:latest",
             "infisical_token": "client-id:client-secret",
         }
     )
 
     # The flock pre-pull block must reference the docker URI for the slug/pull.
-    assert "docker://ghcr.io/acme/relaymd-worker:latest" in rendered
+    assert "docker://ghcr.io/acme/relaymd-worker-atom-openmm:latest" in rendered
     # The exec line must use the resolved shell variable (not the raw URI).
     assert """\"${_APPTAINER_IMAGE}\" /bin/sh -lc 'python -m relaymd.worker'""" in rendered
     # flock serialisation block must be present.
@@ -108,7 +121,7 @@ def test_job_template_prepulls_oras_image() -> None:
             "account": "proj-999",
             "gpu_type": "a100",
             "gpu_count": 1,
-            "apptainer_image": "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234",
+            "apptainer_image": "oras://ghcr.io/acme/relaymd-worker-gcncmcmd:sif-sha-abc1234",
             "infisical_token": "client-id:client-secret",
         }
     )
@@ -116,7 +129,7 @@ def test_job_template_prepulls_oras_image() -> None:
     assert (
         '[[ "${_APPTAINER_IMAGE}" == docker://* || "${_APPTAINER_IMAGE}" == oras://* ]]' in rendered
     )
-    assert "oras://ghcr.io/acme/relaymd-worker:sif-sha-abc1234" in rendered
+    assert "oras://ghcr.io/acme/relaymd-worker-gcncmcmd:sif-sha-abc1234" in rendered
     assert "flock -x 200" in rendered
     assert 'export APPTAINER_CACHEDIR="${_APPTAINER_CACHEDIR}"' in rendered
     assert 'export SINGULARITY_CACHEDIR="${APPTAINER_CACHEDIR}"' in rendered
@@ -132,7 +145,7 @@ def test_job_template_uses_cluster_specific_sif_cache_dir() -> None:
             "account": "proj-999",
             "gpu_type": "a100",
             "gpu_count": 1,
-            "apptainer_image": "docker://ghcr.io/acme/relaymd-worker:sha-abc1234",
+            "apptainer_image": "docker://ghcr.io/acme/relaymd-worker-atom-openmm:sha-abc1234",
             "sif_cache_dir_shell_quoted": (
                 "'/anvil/projects/x-bio230051/apps/relaymd/apptainer/cache'"
             ),

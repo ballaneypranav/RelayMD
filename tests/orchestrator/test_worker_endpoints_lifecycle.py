@@ -25,13 +25,18 @@ async def test_worker_flow_register_request_heartbeat_checkpoint_complete() -> N
                 "gpu_model": "A100",
                 "gpu_count": 2,
                 "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
             },
         )
         assert register_response.status_code == 200
         worker_id = register_response.json()["worker_id"]
 
         async with get_sessionmaker()() as session:
-            job = Job(title="train-1", input_bundle_path="jobs/1/input/bundle.tar.gz")
+            job = Job(
+                title="train-1",
+                input_bundle_path="jobs/1/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
+            )
             session.add(job)
             await session.commit()
             await session.refresh(job)
@@ -78,13 +83,25 @@ async def test_heartbeat_progress_updates_only_assigned_worker_job() -> None:
         worker_one_response = await client.post(
             "/workers/register",
             headers=headers,
-            json={"platform": "hpc", "gpu_model": "A100", "gpu_count": 2, "vram_gb": 80},
+            json={
+                "platform": "hpc",
+                "gpu_model": "A100",
+                "gpu_count": 2,
+                "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
+            },
         )
         worker_one_id = worker_one_response.json()["worker_id"]
         worker_two_response = await client.post(
             "/workers/register",
             headers=headers,
-            json={"platform": "hpc", "gpu_model": "A100", "gpu_count": 2, "vram_gb": 80},
+            json={
+                "platform": "hpc",
+                "gpu_model": "A100",
+                "gpu_count": 2,
+                "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
+            },
         )
         worker_two_id = worker_two_response.json()["worker_id"]
 
@@ -92,6 +109,7 @@ async def test_heartbeat_progress_updates_only_assigned_worker_job() -> None:
             job = Job(
                 title="train-1",
                 input_bundle_path="jobs/1/input/bundle.tar.gz",
+                worker_image_key="atom-openmm",
                 status=JobStatus.running,
                 assigned_worker_id=UUID(worker_one_id),
                 progress=0.25,
@@ -130,6 +148,7 @@ async def test_worker_start_lifecycle_and_checkpoint_timestamps() -> None:
                 "gpu_model": "A100",
                 "gpu_count": 2,
                 "vram_gb": 80,
+                "worker_image_key": "atom-openmm",
             },
         )
         worker_id = register_response.json()["worker_id"]
@@ -225,6 +244,7 @@ async def test_checkpoint_history_payload_includes_only_supplied_optional_fields
                     "gpu_model": "A100",
                     "gpu_count": 1,
                     "vram_gb": 80,
+                    "worker_image_key": "atom-openmm",
                 },
             )
         ).json()["worker_id"]

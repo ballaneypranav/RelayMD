@@ -13,7 +13,7 @@ export interface JobRead {
   title: string;
   status: JobStatus;
   input_bundle_path: string;
-  worker_image_key?: string;
+  worker_image_key: string;
   preferred_clusters: string[];
   comment: string | null;
   queue_blocked_reason: string | null;
@@ -74,7 +74,7 @@ export interface WorkerRead {
   gpu_count: number;
   vram_gb: number;
   status: string;
-  worker_image_key?: string;
+  worker_image_key: string;
   provider_id: string | null;
   provider_state: string | null;
   provider_state_raw: string | null;

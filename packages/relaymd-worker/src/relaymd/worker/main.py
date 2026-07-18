@@ -1758,7 +1758,14 @@ def _run_assigned_job(
 def run_worker(config: WorkerConfig) -> None:
     import sys
 
-    runtime_settings = WorkerRuntimeSettings()
+    worker_image_key = os.environ.get("RELAYMD_WORKER_IMAGE_KEY")
+    if not worker_image_key:
+        LOG.error(
+            "worker_image_key_missing",
+            message="RELAYMD_WORKER_IMAGE_KEY is required for every RelayMD worker.",
+        )
+        sys.exit(1)
+    runtime_settings = WorkerRuntimeSettings(worker_image_key=worker_image_key)
     if not runtime_settings.axiom_token.strip():
         LOG.error(
             "axiom_token_missing",

@@ -173,10 +173,9 @@ def _render_sbatch_script(
     *,
     settings: OrchestratorSettings,
     worker_id: UUID | None = None,
-    worker_image_key: str | None = None,
+    worker_image_key: str,
 ) -> str:
     worker_id = worker_id or uuid4()
-    worker_image_key = worker_image_key or settings.default_worker_image
     docker_username = os.environ.get("APPTAINER_DOCKER_USERNAME", "").strip()
     docker_password = os.environ.get("APPTAINER_DOCKER_PASSWORD", "")
     worker_bind_paths = os.environ.get("RELAYMD_WORKER_BIND_PATHS", "").strip()
@@ -298,10 +297,9 @@ async def submit_slurm_job(
     settings: OrchestratorSettings,
     *,
     worker_id: UUID | None = None,
-    worker_image_key: str | None = None,
+    worker_image_key: str,
 ) -> str:
     worker_id = worker_id or uuid4()
-    worker_image_key = worker_image_key or settings.default_worker_image
     rendered = _render_sbatch_script(
         cluster,
         settings=settings,
