@@ -460,7 +460,7 @@ jobs:
               assert grand.__version__ == "1.1.0"
               assert openmm.version.version.startswith("8.2")
           '
-          docker run --rm "${WORKER_IMAGE}" --help >/dev/null
+          [[ "$(docker image inspect --format '{{join .Config.Entrypoint \" \"}}' "${WORKER_IMAGE}")" == "python -m relaymd.worker" ]]
       - name: Publish AToM compatibility aliases
         if: ${{ github.event_name != 'pull_request' && matrix.key == 'atom-openmm' }}
         env:
